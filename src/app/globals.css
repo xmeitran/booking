@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* Token lấy từ web-admin/src/app/globals.css (UpBase Ops design system). */
+@theme {
+  --font-sans: var(--font-be-vietnam), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --color-canvas: #F6F7F9;
+  --color-surface: #FFFFFF;
+  --color-sunken: #EEF1F5;
+  --color-line: #E4E8EE;
+  --color-line-strong: #C9D1DC;
+  --color-ink: #16171A;
+  --color-ink-2: #43454B;
+  --color-ink-3: #686B72;
+  --color-primary: #2B2B2B;
+  --color-primary-hover: #141414;
+  --color-accent: #24457A;
+  --color-accent-hover: #1B355F;
+  --color-accent-soft: #E9EEF6;
+  --color-positive: #1E6E46;
+  --color-positive-soft: #E5F1E9;
+  --color-warning: #855000;
+  --color-warning-soft: #F7EDDB;
+  --color-critical: #A3241B;
+  --color-critical-soft: #F8E4E2;
+  --color-focus: #3D6BC4;
+}
+
+body {
+  @apply bg-canvas text-ink text-sm antialiased;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-line-strong bg-surface px-3.5 text-sm font-medium text-ink hover:bg-canvas disabled:cursor-wait disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-primary bg-primary text-white hover:bg-primary-hover;
+  }
+  .btn-danger {
+    @apply border-critical/40 text-critical hover:bg-critical-soft;
+  }
+  .input {
+    @apply h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-sm outline-none focus:border-focus focus:ring-2 focus:ring-focus/20;
+  }
+  textarea.input {
+    @apply h-auto py-2;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-ink-3;
+  }
+  .tbl {
+    @apply w-full border-collapse text-[13px] tabular-nums;
+  }
+  .tbl th {
+    @apply border-b border-line px-3 py-2 text-left text-xs font-medium whitespace-nowrap text-ink-3;
+  }
+  .tbl td {
+    @apply border-b border-line px-3 py-2.5 align-top;
+  }
+  .tbl tbody tr:hover {
+    @apply bg-canvas;
+  }
+  .pill {
+    @apply inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium;
+  }
+  .link {
+    @apply text-accent hover:underline;
+  }
+}

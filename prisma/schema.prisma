@@ -1,0 +1,50 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN  // quản lý user + toàn quyền
+  LEADER // sửa mọi booking & danh bạ
+  STAFF  // sửa booking mình phụ trách, xem danh bạ
+}
+
+model User {
+  id          String    @id @default(cuid())
+  larkUserId  String    @unique // user_id (hoặc open_id ou_...) của tài khoản Lark
+  name        String?   // để trống thì lấy tên Lark ở lần đăng nhập đầu
+  email       String?
+  avatarUrl   String?
+  role        Role      @default(STAFF)
+  active      Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  kocs        Koc[]
+}
+
+model Koc {
+  id         String   @id @default(cuid())
+  platform   String   @default("TikTok")
+  handle     String   // @username, không gồm @
+  name       String   // tên kênh
+  channelUrl String?
+  followers  Int?
+  niche      String?  // tệp kênh
+  phone      String?
+  zalo       String?
+  email      String?
+  rateCard   Int?     // giá tham khảo / video, VND
+  note       String?
+  picId      String?
+  pic        User?    @relation(fields: [picId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([platform, handle])
+  @@index([niche])
+}
