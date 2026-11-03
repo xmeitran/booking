@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { Role } from '@prisma/client';
 import { db } from './db';
-import type { NextResponse } from 'next/server';
+import type { NextRequest, NextResponse } from 'next/server';
 import { signToken, verifyToken } from './token';
 
 export const SESSION_COOKIE = 'bh_session';
@@ -39,4 +39,11 @@ export async function findLoginUser(larkIds: string[]) {
   const admins = (process.env.ADMIN_LARK_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   const adminId = larkIds.find((id) => admins.includes(id));
   return adminId ? db.user.create({ data: { larkUserId: adminId, role: 'ADMIN' } }) : null;
+}
+
+/** URL tuyệt đối theo host người dùng đang truy cập. Sau proxy (Render) req.url là localhost:PORT nên phải đọc header. */
+export function absUrl(path: string, req: NextRequest) {
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0].trim() ?? req.nextUrl.protocol.replace(':', '');
+  return new URL(path, host ? `${proto}://${host}` : req.url);
 }

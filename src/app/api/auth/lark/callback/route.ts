@@ -2,9 +2,9 @@ import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { exchangeCode } from '@/lib/lark';
 import { syncUsersFromLark } from '@/lib/larkSync';
-import { findLoginUser, setSessionCookie } from '@/lib/session';
+import { absUrl, findLoginUser, setSessionCookie } from '@/lib/session';
 
-const toLogin = (req: NextRequest, error: string) => NextResponse.redirect(new URL(`/login?error=${error}`, req.url));
+const toLogin = (req: NextRequest, error: string) => NextResponse.redirect(absUrl(`/login?error=${error}`, req));
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   }
   if (process.env.LARK_TENANT_KEY && lark.tenant_key !== process.env.LARK_TENANT_KEY) return toLogin(req, 'tenant');
 
-  const secure = req.nextUrl.protocol === 'https:';
+  const secure = absUrl('/', req).protocol === 'https:';
   const ids = [lark.user_id, lark.open_id].filter((x): x is string => Boolean(x));
   const user = await findLoginUser(ids);
 
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   // Phòng ban / chức danh chỉ có trong API danh bạ: cập nhật sau khi trả response, lỗi (thiếu quyền) thì bỏ qua.
   after(() => syncUsersFromLark([user]).catch((e) => console.warn('[lark sync]', e.message)));
 
-  const res = NextResponse.redirect(new URL('/', req.url));
+  const res = NextResponse.redirect(absUrl('/', req));
   setSessionCookie(res, user.id, secure);
   res.cookies.delete('lark_state');
   return res;
