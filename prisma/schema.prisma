@@ -16,9 +16,12 @@ enum Role {
 model User {
   id          String    @id @default(cuid())
   larkUserId  String    @unique // user_id (hoặc open_id ou_...) của tài khoản Lark
-  name        String?   // để trống thì lấy tên Lark ở lần đăng nhập đầu
+  // Lấy từ Lark (đăng nhập hoặc nút Đồng bộ Lark), không sửa tay.
+  name        String?
   email       String?
   avatarUrl   String?
+  department  String?
+  jobTitle    String?
   role        Role      @default(STAFF)
   active      Boolean   @default(true)
   lastLoginAt DateTime?

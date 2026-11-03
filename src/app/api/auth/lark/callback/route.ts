@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { exchangeCode } from '@/lib/lark';
+import { syncUsersFromLark } from '@/lib/larkSync';
 import { findLoginUser, setSessionCookie } from '@/lib/session';
 
 const toLogin = (req: NextRequest, error: string) => NextResponse.redirect(new URL(`/login?error=${error}`, req.url));
@@ -35,12 +36,14 @@ export async function GET(req: NextRequest) {
   await db.user.update({
     where: { id: user.id },
     data: {
-      name: user.name || lark.name,
-      email: user.email || lark.enterprise_email || lark.email || null,
-      avatarUrl: lark.avatar_url ?? user.avatarUrl,
+      name: lark.name || user.name,
+      email: lark.enterprise_email || lark.email || user.email,
+      avatarUrl: lark.avatar_url || user.avatarUrl,
       lastLoginAt: new Date(),
     },
   });
+  // Phòng ban / chức danh chỉ có trong API danh bạ: cập nhật sau khi trả response, lỗi (thiếu quyền) thì bỏ qua.
+  after(() => syncUsersFromLark([user]).catch((e) => console.warn('[lark sync]', e.message)));
 
   const res = NextResponse.redirect(new URL('/', req.url));
   setSessionCookie(res, user.id, secure);

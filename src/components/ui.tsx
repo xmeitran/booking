@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { startTransition, useActionState } from 'react';
+import { startTransition, useActionState, useState } from 'react';
 
 export function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   const active = usePathname().startsWith(href);
@@ -60,5 +60,43 @@ export function Dialog({ title, closeHref, children }: { title: string; closeHre
         <div className="px-5 py-4">{children}</div>
       </div>
     </div>
+  );
+}
+
+/** Logo Upbase + tên sản phẩm (logo PNG 180×48 lấy từ repo b2c). */
+export function BrandLogo({ size = 24 }: { size?: number }) {
+  return (
+    <span className="inline-flex items-center gap-2.5">
+      <img src="/upbase-logo.png" alt="Upbase" style={{ height: size, width: 'auto' }} />
+      <span className="border-l border-line pl-2.5 text-[13px] leading-tight font-semibold">Booking Hub</span>
+    </span>
+  );
+}
+
+const initials = (name: string) => {
+  const w = name.trim().split(/\s+/);
+  return ((w[0]?.[0] ?? '') + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase();
+};
+
+export function Avatar({ src, name, size = 32 }: { src?: string | null; name?: string | null; size?: number }) {
+  const style = { width: size, height: size };
+  if (src) return <img src={src} alt="" style={style} className="shrink-0 rounded-full object-cover" />;
+  return (
+    <span style={{ ...style, fontSize: size * 0.38 }} className="inline-flex shrink-0 items-center justify-center rounded-full bg-accent-soft font-semibold text-accent">
+      {name ? initials(name) : '?'}
+    </span>
+  );
+}
+
+export function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="btn h-8 px-2.5 text-xs"
+      onClick={() => navigator.clipboard.writeText(text).then(() => setDone(true))}
+    >
+      {done ? 'Đã chép' : 'Chép'}
+    </button>
   );
 }
