@@ -25,7 +25,7 @@ export const FLAGS: Record<string, { label: string; where: () => Prisma.BookingW
   payment: { label: 'Chờ ĐNTT', where: () => ({ pipeline: 'Làm ĐNTT' }) },
 };
 
-export type BookingFilters = { q?: string; month?: string; brand?: string; pipeline?: string; owner?: string; flag?: string };
+export type BookingFilters = { q?: string; month?: string; brand?: string; pipeline?: string; owner?: string; person?: string; flag?: string };
 
 export function bookingWhere(f: BookingFilters): Prisma.BookingWhereInput {
   const q = f.q?.trim();
@@ -36,6 +36,8 @@ export function bookingWhere(f: BookingFilters): Prisma.BookingWhereInput {
       f.brand ? { brand: f.brand } : {},
       f.pipeline ? { pipeline: f.pipeline } : {},
       f.owner ? { owner: f.owner } : {},
+      // Việc của một người: phụ trách, hoặc có tên trong Booking PIC / Account PIC / Leader (Lark ghi nhiều tên cách dấu phẩy).
+      f.person ? { OR: [{ owner: f.person }, { bookingPic: { contains: f.person } }, { accountPic: { contains: f.person } }, { leader: { contains: f.person } }] } : {},
       q ? { OR: [{ code: contains }, { channel: contains }, { store: contains }, { brand: contains }] } : {},
       f.flag && FLAGS[f.flag] ? FLAGS[f.flag].where() : {},
     ],

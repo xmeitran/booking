@@ -16,10 +16,10 @@ type Row = Awaited<ReturnType<typeof db.booking.findMany>>[number];
 export default async function BookingPage({ searchParams }: { searchParams: Promise<Search> }) {
   await requireUser();
   const sp = await searchParams;
-  const { q = '', month = '', brand = '', pipeline = '', owner = '', flag = '' } = sp;
+  const { q = '', month = '', brand = '', pipeline = '', owner = '', person = '', flag = '' } = sp;
   const kanban = sp.view === 'kanban';
   const page = pageOf(sp.page);
-  const base = { q, month, brand, pipeline, owner };
+  const base = { q, month, brand, pipeline, owner, person };
   const where = bookingWhere({ ...base, flag });
 
   const distinct = async (field: 'planMonth' | 'brand' | 'owner') =>
@@ -48,7 +48,7 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
   const kocs = await db.koc.findMany({ where: { platform: 'TikTok', handle: { in: [...new Set(shown.map((r) => r.channel?.toLowerCase()).filter(Boolean) as string[])] } }, select: { id: true, handle: true } });
   const kocId = new Map(kocs.map((k) => [k.handle, k.id]));
 
-  const params = new URLSearchParams(Object.entries({ q, month, brand, pipeline, owner, flag, view: kanban ? 'kanban' : '' }).filter(([, v]) => v));
+  const params = new URLSearchParams(Object.entries({ q, month, brand, pipeline, owner, person, flag, view: kanban ? 'kanban' : '' }).filter(([, v]) => v));
   const withParam = (k: string, v: string) => {
     const p = new URLSearchParams(params);
     if (v) p.set(k, v); else p.delete(k);
@@ -78,6 +78,7 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
       </div>
 
       <div className="mb-3 flex flex-wrap gap-1.5">
+        {person && <Link href={withParam('person', '')} className="pill bg-accent-soft px-2.5 py-1 text-accent" title="Bỏ lọc">Việc của {person} ✕</Link>}
         <Link href={withParam('flag', '')} className={`pill px-2.5 py-1 ${!flag ? 'bg-ink text-white' : 'bg-surface text-ink-2 ring-1 ring-line'}`}>Tất cả · {fmtNum(allCount)}</Link>
         {flagCounts.map(([k, n]) => (
           <Link key={k} href={withParam('flag', flag === k ? '' : k)} className={`pill px-2.5 py-1 ${flag === k ? 'bg-ink text-white' : n ? 'bg-warning-soft text-warning' : 'bg-surface text-ink-3 ring-1 ring-line'}`}>
@@ -89,6 +90,7 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
       <form className="mb-3 flex flex-wrap gap-2">
         {kanban && <input type="hidden" name="view" value="kanban" />}
         {flag && <input type="hidden" name="flag" value={flag} />}
+        {person && <input type="hidden" name="person" value={person} />}
         <input name="q" defaultValue={q} placeholder="Tìm mã BO, kênh, store, brand" aria-label="Tìm kiếm" className="input max-w-xs" />
         {select('month', month, 'Mọi tháng plan', months)}
         {select('brand', brand, 'Mọi brand', brands)}

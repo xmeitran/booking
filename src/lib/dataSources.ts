@@ -96,8 +96,8 @@ export async function refreshDataSources() {
 }
 
 // Số trong Booking.extra là chuỗi; ô gõ tay có thể lẫn chữ nên chỉ ép kiểu khi đúng dạng số.
-const ex = (k: string) => Prisma.raw(`case when extra->>'${k}' ~ '^-?[0-9]+(\\.[0-9]+)?$' then (extra->>'${k}')::float end`);
-const LARK_COLS = Prisma.sql`count(*)::int, coalesce(sum(cost), 0)::float, coalesce(sum(${ex('views30')}), 0)::float, coalesce(sum(${ex('gmv30')}), 0)::float, coalesce(sum(${ex('orders30')}), 0)::float`;
+export const extraNum = (k: string) => Prisma.raw(`case when extra->>'${k}' ~ '^-?[0-9]+(\\.[0-9]+)?$' then (extra->>'${k}')::float end`);
+const LARK_COLS = Prisma.sql`count(*)::int, coalesce(sum(cost), 0)::float, coalesce(sum(${extraNum('views30')}), 0)::float, coalesce(sum(${extraNum('gmv30')}), 0)::float, coalesce(sum(${extraNum('orders30')}), 0)::float`;
 
 export async function larkStats(): Promise<SourceStats> {
   const [r] = await db.$queryRaw<{ creators: number; from: Date | null; to: Date | null; m: number[] }[]>`

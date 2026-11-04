@@ -40,6 +40,13 @@ Người chưa được thêm bấm đăng nhập sẽ thấy Lark User ID của
 
 Khóa user hoặc đổi vai trò có hiệu lực ngay ở request kế tiếp (phiên chỉ lưu id, quyền đọc lại từ DB).
 
+## Tổng quan
+
+Trang đầu sau đăng nhập (`/overview`): **Việc của bạn** (booking trễ air, air 7 ngày tới, đã air thiếu link, hẹn liên hệ KOL đến hạn,
+listing chờ Brand chọn), hàng đợi cả team, KPI theo Tháng plan (booking, chi phí, đã air, Done, view / GMV 30 ngày) theo brand
+và người phụ trách. "Của bạn" = tên Lark của bạn là người phụ trách hoặc có trong Booking PIC / Account PIC / Leader
+(tab Booking lọc bằng `?person=`).
+
 ## Đồng bộ booking từ Lark Base
 
 - Nguồn: base **B2C_Quản lý Booking**, bảng **3.2 List duyệt book** (`W6vRbbuOVar3qtsV18dlan1xgXb` / `tbluWrjJd9Pt9uzb`). App Lark "Booking" phải được thêm vào base (… > Add application) và có quyền đọc Base.

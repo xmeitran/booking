@@ -8,6 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <aside className="border-b border-line bg-surface md:sticky md:top-0 md:flex md:h-screen md:w-56 md:shrink-0 md:flex-col md:border-r md:border-b-0">
         <div className="flex h-14 items-center px-4"><BrandLogo size={20} /></div>
         <nav className="flex gap-0.5 overflow-x-auto px-2 pb-2 md:flex-col">
+          <NavLink href="/overview">Tổng quan</NavLink>
           <NavLink href="/booking">Booking</NavLink>
           <NavLink href="/listing">Listing</NavLink>
           <NavLink href="/contacts">Danh bạ KOC</NavLink>
