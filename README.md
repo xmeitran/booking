@@ -85,6 +85,21 @@ Thay file "Excel Listing" theo sheet *[Booking] - Requirement Excel Listing (UpA
 - **Brand duyệt online**: nút Tạo link sinh `/review/<token>`; Brand mở không cần đăng nhập, chọn Yes / No / Cân nhắc + lý do.
   Trang này không có SĐT, địa chỉ, ngân hàng, CCCD; thu hồi link là hết hiệu lực ngay.
 
+## Creator matching
+
+`/matching`: B2C soạn **best practice theo ngành hàng** (ghi chú + bộ tiêu chí). Mỗi **brief brand** chép tiêu chí từ best practice
+của ngành, thêm Brand guideline, Content strategy, Content plan (dán link tài liệu được). Bộ tiêu chí: tệp kênh, cấp KOL, follower,
+view TB, số món bán, GPM, giá booking gần nhất, % follower nữ, % 18–34 tuổi, tỷ trọng GMV ngành hàng TikTok, đã / chưa hợp tác.
+KOC trượt tiêu chí bị loại; thiếu số liệu thì "chưa rõ", xếp sau (`src/lib/matching.ts`). Tick KOC → thêm vào đợt listing có sẵn
+hoặc đợt mới; tải Excel toàn bộ KOC khớp. Danh bạ cũng có nút Tải Excel theo bộ lọc.
+
+## Kiểm soát nhập liệu
+
+- Form KOC kiểm SĐT Việt Nam, CCCD / CMND / MST, số tài khoản, ID kênh TikTok (`src/lib/validate.ts`).
+- Tab Dữ liệu liệt kê booking Lark gần đây nhập sai / thiếu: ID kênh TikTok sai định dạng, thiếu ID kênh, chi phí, tháng plan,
+  người phụ trách, nghi trùng (cùng kênh + brand + tháng) (`src/lib/dataQuality.ts`).
+- Listing gắn cờ **Trùng** khi KOC đã ở đợt listing khác cùng tháng hoặc đã book cùng brand tháng này / tháng trước.
+
 ## Dữ liệu
 
 Tab `/data` cho biết mỗi nguồn có bao nhiêu creator, bao nhiêu KOL Danh bạ có mặt, và hiệu quả (GMV, đơn, lượt xem…) của họ:

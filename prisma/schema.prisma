@@ -31,6 +31,7 @@ model User {
   listingBatches ListingBatch[]
   listingItems   ListingItem[]
   kocNotes       KocNote[]
+  matchBriefs    MatchBrief[]
 }
 
 model Koc {
@@ -226,4 +227,25 @@ model KocNote {
 
   @@index([kocId, createdAt])
   @@index([followUpAt])
+}
+
+// Creator matching. template = best practice theo ngành hàng (B2C cung cấp); brief = yêu cầu của một brand
+// (guideline, content strategy, content plan) + bộ tiêu chí lọc KOC, thường chép từ best practice của ngành.
+model MatchBrief {
+  id          String   @id @default(cuid())
+  name        String
+  template    Boolean  @default(false)
+  category    String?  // ngành hàng
+  brand       String?
+  guideline   String?  // Brand guideline: link tài liệu + ghi chú
+  strategy    String?  // Content strategy
+  plan        String?  // Content plan
+  note        String?  // best practice (template) / ghi chú (brief)
+  criteria    Json     @default("{}") // src/lib/matching.ts Criteria
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([template, updatedAt])
 }

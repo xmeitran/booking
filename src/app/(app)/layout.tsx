@@ -11,6 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/overview">Tổng quan</NavLink>
           <NavLink href="/booking">Booking</NavLink>
           <NavLink href="/listing">Listing</NavLink>
+          <NavLink href="/matching">Creator matching</NavLink>
           <NavLink href="/contacts">Danh bạ KOC</NavLink>
           <NavLink href="/data">Dữ liệu</NavLink>
           {user.role === 'ADMIN' && <NavLink href="/users">User</NavLink>}
