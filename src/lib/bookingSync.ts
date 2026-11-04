@@ -102,6 +102,7 @@ async function addKocs(rows: Row[]) {
   for (const r of rows) {
     if (!r.channel) continue;
     const handle = r.channel.trim().replace(/^@/, '').toLowerCase();
+    if (!handle) continue;
     // "id kênh" là kênh TikTok (Link kênh = tiktok.com/@...). Cột "Nền tảng" bên Lark tính từ link air của booking, không phải của kênh.
     byKey.set(handle, { platform: 'TikTok', handle, name: r.channel.trim(), channelUrl: r.channelUrl, niche: r.extra.niche });
   }

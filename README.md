@@ -47,3 +47,11 @@ Khóa user hoặc đổi vai trò có hiệu lực ngay ở request kế tiếp 
 - Lịch mỗi giờ: `.github/workflows/sync-bookings.yml` (GitHub Actions). Repo public không có commit trong 60 ngày thì GitHub tắt lịch, vào tab Actions bật lại.
 - Kênh mới trong booking được tự thêm vào Danh bạ KOC (TikTok). KOL đã có thì không ghi đè.
 - Tab Booking chỉ đọc; sửa dữ liệu trên Lark.
+
+## Chỉ số KOL từ TikTok Shop
+
+- Follower, lượt xem TB / video và / LIVE bán hàng, số món bán, GMV, GPM (30 ngày) từ TikTok Shop Creator Marketplace (`/affiliate_seller/202608/marketplace_creators/search` + `/202508/marketplace_creators/{open_id}`).
+- Gọi qua **Trạm dữ liệu TikTok** (`Data-tiktok`, https://mcn.mindtheoperation.com, `POST /api/console`) bằng token shop VN nó đang giữ. Booking Hub không giữ token TikTok: làm mới token ở 2 nơi sẽ làm token bên kia mất hiệu lực. Cần `DATA_TIKTOK_URL`, `DATA_TIKTOK_USER`, `DATA_TIKTOK_PASSWORD`.
+- `POST /api/cron/creator-stats` mỗi giờ (sau đồng bộ booking), tối đa ~10 phút: tra `creator_open_id` cho KOL chưa tra (ưu tiên KOL có booking gần đây), cập nhật chỉ số KOL cũ quá 7 ngày. KOL không có trên Marketplace thì 30 ngày tra lại.
+- Hạn mức tần suất tính chung với Trạm dữ liệu: gọi cách nhau 25s, bị chặn thì chờ 60s thử lại.
+- TikTok chỉ trả GMV dạng khoảng cho creator VN (vd "1M₫+"); GPM tính bằng USD.

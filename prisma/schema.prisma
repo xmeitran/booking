@@ -48,8 +48,22 @@ model Koc {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  // Chỉ số 30 ngày từ TikTok Shop Creator Marketplace (src/lib/creatorStats.ts). followers cũng được cập nhật từ đây.
+  ttsOpenId    String?   // creator_open_id; null + ttsCheckedAt có giá trị = không có trên Marketplace
+  ttsCheckedAt DateTime?
+  statsAt      DateTime?
+  nickname     String?
+  avgViews     Int?      // lượt xem TB / video bán hàng
+  avgLiveViews Int?      // lượt xem TB / LIVE bán hàng
+  unitsSold    Int?      // số món bán
+  gmvRange     String?   // TikTok VN chỉ trả khoảng, vd "1M₫+"
+  gpmUsd       Float?    // GMV / 1.000 lượt xem, USD
+  creatorLevel Int?
+
   @@unique([platform, handle])
   @@index([niche])
+  @@index([followers])
+  @@index([unitsSold])
 }
 
 // Bản sao chỉ đọc của bảng "3.2 List duyệt book" trên Lark Base, đồng bộ mỗi giờ (src/lib/bookingSync.ts).
