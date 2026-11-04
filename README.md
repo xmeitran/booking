@@ -20,8 +20,8 @@ Postgres local nhanh: `docker run -d --name booking-hub-db -e POSTGRES_USER=book
 1. Lark Developer Console → app → **Security settings → Redirect URLs**: thêm `http://localhost:3000/api/auth/lark/callback` và `https://<domain>/api/auth/lark/callback`.
 2. **Permissions & Scopes**, rồi tạo và phát hành phiên bản mới:
    - `contact:user.employee_id:readonly`: lấy User ID (HN001...). Thiếu quyền này Lark chỉ trả Open ID (`ou_...`) và user được thêm bằng User ID sẽ không đăng nhập được.
-   - `contact:contact.base:readonly`, `contact:user.base:readonly`, `contact:user.email:readonly`, `contact:user.department:readonly`, `contact:department.base:readonly`: để tab User lấy tên, avatar, email, phòng ban, chức danh (nút **Đồng bộ Lark**).
-   - Phạm vi dữ liệu danh bạ (contacts range) của app phải bao gồm các phòng ban cần dùng.
+   - `contact:contact.base:readonly`, `contact:user.base:readonly`, `contact:user.email:readonly`, `contact:user.department:readonly`, `contact:department.base:readonly`: để tab User tự lấy tên, avatar, email, phòng ban, chức danh khi Admin thêm user (và cập nhật lại mỗi lần người đó đăng nhập).
+   - Phạm vi dữ liệu danh bạ đi theo **Availability** của app: khi tạo phiên bản, chọn All members (hoặc các phòng ban cần dùng), nếu không Lark chỉ trả dữ liệu của người tạo app.
 3. Điền `LARK_APP_ID`, `LARK_APP_SECRET` vào `.env`.
 
 ## Admin đầu tiên

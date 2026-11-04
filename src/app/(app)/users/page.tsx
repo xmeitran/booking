@@ -3,16 +3,14 @@ import { Role } from '@prisma/client';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { requireUser, ROLE_LABEL } from '@/lib/session';
-import { saveUser, syncLark } from './actions';
+import { saveUser } from './actions';
 
 const ROLE_TONE: Record<Role, string> = { ADMIN: 'bg-accent-soft text-accent', LEADER: 'bg-positive-soft text-positive', STAFF: 'bg-sunken text-ink-2' };
 const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh' });
 
-type Search = { edit?: string; synced?: string; missing?: string; sync_error?: string };
-
-export default async function UsersPage({ searchParams }: { searchParams: Promise<Search> }) {
+export default async function UsersPage({ searchParams }: { searchParams: Promise<{ edit?: string }> }) {
   const me = await requireUser('ADMIN');
-  const { edit, synced, missing, sync_error } = await searchParams;
+  const { edit } = await searchParams;
   const users = await db.user.findMany({ orderBy: [{ active: 'desc' }, { role: 'asc' }, { name: 'asc' }] });
   const editing = edit && edit !== 'new' ? users.find((u) => u.id === edit && u.id !== me.id) : undefined;
 
@@ -20,25 +18,8 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">User</h1>
-        <div className="flex gap-2">
-          <form action={syncLark}>
-            <button className="btn">Đồng bộ Lark</button>
-          </form>
-          <Link href="?edit=new" className="btn btn-primary">Thêm user</Link>
-        </div>
+        <Link href="?edit=new" className="btn btn-primary">Thêm user</Link>
       </div>
-
-      {synced && (
-        <div role="status" className={`mb-3 rounded-md px-3 py-2.5 ${missing ? 'bg-warning-soft text-warning' : 'bg-positive-soft text-positive'}`}>
-          Đã cập nhật {synced} user từ Lark.{missing && <> Không tìm thấy trên Lark: <span className="font-mono">{missing.replaceAll(',', ', ')}</span></>}
-        </div>
-      )}
-      {sync_error && (
-        <div role="alert" className="mb-3 rounded-md bg-critical-soft px-3 py-2.5 text-critical">
-          {sync_error.includes('99991672') ? 'Lark app chưa có quyền đọc danh bạ. Bật quyền trong Lark Developer Console rồi phát hành phiên bản mới.' : 'Không đồng bộ được từ Lark.'}
-          <div className="mt-1 font-mono text-xs opacity-80">{sync_error}</div>
-        </div>
-      )}
 
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">
@@ -82,6 +63,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
             <div>
               <label className="label" htmlFor="larkUserId">Lark User ID</label>
               <input id="larkUserId" name="larkUserId" required defaultValue={editing?.larkUserId} placeholder="VD: HN001 hoặc ou_..." className="input font-mono" />
+              <p className="mt-1 text-xs text-ink-3">Tên, email, avatar, phòng ban tự lấy từ Lark khi lưu.</p>
             </div>
             <div>
               <label className="label" htmlFor="role">Vai trò</label>

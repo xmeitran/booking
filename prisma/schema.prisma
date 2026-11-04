@@ -16,7 +16,7 @@ enum Role {
 model User {
   id          String    @id @default(cuid())
   larkUserId  String    @unique // user_id (hoặc open_id ou_...) của tài khoản Lark
-  // Lấy từ Lark (đăng nhập hoặc nút Đồng bộ Lark), không sửa tay.
+  // Lấy từ Lark khi Admin thêm user và mỗi lần đăng nhập, không sửa tay.
   name        String?
   email       String?
   avatarUrl   String?

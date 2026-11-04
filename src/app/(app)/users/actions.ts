@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { Role } from '@prisma/client';
 import { db } from '@/lib/db';
 import { isUniqueError, str } from '@/lib/form';
-import { syncUsersFromLark } from '@/lib/larkSync';
+import { fetchLarkProfiles } from '@/lib/lark';
 import { requireUser } from '@/lib/session';
 
 export async function saveUser(_: string | null, fd: FormData): Promise<string | null> {
@@ -17,31 +17,32 @@ export async function saveUser(_: string | null, fd: FormData): Promise<string |
   // Admin không tự đổi ID / quyền / khóa chính mình để tránh mất quyền truy cập.
   if (id === me.id) redirect('/users');
 
-  let user;
+  const current = id ? await db.user.findUnique({ where: { id } }) : null;
+  let profile = {};
+  // Thêm mới hoặc đổi ID: lấy tên, email, avatar, phòng ban từ Lark; ID không có trên Lark thì không lưu.
+  if (current?.larkUserId !== larkUserId) {
+    let found;
+    try {
+      found = (await fetchLarkProfiles([larkUserId])).get(larkUserId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      // 99992360: Lark báo ID không hợp lệ / không tồn tại.
+      return msg.includes('99992360') ? `Không tìm thấy ${larkUserId} trên Lark.` : `Không lấy được thông tin từ Lark. ${msg}`;
+    }
+    if (!found) return `Không tìm thấy ${larkUserId} trên Lark.`;
+    // Một người có thể được nhập bằng User ID lẫn Open ID: chặn trùng theo email Lark.
+    const dup = found.email && (await db.user.findFirst({ where: { email: found.email, ...(current && { NOT: { id: current.id } }) } }));
+    if (dup) return `${found.name} đã có trong danh sách (Lark ID ${dup.larkUserId}).`;
+    profile = found;
+  }
+
   try {
-    user = id
-      ? await db.user.update({ where: { id }, data: { larkUserId, role, active: fd.get('active') === 'on' } })
-      : await db.user.create({ data: { larkUserId, role } });
+    if (current) await db.user.update({ where: { id }, data: { larkUserId, role, active: fd.get('active') === 'on', ...profile } });
+    else await db.user.create({ data: { larkUserId, role, ...profile } });
   } catch (e) {
     if (isUniqueError(e)) return 'Lark User ID này đã có trong danh sách.';
     throw e;
   }
-  // Lấy tên, phòng ban, avatar ngay; thiếu quyền Lark thì để nút Đồng bộ Lark báo lỗi.
-  await syncUsersFromLark([user]).catch(() => {});
   revalidatePath('/users');
   redirect('/users');
-}
-
-export async function syncLark() {
-  await requireUser('ADMIN');
-  const users = await db.user.findMany({ select: { id: true, larkUserId: true } });
-  let query: string;
-  try {
-    const missing = await syncUsersFromLark(users);
-    query = new URLSearchParams({ synced: String(users.length - missing.length), ...(missing.length && { missing: missing.join(',') }) }).toString();
-  } catch (e) {
-    query = new URLSearchParams({ sync_error: e instanceof Error ? e.message : 'Lỗi không xác định' }).toString();
-  }
-  revalidatePath('/users');
-  redirect(`/users?${query}`);
 }
