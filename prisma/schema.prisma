@@ -148,6 +148,8 @@ model ListingBatch {
   month       String        // "2026-11"
   cr          Float?        // tỷ lệ chuyển đổi SP theo gian hàng, 0.05 = 5%
   aov         Int?          // AOV sản phẩm theo gian hàng, VND
+  shareToken  String?       // link Brand duyệt /review/<token>; null = chưa tạo hoặc đã thu hồi. Index thường, không @unique: thêm unique
+                            // vào bảng có sẵn khiến `prisma db push` trên Render dừng đòi --accept-data-loss; token ngẫu nhiên 144 bit.
   createdById String
   createdBy   User          @relation(fields: [createdById], references: [id])
   items       ListingItem[]
@@ -155,6 +157,7 @@ model ListingBatch {
   updatedAt   DateTime      @updatedAt
 
   @@index([month])
+  @@index([shareToken])
 }
 
 // Một KOC trong đợt listing. Số liệu kênh (follower, GPM, chân dung...) đọc trực tiếp từ Koc, không chép vào đây.

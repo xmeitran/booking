@@ -1,4 +1,5 @@
 'use server';
+import { randomBytes } from 'node:crypto';
 import { after } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -104,4 +105,36 @@ export async function removeItem(fd: FormData) {
   const item = await db.listingItem.delete({ where: { id: str(fd, 'id') } });
   revalidatePath(`/listing/${item.batchId}`);
   redirect(`/listing/${item.batchId}`);
+}
+
+// Sửa nhanh một ô trong bảng listing. Chỉ các trường dưới đây; giá trị kiểm như form đầy đủ.
+const LIST_FIELDS: Record<string, string[]> = { status: CONTACT_STATUS, recommendation: RECOMMEND, brandChoice: BRAND_CHOICE };
+export async function setItemField(fd: FormData) {
+  await requireUser();
+  const field = str(fd, 'field');
+  const v = str(fd, 'value');
+  let value: string | number | Date | null;
+  if (LIST_FIELDS[field]) value = oneOf(LIST_FIELDS[field], v);
+  else if (field === 'price' || field === 'viewTarget') {
+    const n = optInt(fd, 'value');
+    if (Number.isNaN(n)) return;
+    value = n;
+  } else if (field === 'contentNote' || field === 'rejectReason') value = v.slice(0, 1000) || null;
+  else if (field === 'planAirDate') value = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00+07:00`) : null;
+  else return;
+  const item = await db.listingItem.update({ where: { id: str(fd, 'id') }, data: { [field]: value } });
+  revalidatePath(`/listing/${item.batchId}`);
+}
+
+// Link cho Brand tự chọn Yes / No / Cân nhắc mà không cần tài khoản. Ai có link đều xem được → thu hồi khi xong.
+export async function createShare(fd: FormData) {
+  await requireUser();
+  const b = await db.listingBatch.update({ where: { id: str(fd, 'id') }, data: { shareToken: randomBytes(18).toString('base64url') } });
+  revalidatePath(`/listing/${b.id}`);
+}
+
+export async function revokeShare(fd: FormData) {
+  await requireUser();
+  const b = await db.listingBatch.update({ where: { id: str(fd, 'id') }, data: { shareToken: null } });
+  revalidatePath(`/listing/${b.id}`);
 }

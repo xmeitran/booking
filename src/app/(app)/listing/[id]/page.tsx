@@ -1,26 +1,81 @@
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { ActionForm, Avatar, Dialog } from '@/components/ui';
+import { InlineField } from '@/components/InlineField';
+import { ActionForm, Avatar, CopyButton, Dialog } from '@/components/ui';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
-import { BRAND_CHOICE, CONTACT_STATUS, loadListing, PRICE_TYPES, RECOMMEND, type ListingRow } from '@/lib/listing';
+import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, loadListing, PRICE_TYPES, RECOMMEND, type Col, type ListingRow } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
-import { addKocs, deleteBatch, removeItem, saveBatch, saveItem } from '../actions';
+import { addKocs, createShare, deleteBatch, removeItem, revokeShare, saveBatch, saveItem, setItemField } from '../actions';
 
 const CHOICE_TONE: Record<string, string> = { Yes: 'bg-positive-soft text-positive', No: 'bg-critical-soft text-critical', 'Cân nhắc': 'bg-warning-soft text-warning' };
 const REC_TONE: Record<string, string> = { 'Must Have': 'bg-accent-soft text-accent', Recommend: 'bg-sunken text-ink-2', Optional: 'bg-sunken text-ink-3' };
 const isoDate = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
 
-type Search = { edit?: string; item?: string };
+type Search = { edit?: string; item?: string; view?: string; choice?: string; rec?: string; sort?: string; hide?: string };
+
+const SORTS: Record<string, { label: string; key?: (r: ListingRow) => number | null; asc?: boolean }> = {
+  '': { label: 'Thứ tự thêm' },
+  fee: { label: 'Phí cao nhất', key: (r) => r.f.fee },
+  gmv: { label: 'GMV Target cao nhất', key: (r) => r.f.gmvTarget },
+  followers: { label: 'Follower nhiều nhất', key: (r) => r.koc.followers },
+  views: { label: 'View TB cao nhất', key: (r) => r.koc.avgViews },
+  cpv: { label: 'CPV thấp nhất', key: (r) => r.f.cpv, asc: true },
+};
+const CHOICES: [string, string][] = [['', 'Tất cả'], ['none', 'Brand chưa phản hồi'], ['Yes', 'Yes'], ['Cân nhắc', 'Cân nhắc'], ['No', 'No']];
+const DEFAULT_HIDE = ['meta', 'contact', 'bank'];
+// Ô sửa nhanh trong bảng Excel, theo tên cột.
+const EDIT: Record<string, { field: string; options?: string[]; type?: 'number' | 'date'; value: (r: ListingRow) => string; placeholder?: (r: ListingRow) => string }> = {
+  'Giá net video': { field: 'price', type: 'number', value: (r) => r.item.price?.toString() ?? '', placeholder: (r) => (r.collab.lastPrice ? String(r.collab.lastPrice) : '') },
+  'Trạng thái': { field: 'status', options: CONTACT_STATUS, value: (r) => r.item.status ?? '' },
+  'Đề xuất từ UpBase': { field: 'recommendation', options: RECOMMEND, value: (r) => r.item.recommendation ?? '' },
+  'Content note': { field: 'contentNote', value: (r) => r.item.contentNote ?? '' },
+  'Brand chọn': { field: 'brandChoice', options: BRAND_CHOICE, value: (r) => r.item.brandChoice ?? '' },
+  'Lý do từ chối': { field: 'rejectReason', value: (r) => r.item.rejectReason ?? '' },
+  'Ngày air plan': { field: 'planAirDate', type: 'date', value: (r) => isoDate(r.item.planAirDate) },
+  'View Target': { field: 'viewTarget', type: 'number', value: (r) => r.item.viewTarget?.toString() ?? '', placeholder: (r) => (r.viewTarget == null ? '' : String(r.viewTarget)) },
+};
 
 export default async function ListingBatchPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
   const me = await requireUser();
   const { id } = await params;
-  const { edit, item: itemId } = await searchParams;
+  const sp = await searchParams;
+  const { edit, item: itemId, choice = '', rec = '' } = sp;
+  const grid = sp.view === 'grid';
+  const sort = sp.sort && SORTS[sp.sort] ? sp.sort : '';
   const data = await loadListing(id);
   if (!data) notFound();
   const { batch, rows } = data;
   const editingRow = rows.find((r) => r.item.id === itemId);
   const canDelete = me.role !== 'STAFF' || batch.createdById === me.id;
+
+  // Lọc + xếp trên bộ nhớ: một đợt chỉ vài chục KOC.
+  const byRec = rows.filter((r) => !rec || r.item.recommendation === rec);
+  const choiceOk = (r: ListingRow, c: string) => !c || (c === 'none' ? !r.item.brandChoice : r.item.brandChoice === c);
+  let shown = byRec.filter((r) => choiceOk(r, choice));
+  const key = SORTS[sort].key;
+  if (key) shown = [...shown].sort((a, b) => {
+    const x = key(a), y = key(b);
+    if (x == null) return 1;
+    if (y == null) return -1;
+    return SORTS[sort].asc ? x - y : y - x;
+  });
+
+  const query = new URLSearchParams(Object.entries({ view: grid ? 'grid' : '', choice, rec, sort }).filter(([, v]) => v));
+  if (sp.hide !== undefined) query.set('hide', sp.hide);
+  const withParam = (k: string, v: string) => {
+    const p = new URLSearchParams(query);
+    if (v || k === 'hide') p.set(k, v); else p.delete(k);
+    return p.size ? `?${p}` : `/listing/${batch.id}`;
+  };
+  const hidden = new Set(sp.hide === undefined ? DEFAULT_HIDE : sp.hide.split(',').filter(Boolean));
+  const toggleGroup = (g: string) => withParam('hide', [...(hidden.has(g) ? [...hidden].filter((x) => x !== g) : [...hidden, g])].join(','));
+  const groups = (Object.keys(COL_GROUPS) as Col['g'][]).filter((g) => g !== 'batch' && !(g === 'bank' && me.role === 'STAFF'));
+  const cols = COLS.filter((c) => groups.includes(c.g) && !hidden.has(c.g) && c.h !== 'ID kênh' && c.h !== 'Tên người ảnh hưởng (Tên kênh)');
+
+  const h = await headers();
+  const origin = `${h.get('x-forwarded-proto')?.split(',')[0].trim() ?? 'http'}://${h.get('x-forwarded-host') ?? h.get('host')}`;
+  const shareUrl = batch.shareToken ? `${origin}/review/${batch.shareToken}` : '';
 
   const chosen = rows.filter((r) => r.item.brandChoice === 'Yes');
   const sum = (list: ListingRow[], f: (r: ListingRow) => number | null) => list.reduce((s, r) => s + (f(r) ?? 0), 0);
@@ -50,6 +105,29 @@ export default async function ListingBatchPage({ params, searchParams }: { param
         <Kpi label="GMV Target (Brand chọn)" value={fmtShort(sum(chosen, (r) => r.f.gmvTarget))} sub={`Toàn đợt ${fmtShort(sum(rows, (r) => r.f.gmvTarget))}`} />
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]">
+        <span className="font-medium">Brand duyệt online</span>
+        {batch.shareToken ? (
+          <>
+            <code className="max-w-full truncate rounded bg-sunken px-2 py-1 text-xs">{shareUrl}</code>
+            <CopyButton text={shareUrl} />
+            <form action={revokeShare}>
+              <input type="hidden" name="id" value={batch.id} />
+              <button className="btn h-8 px-2.5 text-xs">Thu hồi link</button>
+            </form>
+            <span className="text-xs text-ink-3">Ai có link đều xem và chọn được. Trang Brand không có SĐT, địa chỉ, tài khoản ngân hàng.</span>
+          </>
+        ) : (
+          <>
+            <span className="text-ink-3">Gửi Brand một link để tự chọn Yes / No / Cân nhắc và ghi lý do, không cần tài khoản.</span>
+            <form action={createShare}>
+              <input type="hidden" name="id" value={batch.id} />
+              <button className="btn h-8 px-2.5 text-xs">Tạo link</button>
+            </form>
+          </>
+        )}
+      </div>
+
       <ActionForm action={addKocs} className="mb-4 grid gap-2 rounded-lg border border-line bg-surface p-4 sm:grid-cols-[1fr_auto_auto] sm:items-end">
         <input type="hidden" name="batchId" value={batch.id} />
         <div>
@@ -63,20 +141,106 @@ export default async function ListingBatchPage({ params, searchParams }: { param
         <button className="btn btn-primary">Thêm vào listing</button>
       </ActionForm>
 
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>KOC</th><th className="text-right">Follower</th><th>Hiệu quả 30 ngày</th><th>Khán giả</th>
-              <th>Với UpBase</th><th className="text-right">Giá / phí</th><th className="text-right">Dự báo</th><th>Đề xuất · Brand</th><th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => <Row key={r.item.id} r={r} />)}
-            {!rows.length && <tr><td colSpan={9} className="py-12 text-center text-ink-3">Chưa có KOC. Dán ID kênh ở ô phía trên.</td></tr>}
-          </tbody>
-        </table>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {CHOICES.map(([v, label]) => (
+            <Link key={v} href={withParam('choice', v)} className={`pill px-2.5 py-1 ${choice === v ? 'bg-ink text-white' : 'bg-surface text-ink-2 ring-1 ring-line'}`}>
+              {label} · {byRec.filter((r) => choiceOk(r, v)).length}
+            </Link>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <form className="flex gap-2">
+            {[...query].filter(([k]) => k !== 'rec' && k !== 'sort').map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+            <select name="rec" defaultValue={rec} aria-label="Đề xuất" className="input h-8 w-auto text-xs">
+              <option value="">Mọi đề xuất</option>
+              {RECOMMEND.map((o) => <option key={o}>{o}</option>)}
+            </select>
+            <select name="sort" defaultValue={sort} aria-label="Sắp xếp" className="input h-8 w-auto text-xs">
+              {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <button className="btn h-8 px-2.5 text-xs">Lọc</button>
+          </form>
+          <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
+            <Link href={withParam('view', '')} className={`rounded px-3 py-1 ${!grid ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Tóm tắt</Link>
+            <Link href={withParam('view', 'grid')} className={`rounded px-3 py-1 ${grid ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Bảng Excel</Link>
+          </div>
+        </div>
       </div>
+
+      {grid ? (
+        <>
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-ink-3">Nhóm cột:</span>
+            {groups.map((g) => (
+              <Link key={g} href={toggleGroup(g)} className={`pill px-2 py-0.5 ${hidden.has(g) ? 'bg-surface text-ink-3 ring-1 ring-line' : 'bg-accent-soft text-accent'}`}>
+                {hidden.has(g) ? '+ ' : '✓ '}{COL_GROUPS[g]}
+              </Link>
+            ))}
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+            <table className="tbl text-xs">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-10 bg-surface" />
+                  {spans(cols).map(([g, n], i) => <th key={i} colSpan={n} className="border-l border-line text-center">{COL_GROUPS[g]}</th>)}
+                </tr>
+                <tr>
+                  <th className="sticky left-0 z-10 bg-surface">KOC</th>
+                  {cols.map((c) => <th key={c.h} className="min-w-24 whitespace-normal">{c.h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => (
+                  <tr key={r.item.id} className="align-top">
+                    <td className="sticky left-0 z-10 bg-surface">
+                      <Link href={`/contacts/${r.koc.id}`} className="font-medium hover:text-accent hover:underline">{r.koc.nickname ?? r.koc.name}</Link>
+                      <div className="text-ink-3">@{r.koc.handle}</div>
+                      <Link href={`?${new URLSearchParams([...query, ['item', r.item.id]])}`} className="link">Sửa</Link>
+                    </td>
+                    {cols.map((c) => {
+                      const e = EDIT[c.h];
+                      if (e) {
+                        const v = e.value(r);
+                        return (
+                          <td key={c.h}>
+                            <InlineField key={v} action={setItemField} id={r.item.id} field={e.field} label={`${c.h} · @${r.koc.handle}`} value={v} options={e.options} type={e.type} placeholder={e.placeholder?.(r)} />
+                          </td>
+                        );
+                      }
+                      const v = c.v(r);
+                      const text = v == null ? '' : String(v);
+                      return (
+                        <td key={c.h} className={typeof v === 'number' ? 'text-right tabular-nums' : ''}>
+                          {text.startsWith('http') ? <a href={text} target="_blank" rel="noreferrer" className="link">Mở</a>
+                            : typeof v === 'number' ? fmtNum(v)
+                            : <span className="line-clamp-3 max-w-56" title={text}>{text || '—'}</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {!shown.length && <tr><td colSpan={cols.length + 1} className="py-12 text-center text-ink-3">Không có KOC khớp bộ lọc.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>KOC</th><th className="text-right">Follower</th><th>Hiệu quả 30 ngày</th><th>Khán giả</th>
+                <th>Với UpBase</th><th className="text-right">Giá / phí</th><th className="text-right">Dự báo</th><th>Đề xuất · Brand</th><th />
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => <Row key={r.item.id} r={r} />)}
+              {!shown.length && <tr><td colSpan={9} className="py-12 text-center text-ink-3">{rows.length ? 'Không có KOC khớp bộ lọc.' : 'Chưa có KOC. Dán ID kênh ở ô phía trên.'}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
       <p className="mt-2 text-xs text-ink-3">
         Số TikTok 30 ngày; GPM quy đổi từ USD. GMV Target = View Target × GPM / 1000 (bằng View × CTR × CR × AOV). View Target KL6–KL7 nhập tay.
       </p>
@@ -232,4 +396,15 @@ function F({ label, wide, children }: { label: string; wide?: boolean; children:
       {children}
     </label>
   );
+}
+
+/** Cột liền nhau cùng nhóm → [nhóm, số cột] cho hàng tiêu đề nhóm. */
+function spans(cols: Col[]) {
+  const out: [Col['g'], number][] = [];
+  for (const c of cols) {
+    const last = out[out.length - 1];
+    if (last?.[0] === c.g) last[1]++;
+    else out.push([c.g, 1]);
+  }
+  return out;
 }

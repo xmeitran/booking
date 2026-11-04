@@ -73,6 +73,11 @@ Thay file "Excel Listing" theo sheet *[Booking] - Requirement Excel Listing (UpA
 - GPM TikTok trả bằng USD, quy đổi theo `USD_VND` (mặc định 26.000).
 - Xuất CSV theo thứ tự cột tab "Excel Listing _ Final": bản cho Brand bỏ email, Zalo, nhận hàng, ngân hàng, CCCD; ngân hàng / CCCD chỉ Admin, Leader xuất được.
 
+- Hai chế độ xem: Tóm tắt và **Bảng Excel** (đủ cột như file "Excel Listing _ Final", bật / tắt theo nhóm cột). Trong bảng sửa nhanh
+  giá, trạng thái, đề xuất, Brand chọn, lý do, content note, ngày air, View Target ngay tại ô. Lọc theo Brand chọn / đề xuất, xếp theo phí, GMV Target, CPV…
+- **Brand duyệt online**: nút Tạo link sinh `/review/<token>`; Brand mở không cần đăng nhập, chọn Yes / No / Cân nhắc + lý do.
+  Trang này không có SĐT, địa chỉ, ngân hàng, CCCD; thu hồi link là hết hiệu lực ngay.
+
 ## Dữ liệu
 
 Tab `/data` cho biết mỗi nguồn có bao nhiêu creator, bao nhiêu KOL Danh bạ có mặt, và hiệu quả (GMV, đơn, lượt xem…) của họ:
