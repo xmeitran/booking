@@ -68,3 +68,12 @@ Thay file "Excel Listing" theo sheet *[Booking] - Requirement Excel Listing (UpA
 - GMV Target = View Target × CTR × CR × AOV với CTR = (GPM/1000)/(CR × AOV), tức = View Target × GPM / 1000. View Target KL1–KL5 = view TB video bán hàng 30 ngày; KL6–KL7 nhập tay (API không có video không gắn giỏ).
 - GPM TikTok trả bằng USD, quy đổi theo `USD_VND` (mặc định 26.000).
 - Xuất CSV theo thứ tự cột tab "Excel Listing _ Final": bản cho Brand bỏ email, Zalo, nhận hàng, ngân hàng, CCCD; ngân hàng / CCCD chỉ Admin, Leader xuất được.
+
+## Dữ liệu
+
+Tab `/data` cho biết mỗi nguồn có bao nhiêu creator, bao nhiêu KOL Danh bạ có mặt, và hiệu quả (GMV, đơn, lượt xem…) của họ:
+Lark Base (bảng 3.2), TikTok Partner Center (Đơn MCN, phiên live MCN, Đơn TAP, creator nhận TAP, hồ sơ creator MCN) và
+TikTok Seller Center (creator hợp tác với shop, đơn affiliate, video, LIVE, yêu cầu mẫu, Creator Marketplace do Booking Hub tự tra).
+Bảng TikTok đọc qua `POST /api/explore` của Trạm dữ liệu (`src/lib/dataSources.ts`). Bảng lớn mất ~10 giây nên job
+`/api/cron/data-sources` (workflow mỗi giờ, chạy 6 giờ một lần, ~2 phút) lưu phần tổng vào `SyncState.data` và số của từng KOL
+vào bảng `CreatorMetric`; hồ sơ KOC đọc bảng này cho mục "Hiệu quả theo nguồn TikTok". Nút Làm mới chạy job ngay.

@@ -132,6 +132,7 @@ model SyncState {
   startedAt  DateTime?
   finishedAt DateTime?
   message    String?
+  data       Json? // kết quả job, vd. thống kê tab Dữ liệu
 }
 
 // Đợt listing: danh sách KOC đề xuất cho Brand duyệt (thay file "Excel Listing").
@@ -175,4 +176,16 @@ model ListingItem {
   updatedAt      DateTime     @updatedAt
 
   @@unique([batchId, kocId])
+}
+
+// Hiệu quả của từng KOL Danh bạ trong từng bảng của Trạm dữ liệu (tab Dữ liệu, hồ sơ KOC).
+// m theo thứ tự chỉ số của nguồn trong src/lib/dataSources.ts. Job data-sources ghi đè cả nguồn mỗi lần chạy.
+model CreatorMetric {
+  source    String
+  handle    String
+  m         Float[]
+  updatedAt DateTime @default(now())
+
+  @@id([source, handle])
+  @@index([handle])
 }

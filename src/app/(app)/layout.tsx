@@ -11,6 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/booking">Booking</NavLink>
           <NavLink href="/listing">Listing</NavLink>
           <NavLink href="/contacts">Danh bạ KOC</NavLink>
+          <NavLink href="/data">Dữ liệu</NavLink>
           {user.role === 'ADMIN' && <NavLink href="/users">User</NavLink>}
         </nav>
         <div className="flex items-center gap-3 border-t border-line px-4 py-3 md:mt-auto">

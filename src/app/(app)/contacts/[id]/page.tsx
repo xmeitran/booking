@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Avatar } from '@/components/ui';
+import { creatorSources } from '@/lib/dataSources';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { bookingsOf, collabSummary, profileInsights, USD_VND } from '@/lib/kocInsights';
@@ -22,7 +23,8 @@ export default async function KocPage({ params, searchParams }: { params: Promis
   if (!koc) notFound();
 
   const canEdit = me.role !== 'STAFF';
-  const bookings = (await bookingsOf([koc.handle])).get(koc.handle) ?? [];
+  const [byHandle, sources] = await Promise.all([bookingsOf([koc.handle]), creatorSources(koc.handle)]);
+  const bookings = byHandle.get(koc.handle) ?? [];
   const collab = collabSummary(bookings);
   const p = profileInsights(koc.ttsProfile);
   const kl = koc.kl ?? collab.kl;
@@ -83,6 +85,30 @@ export default async function KocPage({ params, searchParams }: { params: Promis
           <Stat label="Tỷ lệ tương tác video" value={fmtPct(p.engagement, 2)} />
         </div>
       </Section>
+
+      {sources.length > 0 && (
+        <Section title="Hiệu quả theo nguồn TikTok" meta={`Trạm dữ liệu · tổng hợp ${fmtDate(sources[0].at)} · toàn bộ khoảng ngày của từng bảng`}>
+          <table className="tbl">
+            <tbody>
+              {sources.map(({ s, m }) => (
+                <tr key={s.key}>
+                  <td className="whitespace-nowrap">
+                    <Link href={`/data?src=${s.key}&ours=1`} className="link">{s.name}</Link>
+                    <div className="text-xs text-ink-3">{s.group === 'partner' ? 'Partner Center' : 'Seller Center'}</div>
+                  </td>
+                  <td className="text-[13px]">
+                    {s.metrics.map((x, i) => (
+                      <span key={x.label} className="mr-4 inline-block whitespace-nowrap">
+                        <span className="text-ink-3">{x.label}</span> <span className="font-medium tabular-nums">{x.money ? `${fmtShort(m[i])} ₫` : fmtNum(m[i])}</span>
+                      </span>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Section>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Tỷ trọng GMV">

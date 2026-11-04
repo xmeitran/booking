@@ -62,7 +62,7 @@ const EXTRA = {
   note: 'Ghi chú',
 } as const;
 // Tăng khi thêm cột: lượt đồng bộ sau ghi lại mọi dòng để lấp cột mới.
-const SYNC_VERSION = 2;
+const SYNC_VERSION = 3; // 3: chuẩn hoá kênh (bỏ khoảng trắng, @)
 
 // id → chữ: option "opt..." (cột công thức kiểu chọn) và record "rec..." của bảng được liên kết.
 type Options = Map<string, string>;
@@ -106,7 +106,7 @@ export function toBooking(r: LarkRecord, opts: Options) {
   return {
     id: r.record_id,
     code: t(COL.code) ?? r.record_id,
-    channel: t(COL.channel)?.split(', ')[0] ?? null,
+    channel: t(COL.channel)?.split(', ')[0]?.trim().replace(/^@/, '') || null, // = handle trong Danh bạ (không phân biệt hoa thường)
     channelUrl: firstUrl(f[COL.channelUrl]) ?? t(COL.channelUrl),
     store: t(COL.store),
     brand: t(COL.brand),

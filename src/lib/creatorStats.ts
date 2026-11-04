@@ -13,7 +13,7 @@ const RUN_MS = 9 * 60_000; // mỗi lượt (mỗi giờ) tối đa 9 phút: ~20
 const LIMITED = 'TikTok chặn tần suất, lượt sau làm tiếp';
 const TIKTOK_USERNAME = /^[a-z0-9._]{2,24}$/;
 
-async function station(path: string, init?: RequestInit) {
+export async function station(path: string, init?: RequestInit) {
   const auth = Buffer.from(`${process.env.DATA_TIKTOK_USER}:${process.env.DATA_TIKTOK_PASSWORD}`).toString('base64');
   const res = await fetch(`${process.env.DATA_TIKTOK_URL}${path}`, {
     ...init,
