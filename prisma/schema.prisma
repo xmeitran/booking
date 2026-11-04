@@ -250,3 +250,14 @@ model MatchBrief {
 
   @@index([template, updatedAt])
 }
+
+// Bảng xếp hạng tính sẵn cho tab Dữ liệu (job data-sources): trang đọc DB, không hỏi Trạm lúc mở trang.
+// kind: "top" (top creator theo từng chỉ số), "shops" (theo shop), "shop:<key>" (top creator của một shop).
+model SourceCache {
+  source    String
+  kind      String
+  data      Json
+  updatedAt DateTime @default(now())
+
+  @@id([source, kind])
+}

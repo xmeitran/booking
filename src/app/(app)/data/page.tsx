@@ -145,10 +145,11 @@ async function Drill({ s, ours, shopView, shop, by }: { s: Source; ours: boolean
   const local = s.group === 'lark' || s.key === 'marketplace'; // nguồn chỉ gồm KOL Danh bạ
   let rows: TopRow[] = [];
   let shops: { rows: (ShopRow & { creators: number })[]; total: number } = { rows: [], total: 0 };
+  let at: Date | null = null;
   let error = '';
   try {
-    if (shopView) shops = await byShop(s, by);
-    else rows = await topCreators(s, ours, by, ours ? 1000 : 100, shop);
+    if (shopView) ({ at, ...shops } = await byShop(s, by));
+    else ({ rows, at } = await topCreators(s, ours, by, ours ? 1000 : 100, shop));
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -273,6 +274,7 @@ async function Drill({ s, ours, shopView, shop, by }: { s: Source; ours: boolean
           : ours ? `${fmtNum(rows.length)} KOL Danh bạ có dữ liệu ở bảng này, số lưu lúc tổng hợp gần nhất` : `Top 100 theo ${s.metrics[by].label}`}
         {!shopView && '. Bấm tiêu đề cột để xếp theo chỉ số khác.'}
         {s.shop && !shopView && ` Cột ${s.shop.label.toLowerCase()}: tối đa 20 ${s.shop.label.toLowerCase()} lớn nhất mỗi creator, theo ${s.metrics[0].label}; bấm để lọc.`}
+        {at && ` Số kéo sẵn lúc ${fmtTime(at)} (tự cập nhật 6 giờ một lần, hoặc bấm Làm mới ở trang Dữ liệu).`}
       </p>
     </>
   );

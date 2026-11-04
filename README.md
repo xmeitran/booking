@@ -111,3 +111,6 @@ vào bảng `CreatorMetric`; hồ sơ KOC đọc bảng này cho mục "Hiệu q
 Mỗi nguồn tách được theo **shop / brand**: bảng Seller theo 8 shop, Đơn MCN theo shop của đơn, Đơn TAP theo sản phẩm, Lark theo brand.
 Trang từng nguồn có cột "Shop đã bán / hợp tác" cho từng creator, chế độ xem "Theo shop" (mỗi shop bao nhiêu creator, hiệu quả),
 và lọc theo một shop. Job lưu tối đa 20 shop lớn nhất mỗi KOL vào `CreatorMetric.shops`; hồ sơ KOC hiện 5 shop đầu mỗi nguồn.
+Job cũng **kéo sẵn** bảng xếp hạng vào `SourceCache` (top 200 creator theo từng chỉ số, bảng theo shop, top creator của từng shop
+seller) nên trang từng nguồn chỉ đọc DB (< 1 giây). Chỉ khi lọc một shop của Đơn MCN / một sản phẩm TAP (hàng nghìn giá trị) mới
+hỏi Trạm lúc mở. Một lượt job ~10 phút.

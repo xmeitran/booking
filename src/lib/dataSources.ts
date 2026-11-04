@@ -59,6 +59,7 @@ export const sourceOf = (key: string) => [LARK, MARKET, ...STATION].find((s) => 
 
 const BATCH = 500; // Trạm nhận tối đa 500 giá trị cho phép lọc "in"
 const PAGE = 1000; // Trạm trả tối đa 1000 dòng mỗi lần
+const TOP = 200; // bảng xếp hạng tính sẵn: top 200 creator theo từng chỉ số
 const SHOPS_KEPT = 20; // ponytail: mỗi creator chỉ giữ 20 shop lớn nhất (creator MCN bán cho hàng trăm shop); cần đủ thì phân trang
 const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 // Trạm trả 5xx khi đang bận (job khác chiếm kết nối DB): chờ 3 giây thử lại một lần. Chỉ đọc nên thử lại an toàn.
@@ -133,13 +134,54 @@ async function stationStats(s: Source, handles: string[]): Promise<SourceStats> 
   return { rows: Number(t.m0), creators: Number(t.m1), from: t.m2 ?? null, to: t.m3 ?? null, m: vals(t, 4, s.metrics.length), ours };
 }
 
-/** Chạy nền: tổng từng bảng của Trạm + phần của KOL Danh bạ. Tuần tự để không dồn tải lên Trạm (~1–2 phút). */
+/**
+ * Kéo sẵn bảng xếp hạng cho trang từng nguồn: top creator theo từng chỉ số (gộp, để xếp cột nào cũng đúng), theo shop,
+ * và top creator của từng shop seller; kèm shop của từng creator. Trang chỉ đọc DB, không hỏi Trạm lúc mở.
+ */
+async function cacheSource(s: Source) {
+  const user = s.user!;
+  const n = s.metrics.length;
+  const topQuery = async (by: number, extra: object[] = []): Promise<TopRow[]> =>
+    (await explore({
+      dataset: s.key, groupBy: [{ field: user }], metrics: metricsOf(s), sort: [{ by: `m${by}`, dir: 'desc' }], limit: TOP,
+      filters: [{ field: user, op: 'not_empty' }, ...extra],
+    })).rows.map((x: Record<string, unknown>) => ({ handle: String(x[user]), m: vals(x, 0, n) }));
+
+  const top = new Map<string, TopRow>();
+  for (let i = 0; i < n; i++) for (const r of await topQuery(i)) top.set(r.handle, r);
+  let shopList: Awaited<ReturnType<typeof liveByShop>> | null = null;
+  const perShop: [string, TopRow[]][] = [];
+  if (s.shop) {
+    shopList = await liveByShop(s, 0, PAGE);
+    // Từng shop seller (8 shop). Đơn MCN / TAP có hàng nghìn shop / sản phẩm: lọc một shop ở đó vẫn hỏi Trạm lúc mở.
+    if (s.shop.target) for (const sh of shopList.rows) perShop.push([sh.key, await topQuery(0, [{ field: s.shop.field, op: 'eq', value: sh.key }])]);
+  }
+  const shops = await shopRows(s, [...new Set([...top.keys(), ...perShop.flatMap(([, rows]) => rows.map((r) => r.handle))])]);
+  const withShops = (rows: TopRow[]) => rows.map((r) => ({ ...r, shops: shops.get(r.handle.toLowerCase()) ?? [] }));
+  const caches = [
+    { kind: 'top', data: withShops([...top.values()]) },
+    ...(shopList ? [{ kind: 'shops', data: shopList }] : []),
+    ...perShop.map(([key, rows]) => ({ kind: `shop:${key}`, data: withShops(rows) })),
+  ];
+  await db.$transaction([
+    db.sourceCache.deleteMany({ where: { source: s.key } }),
+    db.sourceCache.createMany({ data: caches.map((c) => ({ source: s.key, kind: c.kind, data: c.data as unknown as Prisma.InputJsonValue })) }),
+  ]);
+}
+
+async function cached<T>(source: string, kind: string) {
+  const c = await db.sourceCache.findUnique({ where: { source_kind: { source, kind } } });
+  return c ? { data: c.data as unknown as T, at: c.updatedAt } : null;
+}
+
+/** Chạy nền: tổng từng bảng của Trạm + phần của KOL Danh bạ + bảng xếp hạng tính sẵn. Tuần tự để không dồn tải lên Trạm. */
 export async function refreshDataSources() {
   const handles = await ourHandles();
   const data: Record<string, SourceStats | { error: string }> = {};
   for (const s of STATION) {
     try {
       data[s.key] = await stationStats(s, handles);
+      await cacheSource(s);
     } catch (e) {
       data[s.key] = { error: e instanceof Error ? e.message : String(e) };
     }
@@ -176,43 +218,62 @@ export async function marketStats(): Promise<SourceStats & { checked: number }> 
 
 export type TopRow = { handle: string; m: number[]; shops?: ShopRow[] };
 
+type Ranked = { rows: TopRow[]; at: Date | null };
+
 /**
- * Top creator của một nguồn theo chỉ số thứ `by`, kèm hiệu quả theo từng shop. onlyOurs: KOL Danh bạ, đọc từ bảng job
- * đã lưu (hỏi Trạm theo lô mất ~1 phút). shop: chỉ tính phần của một shop / brand.
+ * Top creator của một nguồn theo chỉ số thứ `by`, kèm hiệu quả theo từng shop. Nguồn Trạm đọc bảng xếp hạng job đã kéo sẵn;
+ * chưa có (trước lượt job đầu, hoặc lọc một shop MCN / sản phẩm TAP) mới hỏi Trạm. onlyOurs: KOL Danh bạ. shop: chỉ phần một shop.
  */
-export async function topCreators(s: Source, onlyOurs: boolean, by: number, limit = 100, shop?: string): Promise<TopRow[]> {
+export async function topCreators(s: Source, onlyOurs: boolean, by: number, limit = 100, shop?: string): Promise<Ranked> {
   const sortBy = (rows: TopRow[]) => rows.sort((a, b) => b.m[by] - a.m[by]).slice(0, limit);
   if (s.key === 'marketplace') {
     const cols = ['followers', 'avgViews', 'avgLiveViews', 'unitsSold'] as const;
     const kocs = await db.koc.findMany({ where: { platform: 'TikTok', statsAt: { not: null } }, orderBy: { [cols[by]]: { sort: 'desc', nulls: 'last' } }, take: limit });
-    return kocs.map((k) => ({ handle: k.handle, m: cols.map((c) => k[c] ?? 0) }));
+    return { rows: kocs.map((k) => ({ handle: k.handle, m: cols.map((c) => k[c] ?? 0) })), at: null };
   }
-  let rows: TopRow[];
   if (s.key === 'lark') {
-    rows = await db.$queryRaw<TopRow[]>`
+    const rows = await db.$queryRaw<TopRow[]>`
       select * from (select lower(channel) handle, array[${LARK_COLS}] m from "Booking"
         where channel is not null and channel <> '' ${shop !== undefined ? Prisma.sql`and brand is not distinct from ${shop || null}` : Prisma.empty} group by 1) t
       order by m[${by + 1}] desc limit ${limit}`;
-  } else if (onlyOurs) {
+    const shops = await shopRows(s, rows.map((r) => r.handle));
+    return { rows: rows.map((r) => ({ ...r, shops: shops.get(r.handle) })), at: null };
+  }
+  if (onlyOurs) {
     const saved = await db.creatorMetric.findMany({ where: { source: s.key }, select: { handle: true, m: true, shops: true } });
     const all = saved.map((r) => ({ handle: r.handle, m: r.m, shops: (r.shops ?? []) as ShopRow[] }));
     // Lọc một shop: lấy phần số của shop đó trong danh sách đã lưu (20 shop lớn nhất mỗi KOL).
-    return sortBy(shop === undefined ? all : all.flatMap((r) => r.shops.filter((x) => x.key === shop).map((x) => ({ ...r, m: x.m }))));
-  } else {
-    const user = s.user!;
-    const r = await explore({
-      dataset: s.key, groupBy: [{ field: user }], metrics: metricsOf(s), sort: [{ by: `m${by}`, dir: 'desc' }], limit,
-      filters: [{ field: user, op: 'not_empty' }, ...(shop !== undefined && s.shop ? [{ field: s.shop.field, op: 'eq', value: shop }] : [])],
-    });
-    rows = r.rows.map((x: Record<string, unknown>) => ({ handle: String(x[user]), m: vals(x, 0, s.metrics.length) }));
+    return { rows: sortBy(shop === undefined ? all : all.flatMap((r) => r.shops.filter((x) => x.key === shop).map((x) => ({ ...r, m: x.m })))), at: null };
   }
-  const shops = await shopRows(s, rows.map((r) => r.handle));
-  return rows.map((r) => ({ ...r, shops: shops.get(r.handle.toLowerCase()) }));
+  const c = await cached<TopRow[]>(s.key, shop === undefined ? 'top' : `shop:${shop}`);
+  if (c) return { rows: sortBy(c.data), at: c.at };
+  return { rows: await liveTop(s, by, limit, shop), at: null };
 }
 
-/** Hiệu quả theo từng shop / brand của nguồn: mỗi shop bao nhiêu creator và số liệu. */
-export async function byShop(s: Source, by: number, limit = 300): Promise<{ rows: (ShopRow & { creators: number })[]; total: number }> {
-  if (!s.shop) return { rows: [], total: 0 };
+async function liveTop(s: Source, by: number, limit: number, shop?: string) {
+  const user = s.user!;
+  const r = await explore({
+    dataset: s.key, groupBy: [{ field: user }], metrics: metricsOf(s), sort: [{ by: `m${by}`, dir: 'desc' }], limit,
+    filters: [{ field: user, op: 'not_empty' }, ...(shop !== undefined && s.shop ? [{ field: s.shop.field, op: 'eq', value: shop }] : [])],
+  });
+  const rows: TopRow[] = r.rows.map((x: Record<string, unknown>) => ({ handle: String(x[user]), m: vals(x, 0, s.metrics.length) }));
+  const shops = await shopRows(s, rows.map((x) => x.handle));
+  return rows.map((x) => ({ ...x, shops: shops.get(x.handle.toLowerCase()) }));
+}
+
+type ShopList = { rows: (ShopRow & { creators: number })[]; total: number };
+
+/** Hiệu quả theo từng shop / brand của nguồn: mỗi shop bao nhiêu creator và số liệu. Nguồn Trạm đọc bản kéo sẵn. */
+export async function byShop(s: Source, by: number, limit = 300): Promise<ShopList & { at: Date | null }> {
+  if (!s.shop) return { rows: [], total: 0, at: null };
+  if (s.key !== 'lark') {
+    const c = await cached<ShopList>(s.key, 'shops');
+    if (c) return { rows: c.data.rows.sort((a, b) => b.m[by] - a.m[by]).slice(0, limit), total: c.data.total, at: c.at };
+  }
+  return { ...(await liveByShop(s, by, limit)), at: null };
+}
+
+async function liveByShop(s: Source, by: number, limit: number): Promise<ShopList> {
   if (s.key === 'lark') {
     const rows = await db.$queryRaw<{ key: string | null; creators: number; m: number[] }[]>`
       select * from (select brand key, count(distinct lower(channel))::int creators, array[${LARK_COLS}] m from "Booking" group by 1) t
@@ -220,7 +281,7 @@ export async function byShop(s: Source, by: number, limit = 300): Promise<{ rows
     return { rows: rows.map((r) => ({ key: r.key ?? '', shop: r.key ?? '(trống)', creators: r.creators, m: r.m })), total: rows.length };
   }
   const r = await explore({
-    dataset: s.key, groupBy: [{ field: s.shop.field }], metrics: [{ field: s.user, agg: 'count_distinct' }, ...metricsOf(s)],
+    dataset: s.key, groupBy: [{ field: s.shop!.field }], metrics: [{ field: s.user, agg: 'count_distinct' }, ...metricsOf(s)],
     sort: [{ by: `m${by + 1}`, dir: 'desc' }], limit,
   });
   return { rows: r.rows.map((x: Record<string, unknown>) => ({ ...toShop(s, x, r.labels, 1), creators: Number(x.m0) })), total: Number(r.total) };
