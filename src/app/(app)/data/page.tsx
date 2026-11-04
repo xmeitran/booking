@@ -2,12 +2,12 @@ import Link from 'next/link';
 import { Avatar } from '@/components/ui';
 import { CHECKS, QUALITY_DAYS, qualityCounts, qualityRows } from '@/lib/dataQuality';
 import { db } from '@/lib/db';
-import { LARK, larkStats, MARKET, marketStats, sourceOf, STATION, topCreators, type Source, type SourceStats, type TopRow } from '@/lib/dataSources';
+import { byShop, LARK, larkStats, MARKET, marketStats, sourceOf, STATION, topCreators, type ShopRow, type Source, type SourceStats, type TopRow } from '@/lib/dataSources';
 import { fmtDate, fmtNum, fmtPct, fmtShort } from '@/lib/format';
 import { requireUser } from '@/lib/session';
 import { refreshData } from './actions';
 
-type Search = { src?: string; ours?: string; by?: string; check?: string };
+type Search = { src?: string; ours?: string; by?: string; check?: string; view?: string; shop?: string };
 type Saved = SourceStats | { error: string } | undefined;
 
 const GROUP = { lark: 'Lark Base', partner: 'TikTok Partner Center', seller: 'TikTok Seller Center' };
@@ -19,7 +19,7 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
   await requireUser();
   const sp = await searchParams;
   const src = sp.src ? sourceOf(sp.src) : undefined;
-  if (src) return <Drill s={src} ours={sp.ours === '1'} by={Math.min(Math.max(Math.trunc(Number(sp.by)) || 0, 0), src.metrics.length - 1)} />;
+  if (src) return <Drill s={src} ours={sp.ours === '1'} shopView={sp.view === 'shop' && Boolean(src.shop)} shop={src.shop ? sp.shop : undefined} by={Math.min(Math.max(Math.trunc(Number(sp.by)) || 0, 0), src.metrics.length - 1)} />;
   if (sp.check && CHECKS.some((c) => c.key === sp.check)) return <CheckList check={sp.check} />;
 
   const [state, lark, market, kocTotal, quality] = await Promise.all([
@@ -141,12 +141,14 @@ function Metrics({ s, m }: { s: Source; m: number[] }) {
   );
 }
 
-async function Drill({ s, ours, by }: { s: Source; ours: boolean; by: number }) {
+async function Drill({ s, ours, shopView, shop, by }: { s: Source; ours: boolean; shopView: boolean; shop?: string; by: number }) {
   const local = s.group === 'lark' || s.key === 'marketplace'; // nguồn chỉ gồm KOL Danh bạ
   let rows: TopRow[] = [];
+  let shops: { rows: (ShopRow & { creators: number })[]; total: number } = { rows: [], total: 0 };
   let error = '';
   try {
-    rows = await topCreators(s, ours, by, ours ? 1000 : 100);
+    if (shopView) shops = await byShop(s, by);
+    else rows = await topCreators(s, ours, by, ours ? 1000 : 100, shop);
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -155,12 +157,25 @@ async function Drill({ s, ours, by }: { s: Source; ours: boolean; by: number }) 
     select: { id: true, handle: true, name: true, nickname: true, avatarUrl: true },
   });
   const kocOf = new Map(kocs.map((k) => [k.handle, k]));
-  const href = (o: { ours?: boolean; by?: number }) => {
+  const href = (o: { ours?: boolean; by?: number; view?: string; shop?: string | null }) => {
     const p = new URLSearchParams({ src: s.key });
-    if (o.ours ?? ours) p.set('ours', '1');
+    if ((o.ours ?? ours) && o.view !== 'shop') p.set('ours', '1');
+    if (o.view ?? (shopView ? 'shop' : '')) p.set('view', o.view ?? 'shop');
+    const sh = o.shop === null ? undefined : o.shop ?? shop;
+    if (sh !== undefined && (o.view ?? '') !== 'shop') p.set('shop', sh);
     if (o.by ?? by) p.set('by', String(o.by ?? by));
     return `/data?${p}`;
   };
+  const shopName = shop !== undefined ? rows[0]?.shops?.find((x) => x.key === shop)?.shop ?? (shop || '(trống)') : '';
+  const sortHead = (x: { label: string }, i: number) => (
+    <th key={x.label} className="text-right">
+      <Link href={href({ by: i })} className={i === by ? 'text-ink' : 'hover:text-ink'}>{x.label}{i === by ? ' ↓' : ''}</Link>
+    </th>
+  );
+  const cell = (x: { money?: boolean }, v: number) => (x.money ? `${fmtNum(v)} ₫` : fmtNum(v));
+  const tab = (active: boolean, to: string, label: string) => (
+    <Link href={to} className={`rounded px-3 py-1 ${active ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>{label}</Link>
+  );
 
   return (
     <>
@@ -170,18 +185,50 @@ async function Drill({ s, ours, by }: { s: Source; ours: boolean; by: number }) 
           <h1 className="text-xl font-semibold">{s.name}</h1>
           <p className="mt-1 text-[13px] text-ink-2">{GROUP[s.group]} · {s.note}</p>
         </div>
-        {!local && (
+        {(!local || s.shop) && (
           <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
-            <Link href={href({ ours: false })} className={`rounded px-3 py-1 ${!ours ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Mọi creator</Link>
-            <Link href={href({ ours: true })} className={`rounded px-3 py-1 ${ours ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Chỉ KOL Danh bạ</Link>
+            {local ? tab(!shopView, href({ view: '' }), 'Theo creator') : (
+              <>
+                {tab(!shopView && !ours, href({ ours: false, view: '' }), 'Mọi creator')}
+                {tab(!shopView && ours, href({ ours: true, view: '' }), 'Chỉ KOL Danh bạ')}
+              </>
+            )}
+            {s.shop && tab(shopView, href({ view: 'shop' }), `Theo ${s.shop.label.toLowerCase()}`)}
           </div>
         )}
       </div>
 
+      {shop !== undefined && !shopView && (
+        <p className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
+          <span className="pill bg-accent-soft px-2.5 py-1 text-accent">{s.shop?.label}: {shopName}</span>
+          <Link href={href({ shop: null })} className="link">Bỏ lọc</Link>
+          <span className="text-xs text-ink-3">Số trong bảng chỉ tính phần của {s.shop?.label.toLowerCase()} này.</span>
+        </p>
+      )}
+
       {error ? (
         <p role="alert" className="rounded-md bg-critical-soft px-3 py-2 text-critical">
-          Không đọc được Trạm dữ liệu: {error}.{/HTTP 5/.test(error) && ' Trạm đang bận, tải lại trang sau ít phút.'}{!ours && ' Có thể xem "Chỉ KOL Danh bạ" (số đã lưu sẵn).'}
+          Không đọc được Trạm dữ liệu: {error}.{/HTTP 5/.test(error) && ' Trạm đang bận, tải lại trang sau ít phút.'}{!ours && !shopView && ' Có thể xem "Chỉ KOL Danh bạ" (số đã lưu sẵn).'}
         </p>
+      ) : shopView ? (
+        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+          <table className="tbl">
+            <thead>
+              <tr><th className="w-10">#</th><th>{s.shop!.label}</th><th className="text-right">Creator</th>{s.metrics.map(sortHead)}</tr>
+            </thead>
+            <tbody>
+              {shops.rows.map((r, n) => (
+                <tr key={r.key + n}>
+                  <td className="text-ink-3 tabular-nums">{n + 1}</td>
+                  <td className="max-w-80"><Link href={href({ view: '', ours: false, shop: r.key })} className="link">{r.shop}</Link></td>
+                  <td className="text-right tabular-nums">{fmtNum(r.creators)}</td>
+                  {s.metrics.map((x, i) => <td key={x.label} className="text-right tabular-nums">{cell(x, r.m[i])}</td>)}
+                </tr>
+              ))}
+              {!shops.rows.length && <tr><td colSpan={s.metrics.length + 3} className="py-12 text-center text-ink-3">Không có dữ liệu.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="tbl">
@@ -189,18 +236,15 @@ async function Drill({ s, ours, by }: { s: Source; ours: boolean; by: number }) 
               <tr>
                 <th className="w-10">#</th>
                 <th>Creator</th>
-                {s.metrics.map((x, i) => (
-                  <th key={x.label} className="text-right">
-                    <Link href={href({ by: i })} className={i === by ? 'text-ink' : 'hover:text-ink'}>{x.label}{i === by ? ' ↓' : ''}</Link>
-                  </th>
-                ))}
+                {s.metrics.map(sortHead)}
+                {s.shop && <th>{s.shop.label} đã bán / hợp tác</th>}
               </tr>
             </thead>
             <tbody>
               {rows.map((r, n) => {
                 const k = kocOf.get(r.handle.toLowerCase());
                 return (
-                  <tr key={r.handle}>
+                  <tr key={r.handle} className="align-top">
                     <td className="text-ink-3 tabular-nums">{n + 1}</td>
                     <td>
                       {k ? (
@@ -213,19 +257,44 @@ async function Drill({ s, ours, by }: { s: Source; ours: boolean; by: number }) 
                         <a href={`https://www.tiktok.com/@${encodeURIComponent(r.handle)}`} target="_blank" rel="noreferrer" className="hover:underline">@{r.handle}</a>
                       )}
                     </td>
-                    {s.metrics.map((x, i) => <td key={x.label} className="text-right tabular-nums">{x.money ? `${fmtNum(r.m[i])} ₫` : fmtNum(r.m[i])}</td>)}
+                    {s.metrics.map((x, i) => <td key={x.label} className="text-right tabular-nums">{cell(x, r.m[i])}</td>)}
+                    {s.shop && <td><Shops s={s} list={r.shops ?? []} href={(key) => href({ shop: key })} /></td>}
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={s.metrics.length + 2} className="py-12 text-center text-ink-3">Không có creator nào.</td></tr>}
+              {!rows.length && <tr><td colSpan={s.metrics.length + 3} className="py-12 text-center text-ink-3">Không có creator nào.</td></tr>}
             </tbody>
           </table>
         </div>
       )}
       <p className="mt-2 text-xs text-ink-3">
-        {ours ? `${fmtNum(rows.length)} KOL Danh bạ có dữ liệu ở bảng này, số lưu lúc tổng hợp gần nhất` : `Top 100 theo ${s.metrics[by].label}`}. Bấm tiêu đề cột để xếp theo chỉ số khác.
+        {shopView
+          ? `${fmtNum(shops.total)} ${s.shop!.label.toLowerCase()}${shops.total > shops.rows.length ? `, hiện ${shops.rows.length} đầu` : ''}. Bấm tên để xem creator của ${s.shop!.label.toLowerCase()} đó.`
+          : ours ? `${fmtNum(rows.length)} KOL Danh bạ có dữ liệu ở bảng này, số lưu lúc tổng hợp gần nhất` : `Top 100 theo ${s.metrics[by].label}`}
+        {!shopView && '. Bấm tiêu đề cột để xếp theo chỉ số khác.'}
+        {s.shop && !shopView && ` Cột ${s.shop.label.toLowerCase()}: tối đa 20 ${s.shop.label.toLowerCase()} lớn nhất mỗi creator, theo ${s.metrics[0].label}; bấm để lọc.`}
       </p>
     </>
+  );
+}
+
+/** Danh sách shop / brand của một creator: 3 dòng đầu, còn lại gộp "+n" (di chuột để xem). */
+function Shops({ s, list, href }: { s: Source; list: ShopRow[]; href: (key: string) => string }) {
+  if (!list.length) return <span className="text-xs text-ink-3">—</span>;
+  const x = s.metrics[0];
+  const v = (r: ShopRow) => (x.money ? `${fmtShort(r.m[0])} ₫` : fmtShort(r.m[0]));
+  return (
+    <ul className="min-w-56 space-y-0.5 text-xs">
+      {list.slice(0, 3).map((r) => (
+        <li key={r.key} className="flex justify-between gap-3">
+          <Link href={href(r.key)} className="max-w-48 truncate hover:text-accent hover:underline" title={r.shop}>{r.shop}</Link>
+          <span className="whitespace-nowrap tabular-nums text-ink-3">{v(r)}</span>
+        </li>
+      ))}
+      {list.length > 3 && (
+        <li className="text-ink-3" title={list.slice(3).map((r) => `${r.shop}: ${v(r)}`).join('\n')}>+{list.length - 3} {s.shop!.label.toLowerCase()} khác</li>
+      )}
+    </ul>
   );
 }
 

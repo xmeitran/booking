@@ -108,3 +108,6 @@ TikTok Seller Center (creator hợp tác với shop, đơn affiliate, video, LIV
 Bảng TikTok đọc qua `POST /api/explore` của Trạm dữ liệu (`src/lib/dataSources.ts`). Bảng lớn mất ~10 giây nên job
 `/api/cron/data-sources` (workflow mỗi giờ, chạy 6 giờ một lần, ~2 phút) lưu phần tổng vào `SyncState.data` và số của từng KOL
 vào bảng `CreatorMetric`; hồ sơ KOC đọc bảng này cho mục "Hiệu quả theo nguồn TikTok". Nút Làm mới chạy job ngay.
+Mỗi nguồn tách được theo **shop / brand**: bảng Seller theo 8 shop, Đơn MCN theo shop của đơn, Đơn TAP theo sản phẩm, Lark theo brand.
+Trang từng nguồn có cột "Shop đã bán / hợp tác" cho từng creator, chế độ xem "Theo shop" (mỗi shop bao nhiêu creator, hiệu quả),
+và lọc theo một shop. Job lưu tối đa 20 shop lớn nhất mỗi KOL vào `CreatorMetric.shops`; hồ sơ KOC hiện 5 shop đầu mỗi nguồn.

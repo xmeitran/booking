@@ -123,8 +123,8 @@ export default async function KocPage({ params, searchParams }: { params: Promis
         <Section title="Hiệu quả theo nguồn TikTok" meta={`Trạm dữ liệu · tổng hợp ${fmtDate(sources[0].at)} · toàn bộ khoảng ngày của từng bảng`}>
           <table className="tbl">
             <tbody>
-              {sources.map(({ s, m }) => (
-                <tr key={s.key}>
+              {sources.map(({ s, m, shops }) => (
+                <tr key={s.key} className="align-top">
                   <td className="whitespace-nowrap">
                     <Link href={`/data?src=${s.key}&ours=1`} className="link">{s.name}</Link>
                     <div className="text-xs text-ink-3">{s.group === 'partner' ? 'Partner Center' : 'Seller Center'}</div>
@@ -135,6 +135,19 @@ export default async function KocPage({ params, searchParams }: { params: Promis
                         <span className="text-ink-3">{x.label}</span> <span className="font-medium tabular-nums">{x.money ? `${fmtShort(m[i])} ₫` : fmtNum(m[i])}</span>
                       </span>
                     ))}
+                    {s.shop && shops.length > 0 && (
+                      <ul className="mt-1.5 space-y-0.5 border-l-2 border-line pl-2 text-xs">
+                        {shops.slice(0, 5).map((x) => (
+                          <li key={x.key} className="flex flex-wrap gap-x-3">
+                            <span className="max-w-72 truncate font-medium" title={x.shop}>{x.shop}</span>
+                            {s.metrics.map((mm, i) => (
+                              <span key={mm.label} className="text-ink-3">{mm.label} <span className="tabular-nums text-ink-2">{mm.money ? `${fmtShort(x.m[i])} ₫` : fmtNum(x.m[i])}</span></span>
+                            ))}
+                          </li>
+                        ))}
+                        {shops.length > 5 && <li className="text-ink-3">+{shops.length - 5} {s.shop.label.toLowerCase()} khác</li>}
+                      </ul>
+                    )}
                   </td>
                 </tr>
               ))}

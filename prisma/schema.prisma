@@ -191,6 +191,7 @@ model CreatorMetric {
   source    String
   handle    String
   m         Float[]
+  shops     Json?    // [{ key, shop, m }]: tách theo shop / brand / sản phẩm của nguồn, 20 shop lớn nhất
   updatedAt DateTime @default(now())
 
   @@id([source, handle])
