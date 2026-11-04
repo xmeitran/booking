@@ -52,7 +52,17 @@ export const sourceOf = (key: string) => [LARK, MARKET, ...STATION].find((s) => 
 
 const BATCH = 500; // Trạm nhận tối đa 500 giá trị cho phép lọc "in"
 const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
-const explore = (body: object) => station('/api/explore', { method: 'POST', body: JSON.stringify(body) });
+// Trạm trả 5xx khi đang bận (job khác chiếm kết nối DB): chờ 3 giây thử lại một lần. Chỉ đọc nên thử lại an toàn.
+async function explore(body: object) {
+  const call = () => station('/api/explore', { method: 'POST', body: JSON.stringify(body) });
+  try {
+    return await call();
+  } catch (e) {
+    if (!/HTTP 5\d\d/.test(String(e))) throw e;
+    await new Promise((r) => setTimeout(r, 3000));
+    return call();
+  }
+}
 const metricsOf = (s: Source) => s.metrics.map(({ field, agg }) => ({ field, agg }));
 const vals = (t: Record<string, unknown>, from: number, n: number) => Array.from({ length: n }, (_, i) => Number(t[`m${from + i}`] ?? 0));
 export const mergeMetrics = (s: Source, a: number[], b: number[]) => a.map((v, i) => (s.metrics[i].agg === 'max' ? Math.max(v, b[i]) : v + b[i]));

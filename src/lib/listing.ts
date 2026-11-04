@@ -19,13 +19,32 @@ export function parseHandle(s: string): string | null {
   return m ? m[1].toLowerCase() : null;
 }
 
+/** "pH Care", "pHCare", "PH CARE" là một brand. */
+export const sameBrand = (a?: string | null, b?: string | null) => {
+  const n = (s?: string | null) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  return Boolean(n(a)) && n(a) === n(b);
+};
+const prevMonth = (m: string) => {
+  const [y, mo] = m.split('-').map(Number);
+  return mo === 1 ? `${y - 1}/12` : `${y}/${String(mo - 1).padStart(2, '0')}`;
+};
+
 export async function loadListing(batchId: string) {
   const batch = await db.listingBatch.findUnique({
     where: { id: batchId },
     include: { createdBy: true, items: { include: { koc: true, createdBy: true }, orderBy: { createdAt: 'asc' } } },
   });
   if (!batch) return null;
-  const bookings = await bookingsOf(batch.items.map((i) => i.koc.handle));
+  const [bookings, others] = await Promise.all([
+    bookingsOf(batch.items.map((i) => i.koc.handle)),
+    // List trùng: cùng KOC ở đợt listing khác cùng tháng (2 người cùng liên hệ một KOC).
+    db.listingItem.findMany({
+      where: { kocId: { in: batch.items.map((i) => i.kocId) }, batchId: { not: batch.id }, batch: { month: batch.month } },
+      select: { kocId: true, batch: { select: { name: true, createdBy: { select: { name: true } } } } },
+    }),
+  ]);
+  // ...hoặc đã có booking cùng brand ở tháng plan này / tháng trước.
+  const months = [batch.month.replace('-', '/'), prevMonth(batch.month)];
   const rows = batch.items.map((item) => {
     const k = item.koc;
     const collab = collabSummary(bookings.get(k.handle) ?? [], item.priceType);
@@ -36,7 +55,12 @@ export async function loadListing(batchId: string) {
     const f = forecast({ viewTarget, gpmUsd: k.gpmUsd, cr: batch.cr, aov: batch.aov, price });
     // "Doanh số ước tính 30 ngày" = GMV / khách × số món bán (spec); có GMV chính xác thì dùng luôn.
     const gmv30 = p.gmvExactVnd ?? (p.aovMid && k.unitsSold ? p.aovMid * k.unitsSold : null);
-    return { item, koc: k, kl, collab, p, viewTarget, viewTargetManual: item.viewTarget != null, price, f, gmv30 };
+    const dup = [
+      ...others.filter((o) => o.kocId === k.id).map((o) => `Ở đợt "${o.batch.name}" (${o.batch.createdBy.name ?? '—'})`),
+      ...(bookings.get(k.handle) ?? []).filter((b) => sameBrand(b.brand, batch.brand) && months.includes(b.planMonth ?? ''))
+        .map((b) => `Đã book ${b.brand} tháng ${b.planMonth}: ${b.code} (${b.pipeline ?? '—'})`),
+    ];
+    return { item, koc: k, kl, collab, p, viewTarget, viewTargetManual: item.viewTarget != null, price, f, gmv30, dup };
   });
   return { batch, rows };
 }

@@ -1,14 +1,9 @@
 import { NextRequest } from 'next/server';
 import { fmtPct } from '@/lib/format';
+import { csvResponse } from '@/lib/csv';
 import { COLS, loadListing } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
 
-const cell = (v: unknown) => {
-  const s = v == null ? '' : String(v);
-  return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-// CSV (UTF-8 có BOM) mở thẳng bằng Excel; đủ dùng, không cần thư viện xlsx.
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await requireUser();
   const { id } = await params;
@@ -19,13 +14,5 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { batch, rows } = data;
   const fixed: Record<string, string | null> = { 'Đợt listing': batch.name, Store: batch.store, 'Sản phẩm': batch.product, CR: batch.cr == null ? '' : fmtPct(batch.cr) };
 
-  const lines = [cols.map((c) => cell(c.h)).join(',')];
-  for (const r of rows) lines.push(cols.map((c) => cell(c.h in fixed ? fixed[c.h] : c.v(r))).join(','));
-  const name = `${batch.name}${forBrand ? ' - gui Brand' : ' - noi bo'}.csv`.replace(/[\\/:*?"<>|]/g, '-');
-  return new Response('﻿' + lines.join('\r\n'), {
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="listing.csv"; filename*=UTF-8''${encodeURIComponent(name)}`,
-    },
-  });
+  return csvResponse(`${batch.name}${forBrand ? ' - gui Brand' : ' - noi bo'}.csv`, cols.map((c) => c.h), rows.map((r) => cols.map((c) => (c.h in fixed ? fixed[c.h] : c.v(r)))));
 }

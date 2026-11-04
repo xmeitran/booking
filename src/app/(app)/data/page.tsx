@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { Avatar } from '@/components/ui';
+import { CHECKS, QUALITY_DAYS, qualityCounts, qualityRows } from '@/lib/dataQuality';
 import { db } from '@/lib/db';
 import { LARK, larkStats, MARKET, marketStats, sourceOf, STATION, topCreators, type Source, type SourceStats, type TopRow } from '@/lib/dataSources';
 import { fmtDate, fmtNum, fmtPct, fmtShort } from '@/lib/format';
 import { requireUser } from '@/lib/session';
 import { refreshData } from './actions';
 
-type Search = { src?: string; ours?: string; by?: string };
+type Search = { src?: string; ours?: string; by?: string; check?: string };
 type Saved = SourceStats | { error: string } | undefined;
 
 const GROUP = { lark: 'Lark Base', partner: 'TikTok Partner Center', seller: 'TikTok Seller Center' };
@@ -19,12 +20,14 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const src = sp.src ? sourceOf(sp.src) : undefined;
   if (src) return <Drill s={src} ours={sp.ours === '1'} by={Math.min(Math.max(Math.trunc(Number(sp.by)) || 0, 0), src.metrics.length - 1)} />;
+  if (sp.check && CHECKS.some((c) => c.key === sp.check)) return <CheckList check={sp.check} />;
 
-  const [state, lark, market, kocTotal] = await Promise.all([
+  const [state, lark, market, kocTotal, quality] = await Promise.all([
     db.syncState.findUnique({ where: { id: 'data-sources' } }),
     larkStats(),
     marketStats(),
     db.koc.count({ where: { platform: 'TikTok' } }),
+    qualityCounts(),
   ]);
   const saved = (state?.data ?? {}) as Record<string, Saved>;
   const running = Boolean(state?.startedAt && !state.finishedAt);
@@ -96,6 +99,27 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
           </section>
         ))}
       </div>
+      <section className="mt-5">
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
+          <h2 className="text-base font-semibold">Kiểm soát nhập liệu</h2>
+          <span className="text-xs text-ink-3">Booking trên Lark Base air / dự kiến air từ {QUALITY_DAYS} ngày trước hoặc tháng plan gần đây; sửa trên Lark, lượt đồng bộ sau tự hết</span>
+        </div>
+        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+          <table className="tbl">
+            <thead><tr><th>Lỗi</th><th>Ảnh hưởng</th><th className="text-right">Booking</th></tr></thead>
+            <tbody>
+              {quality.map((q) => (
+                <tr key={q.key}>
+                  <td>{q.n ? <Link href={`/data?check=${q.key}`} className="font-medium text-accent hover:underline">{q.label}</Link> : q.label}</td>
+                  <td className="text-[13px] text-ink-3">{q.hint}</td>
+                  <td className={`text-right font-medium tabular-nums ${q.n ? 'text-warning' : 'text-positive'}`}>{fmtNum(q.n)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <p className="mt-4 text-xs text-ink-3">
         Các bảng chồng lấn nhau (cùng một đơn có thể nằm ở Đơn MCN, Đơn TAP và Đơn affiliate của shop), nên không cộng số giữa các bảng.
         Creator khớp Danh bạ theo username TikTok.
@@ -155,7 +179,9 @@ async function Drill({ s, ours, by }: { s: Source; ours: boolean; by: number }) 
       </div>
 
       {error ? (
-        <p role="alert" className="rounded-md bg-critical-soft px-3 py-2 text-critical">Không đọc được Trạm dữ liệu: {error}</p>
+        <p role="alert" className="rounded-md bg-critical-soft px-3 py-2 text-critical">
+          Không đọc được Trạm dữ liệu: {error}.{/HTTP 5/.test(error) && ' Trạm đang bận, tải lại trang sau ít phút.'}{!ours && ' Có thể xem "Chỉ KOL Danh bạ" (số đã lưu sẵn).'}
+        </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="tbl">
@@ -199,6 +225,36 @@ async function Drill({ s, ours, by }: { s: Source; ours: boolean; by: number }) 
       <p className="mt-2 text-xs text-ink-3">
         {ours ? `${fmtNum(rows.length)} KOL Danh bạ có dữ liệu ở bảng này, số lưu lúc tổng hợp gần nhất` : `Top 100 theo ${s.metrics[by].label}`}. Bấm tiêu đề cột để xếp theo chỉ số khác.
       </p>
+    </>
+  );
+}
+
+async function CheckList({ check }: { check: string }) {
+  const c = CHECKS.find((x) => x.key === check)!;
+  const rows = (await qualityRows(check)) ?? [];
+  return (
+    <>
+      <Link href="/data" className="text-xs text-ink-3 hover:text-ink">← Dữ liệu</Link>
+      <h1 className="mt-2 text-xl font-semibold">{c.label}</h1>
+      <p className="mt-1 mb-4 text-[13px] text-ink-2">{c.hint}. Booking air / dự kiến air từ {QUALITY_DAYS} ngày trước hoặc tháng plan gần đây, tối đa 500 dòng; mở booking rồi bấm "Mở trên Lark" để sửa.</p>
+      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <table className="tbl">
+          <thead><tr><th>Mã booking</th><th>ID kênh</th><th>Brand</th><th>Tháng plan</th><th>Người phụ trách</th><th className="text-right">Chi phí</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td><Link href={`/booking/${r.id}`} className="font-mono text-xs text-accent hover:underline">{r.code}</Link></td>
+                <td>{r.channel ? <code className="rounded bg-sunken px-1 text-xs">{r.channel}</code> : '—'}</td>
+                <td>{r.brand ?? '—'}</td>
+                <td>{r.planMonth ?? '—'}</td>
+                <td>{r.owner ?? '—'}</td>
+                <td className="text-right tabular-nums">{fmtNum(r.cost)}</td>
+              </tr>
+            ))}
+            {!rows.length && <tr><td colSpan={6} className="py-12 text-center text-ink-3">Không còn booking nào lỗi này.</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

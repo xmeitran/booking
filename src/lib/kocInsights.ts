@@ -8,7 +8,7 @@ export const FEE_DIVISOR = 0.9;
 export const USD_VND = Number(process.env.USD_VND) || 26_000;
 
 // Chỉ đặt tên cho mã ngành chắc chắn; mã khác hiện "Ngành #id" (app chưa có quyền đọc danh mục sản phẩm).
-const CATEGORY: Record<string, string> = { '601450': 'Làm đẹp & Chăm sóc cá nhân', '700645': 'Sức khỏe', '600001': 'Đồ gia dụng' };
+export const CATEGORY: Record<string, string> = { '601450': 'Làm đẹp & Chăm sóc cá nhân', '700645': 'Sức khỏe', '600001': 'Đồ gia dụng' };
 
 type KV = { key?: string; value?: string };
 type Profile = {

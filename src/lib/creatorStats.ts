@@ -2,6 +2,7 @@
 // Gọi qua Trạm dữ liệu TikTok (Data-tiktok, POST /api/console) bằng token shop nó đang giữ: Booking Hub
 // KHÔNG giữ token TikTok, vì làm mới token ở 2 nơi sẽ làm token bên kia mất hiệu lực.
 import { db } from './db';
+import { TIKTOK_USERNAME } from './validate';
 
 const SEARCH = '/affiliate_seller/202608/marketplace_creators/search';
 const PERF = (openId: string) => `/affiliate_seller/202508/marketplace_creators/${encodeURIComponent(openId)}`;
@@ -11,7 +12,6 @@ const GAP_MS = 25_000; // đo 04/11/2026: cách 15s là bị chặn, ~30s thì q
 const RETRY_MS = 60_000; // bị chặn tần suất: chờ rồi thử lại, tối đa 3 lần
 const RUN_MS = 9 * 60_000; // mỗi lượt (mỗi giờ) tối đa 9 phút: ~20 lượt gọi, ~480/ngày, xa hạn mức 10.000/ngày
 const LIMITED = 'TikTok chặn tần suất, lượt sau làm tiếp';
-const TIKTOK_USERNAME = /^[a-z0-9._]{2,24}$/;
 
 export async function station(path: string, init?: RequestInit) {
   const auth = Buffer.from(`${process.env.DATA_TIKTOK_USER}:${process.env.DATA_TIKTOK_PASSWORD}`).toString('base64');
@@ -20,7 +20,10 @@ export async function station(path: string, init?: RequestInit) {
     headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json', 'x-requested-with': 'tiktok-data' },
     cache: 'no-store',
   });
-  if (!res.ok) throw new Error(`Trạm dữ liệu ${path}: HTTP ${res.status}`);
+  if (!res.ok) {
+    const why = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+    throw new Error(`Trạm dữ liệu ${path.split('?')[0]}: HTTP ${res.status}${why ? ` · ${why}` : ''}`);
+  }
   return res.json();
 }
 

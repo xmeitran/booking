@@ -12,7 +12,7 @@ const CHOICE_TONE: Record<string, string> = { Yes: 'bg-positive-soft text-positi
 const REC_TONE: Record<string, string> = { 'Must Have': 'bg-accent-soft text-accent', Recommend: 'bg-sunken text-ink-2', Optional: 'bg-sunken text-ink-3' };
 const isoDate = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
 
-type Search = { edit?: string; item?: string; view?: string; choice?: string; rec?: string; sort?: string; hide?: string };
+type Search = { edit?: string; item?: string; view?: string; choice?: string; rec?: string; sort?: string; hide?: string; dup?: string };
 
 const SORTS: Record<string, { label: string; key?: (r: ListingRow) => number | null; asc?: boolean }> = {
   '': { label: 'Thứ tự thêm' },
@@ -40,7 +40,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   const me = await requireUser();
   const { id } = await params;
   const sp = await searchParams;
-  const { edit, item: itemId, choice = '', rec = '' } = sp;
+  const { edit, item: itemId, choice = '', rec = '', dup = '' } = sp;
   const grid = sp.view === 'grid';
   const sort = sp.sort && SORTS[sp.sort] ? sp.sort : '';
   const data = await loadListing(id);
@@ -52,7 +52,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   // Lọc + xếp trên bộ nhớ: một đợt chỉ vài chục KOC.
   const byRec = rows.filter((r) => !rec || r.item.recommendation === rec);
   const choiceOk = (r: ListingRow, c: string) => !c || (c === 'none' ? !r.item.brandChoice : r.item.brandChoice === c);
-  let shown = byRec.filter((r) => choiceOk(r, choice));
+  let shown = byRec.filter((r) => choiceOk(r, choice) && (!dup || r.dup.length > 0));
   const key = SORTS[sort].key;
   if (key) shown = [...shown].sort((a, b) => {
     const x = key(a), y = key(b);
@@ -61,7 +61,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
     return SORTS[sort].asc ? x - y : y - x;
   });
 
-  const query = new URLSearchParams(Object.entries({ view: grid ? 'grid' : '', choice, rec, sort }).filter(([, v]) => v));
+  const query = new URLSearchParams(Object.entries({ view: grid ? 'grid' : '', choice, rec, sort, dup }).filter(([, v]) => v));
   if (sp.hide !== undefined) query.set('hide', sp.hide);
   const withParam = (k: string, v: string) => {
     const p = new URLSearchParams(query);
@@ -148,6 +148,9 @@ export default async function ListingBatchPage({ params, searchParams }: { param
               {label} · {byRec.filter((r) => choiceOk(r, v)).length}
             </Link>
           ))}
+          <Link href={withParam('dup', dup ? '' : '1')} className={`pill px-2.5 py-1 ${dup ? 'bg-ink text-white' : byRec.some((r) => r.dup.length) ? 'bg-warning-soft text-warning' : 'bg-surface text-ink-3 ring-1 ring-line'}`}>
+            Trùng · {byRec.filter((r) => r.dup.length).length}
+          </Link>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <form className="flex gap-2">
@@ -196,6 +199,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
                     <td className="sticky left-0 z-10 bg-surface">
                       <Link href={`/contacts/${r.koc.id}`} className="font-medium hover:text-accent hover:underline">{r.koc.nickname ?? r.koc.name}</Link>
                       <div className="text-ink-3">@{r.koc.handle}</div>
+                      <Dup notes={r.dup} />
                       <Link href={`?${new URLSearchParams([...query, ['item', r.item.id]])}`} className="link">Sửa</Link>
                     </td>
                     {cols.map((c) => {
@@ -287,6 +291,7 @@ function Row({ r }: { r: ListingRow }) {
           <div className="min-w-0">
             <Link href={`/contacts/${k.id}`} className="font-medium hover:text-accent hover:underline">{k.nickname ?? k.name}</Link>
             <div className="text-xs text-ink-3">@{k.handle}{r.kl && ` · ${r.kl}`}{k.niche && ` · ${k.niche}`}</div>
+            <Dup notes={r.dup} />
           </div>
         </div>
       </td>
@@ -407,4 +412,13 @@ function spans(cols: Col[]) {
     else out.push([c.g, 1]);
   }
   return out;
+}
+
+function Dup({ notes }: { notes: string[] }) {
+  if (!notes.length) return null;
+  return (
+    <div className="mt-0.5 max-w-64 text-xs text-warning" title={notes.join('\n')}>
+      <span className="pill bg-warning-soft text-warning">Trùng</span> <span className="line-clamp-2">{notes[0]}{notes.length > 1 && ` (+${notes.length - 1})`}</span>
+    </div>
+  );
 }

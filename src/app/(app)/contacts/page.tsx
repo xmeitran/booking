@@ -6,6 +6,7 @@ import { db } from '@/lib/db';
 import { fmtDate } from '@/lib/format';
 import { requireUser } from '@/lib/session';
 import { deleteKoc, saveKoc } from './actions';
+import { FLAGS, kocBase, kocWhere } from './filters';
 import { KL_LEVELS, PLATFORMS } from './platforms';
 
 const PER_PAGE = 50;
@@ -13,17 +14,6 @@ const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFra
 const vnd = new Intl.NumberFormat('vi-VN');
 
 type Search = { q?: string; platform?: string; niche?: string; kl?: string; flag?: string; sort?: string; edit?: string; page?: string };
-
-const endOfToday = () => new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) + 'T23:59:59+07:00');
-// Lọc nhanh: việc cần làm với hồ sơ KOL.
-const FLAGS: Record<string, { label: string; where: () => Prisma.KocWhereInput }> = {
-  followUp: { label: 'Đến hẹn liên hệ', where: () => ({ notes: { some: { doneAt: null, followUpAt: { lte: endOfToday() } } } }) },
-  noPic: { label: 'Chưa có PIC', where: () => ({ picId: null }) },
-  noStats: { label: 'Chưa có số TikTok', where: () => ({ statsAt: null }) },
-  noContact: { label: 'Thiếu liên hệ', where: () => ({ phone: null, zalo: null, email: null }) },
-  noShip: { label: 'Thiếu địa chỉ nhận hàng', where: () => ({ OR: [{ receiverName: null }, { address: null }] }) },
-  noBank: { label: 'Thiếu thông tin thanh toán', where: () => ({ OR: [{ bankAccount: null }, { idNumber: null }] }) },
-};
 
 // Sắp xếp; KOL chưa có số liệu dồn xuống cuối.
 const SORTS: Record<string, { label: string; orderBy: Prisma.KocOrderByWithRelationInput }> = {
@@ -45,14 +35,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const sort = sp.sort && SORTS[sp.sort] ? sp.sort : '';
   const page = pageOf(sp.page);
 
-  const contains = { contains: q.trim(), mode: 'insensitive' as const };
-  const base: Prisma.KocWhereInput[] = [
-    platform ? { platform } : {},
-    niche ? { niche } : {},
-    kl ? { OR: [{ kl }, { kl: null, klAuto: kl }] } : {}, // cấp nhập tay, trống thì theo booking gần nhất
-    q.trim() ? { OR: [{ name: contains }, { handle: contains }, { phone: contains }, { zalo: contains }, { email: contains }] } : {},
-  ];
-  const where: Prisma.KocWhereInput = { AND: [...base, flag ? FLAGS[flag].where() : {}] };
+  const base = kocBase({ q, platform, niche, kl });
+  const where = kocWhere({ q, platform, niche, kl, flag });
 
   const [kocs, total, niches, users, editing, statsRun, withStats, kls, allCount, flagCounts] = await Promise.all([
     db.koc.findMany({ where, include: { pic: true }, orderBy: SORTS[sort].orderBy, skip: (page - 1) * PER_PAGE, take: PER_PAGE }),
@@ -87,7 +71,10 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             Chỉ số TikTok Shop: {vnd.format(withStats)} KOL có số liệu{statsRun?.finishedAt && <> · lượt gần nhất {fmtTime(statsRun.finishedAt)} · {statsRun.message}</>}
           </p>
         </div>
-        {canEdit && <Link href={withEdit('new')} className="btn btn-primary">Thêm KOC</Link>}
+        <div className="flex gap-2">
+          <a href={`/contacts/export${filters.size ? `?${filters}` : ''}`} className="btn">Tải Excel</a>
+          {canEdit && <Link href={withEdit('new')} className="btn btn-primary">Thêm KOC</Link>}
+        </div>
       </div>
 
       <div className="mb-3 flex flex-wrap gap-1.5">

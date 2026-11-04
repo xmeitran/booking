@@ -4,7 +4,9 @@ import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { isUniqueError, optInt, str } from '@/lib/form';
 import { refreshKoc } from '@/lib/creatorStats';
+import { parseHandle } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
+import { bankAccount, idNumber, phoneVN } from '@/lib/validate';
 import { KL_LEVELS, PLATFORMS } from './platforms';
 
 // ret chỉ là query string (?q=...) nối sau path cố định, không mở redirect ra ngoài.
@@ -18,34 +20,45 @@ export async function saveKoc(_: string | null, fd: FormData): Promise<string | 
   await requireUser('ADMIN', 'LEADER');
   const id = str(fd, 'id');
   const platform = str(fd, 'platform');
-  const handle = str(fd, 'handle').replace(/^@/, '').toLowerCase();
+  const rawHandle = str(fd, 'handle');
+  // TikTok: nhận cả link kênh, chỉ chấp nhận username hợp lệ để khớp booking và tra được TikTok Shop.
+  const handle = platform === 'TikTok' ? parseHandle(rawHandle) ?? '' : rawHandle.replace(/^@/, '').toLowerCase();
   const name = str(fd, 'name');
   const channelUrl = str(fd, 'channelUrl') || null;
   const followers = optInt(fd, 'followers');
   const rateCard = optInt(fd, 'rateCard');
 
   if (!PLATFORMS.includes(platform)) return 'Nền tảng không hợp lệ.';
+  if (platform === 'TikTok' && rawHandle && !handle) return 'ID kênh TikTok chỉ gồm chữ thường không dấu, số, dấu chấm, gạch dưới (2–24 ký tự), hoặc dán link kênh.';
   if (!handle || !name) return 'Nhập ID kênh và tên kênh.';
   if (channelUrl && !/^https?:\/\//i.test(channelUrl)) return 'Link kênh phải bắt đầu bằng http(s)://';
   if (Number.isNaN(followers) || Number.isNaN(rateCard)) return 'Follower và giá phải là số nguyên ≥ 0.';
+
+  const phone = phoneVN(str(fd, 'phone'));
+  const receiverPhone = phoneVN(str(fd, 'receiverPhone'));
+  const account = bankAccount(str(fd, 'bankAccount'));
+  const idNo = idNumber(str(fd, 'idNumber'));
+  if (phone === undefined || receiverPhone === undefined) return 'SĐT phải là số Việt Nam 10 số (0xxxxxxxxx hoặc +84…).';
+  if (account === undefined) return 'Số tài khoản chỉ gồm 6–19 chữ số.';
+  if (idNo === undefined) return 'CCCD 12 số, CMND 9 số hoặc MST 10 / 13 số.';
 
   const picId = str(fd, 'picId') || null;
   const data = {
     platform, handle, name, channelUrl, followers, rateCard,
     niche: str(fd, 'niche') || null,
-    phone: str(fd, 'phone') || null,
+    phone,
     zalo: str(fd, 'zalo') || null,
     email: str(fd, 'email') || null,
     note: str(fd, 'note') || null,
     picId,
     kl: KL_LEVELS.includes(str(fd, 'kl')) ? str(fd, 'kl') : null,
     receiverName: str(fd, 'receiverName') || null,
-    receiverPhone: str(fd, 'receiverPhone') || null,
+    receiverPhone,
     address: str(fd, 'address') || null,
     bankHolder: str(fd, 'bankHolder') || null,
-    bankAccount: str(fd, 'bankAccount') || null,
+    bankAccount: account,
     bankName: str(fd, 'bankName') || null,
-    idNumber: str(fd, 'idNumber') || null,
+    idNumber: idNo,
   };
   try {
     if (id) await db.koc.update({ where: { id }, data });
