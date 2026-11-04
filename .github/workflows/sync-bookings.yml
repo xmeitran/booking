@@ -1,0 +1,16 @@
+# Mỗi giờ gọi app trên Render để đồng bộ "3.2 List duyệt book" từ Lark Base (src/lib/bookingSync.ts).
+# Gọi cũng đánh thức Render free nếu đang ngủ. Chạy tay: tab Actions > Sync bookings > Run workflow.
+name: Sync bookings
+on:
+  schedule:
+    - cron: '7 * * * *' # phút 7 mỗi giờ; GitHub hay trễ vào đầu giờ
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: |
+          code=$(curl -sS -o out.json -w '%{http_code}' --max-time 900 -X POST https://booking-lqms.onrender.com/api/cron/sync-bookings)
+          cat out.json; echo
+          [ "$code" != 500 ]

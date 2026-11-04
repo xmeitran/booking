@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
-    "test": "tsx --test src/lib/token.test.ts"
+    "test": "tsx --test src/lib/*.test.ts"
   },
   "private": true,
   "dependencies": {

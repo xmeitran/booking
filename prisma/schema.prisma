@@ -51,3 +51,36 @@ model Koc {
   @@unique([platform, handle])
   @@index([niche])
 }
+
+// Bản sao chỉ đọc của bảng "3.2 List duyệt book" trên Lark Base, đồng bộ mỗi giờ (src/lib/bookingSync.ts).
+model Booking {
+  id            String    @id // record_id trên Lark
+  code          String    // Mã Booking (BO...)
+  channel       String?   // 🎃 id kênh
+  channelUrl    String?
+  store         String?
+  brand         String?
+  owner         String?   // Người phụ trách
+  pipeline      String?
+  planMonth     String?   // "2026/03"
+  airDate       DateTime? // Ngày air/live real
+  planAirDate   DateTime? // P.Ngày air
+  cost          Float?    // Chi phí thanh toán Booking, VND
+  linkAir       String?
+  extra         Json      // các cột phụ: sản phẩm, tệp kênh, nền tảng, KL, views/GMV 30 ngày...
+  larkUpdatedAt DateTime  // last_modified_time của Lark, để chỉ ghi bản ghi mới/đã sửa
+  syncedAt      DateTime  @updatedAt
+
+  @@index([planMonth])
+  @@index([brand])
+  @@index([pipeline])
+  @@index([owner])
+  @@index([code])
+}
+
+model SyncState {
+  id         String    @id // "bookings"
+  startedAt  DateTime?
+  finishedAt DateTime?
+  message    String?
+}

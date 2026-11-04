@@ -7,17 +7,28 @@ export const larkAuthUrl = (redirectUri: string, state: string) =>
   `https://${domain()}/open-apis/authen/v1/index?app_id=${process.env.LARK_APP_ID}` +
   `&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
 
-async function larkPost(path: string, body: object, token?: string) {
-  const res = await fetch(`https://${domain()}${path}`, {
+/** Gọi Lark, thử lại khi mạng lỗi (Lark đôi khi cắt kết nối giữa chừng: "terminated"). Lỗi nghiệp vụ (code ≠ 0) thì ném luôn. */
+async function call(path: string, init: RequestInit) {
+  for (let attempt = 1; ; attempt++) {
+    let json;
+    try {
+      json = await (await fetch(`https://${domain()}${path}`, { ...init, cache: 'no-store' })).json();
+    } catch (e) {
+      if (attempt >= 3) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+      continue;
+    }
+    if (json.code !== 0) throw new Error(`Lark [${json.code}] ${json.msg}`);
+    return json;
+  }
+}
+
+export const larkPost = (path: string, body: object, token?: string) =>
+  call(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
     body: JSON.stringify(body),
-    cache: 'no-store',
   });
-  const json = await res.json();
-  if (json.code !== 0) throw new Error(`Lark ${path} [${json.code}] ${json.msg}`);
-  return json;
-}
 
 export interface LarkUser {
   user_id?: string; // cần quyền "Obtain user ID" trên Lark app
@@ -38,14 +49,17 @@ export async function exchangeCode(code: string): Promise<LarkUser> {
   return data;
 }
 
-// ---- Danh bạ Lark (tenant token). Cần quyền contact:contact.base:readonly + quyền từng trường, xem README.
+// ---- API dùng tenant token: danh bạ (contact:*) và Lark Base (bitable:*), quyền xem README.
 
-async function larkGet(path: string, token: string) {
-  const res = await fetch(`https://${domain()}${path}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
-  const json = await res.json();
-  if (json.code !== 0) throw new Error(`Lark [${json.code}] ${json.msg}`);
-  return json.data;
+export async function tenantToken(): Promise<string> {
+  const { tenant_access_token } = await larkPost('/open-apis/auth/v3/tenant_access_token/internal', {
+    app_id: process.env.LARK_APP_ID,
+    app_secret: process.env.LARK_APP_SECRET,
+  });
+  return tenant_access_token;
 }
+
+export const larkGet = async (path: string, token: string) => (await call(path, { headers: { Authorization: `Bearer ${token}` } })).data;
 
 /** Gọi API batch của Lark theo lô 50 id (giới hạn của Lark). */
 async function batchGet<T>(path: string, key: string, ids: string[], extra: string, token: string): Promise<T[]> {
@@ -78,10 +92,7 @@ export interface LarkProfile {
 
 /** Tra danh bạ Lark theo user_id hoặc open_id (ou_...). Id không có trên Lark thì không có trong Map. */
 export async function fetchLarkProfiles(ids: string[]): Promise<Map<string, LarkProfile>> {
-  const { tenant_access_token: token } = await larkPost('/open-apis/auth/v3/tenant_access_token/internal', {
-    app_id: process.env.LARK_APP_ID,
-    app_secret: process.env.LARK_APP_SECRET,
-  });
+  const token = await tenantToken();
   const users: LarkContactUser[] = [];
   for (const type of ['open_id', 'user_id'] as const) {
     const group = ids.filter((id) => id.startsWith('ou_') === (type === 'open_id'));

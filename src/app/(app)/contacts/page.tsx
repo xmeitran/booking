@@ -1,21 +1,24 @@
 import Link from 'next/link';
 import type { Prisma } from '@prisma/client';
+import { pageOf, Pager } from '@/components/Pager';
 import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 import { deleteKoc, saveKoc } from './actions';
 import { PLATFORMS } from './platforms';
 
-const LIMIT = 200; // ponytail: chưa phân trang, thêm khi danh bạ lớn tới mức lọc không đủ
+const PER_PAGE = 50;
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 const vnd = new Intl.NumberFormat('vi-VN');
 
-type Search = { q?: string; platform?: string; niche?: string; edit?: string };
+type Search = { q?: string; platform?: string; niche?: string; edit?: string; page?: string };
 
 export default async function ContactsPage({ searchParams }: { searchParams: Promise<Search> }) {
   const me = await requireUser();
   const canEdit = me.role !== 'STAFF';
-  const { q = '', platform = '', niche = '', edit } = await searchParams;
+  const sp = await searchParams;
+  const { q = '', platform = '', niche = '', edit } = sp;
+  const page = pageOf(sp.page);
 
   const contains = { contains: q.trim(), mode: 'insensitive' as const };
   const where: Prisma.KocWhereInput = {
@@ -25,7 +28,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   };
 
   const [kocs, total, niches, users, editing] = await Promise.all([
-    db.koc.findMany({ where, include: { pic: true }, orderBy: { updatedAt: 'desc' }, take: LIMIT }),
+    db.koc.findMany({ where, include: { pic: true }, orderBy: { updatedAt: 'desc' }, skip: (page - 1) * PER_PAGE, take: PER_PAGE }),
     db.koc.count({ where }),
     db.koc.findMany({ where: { niche: { not: null } }, distinct: ['niche'], select: { niche: true }, orderBy: { niche: 'asc' } }),
     canEdit ? db.user.findMany({ where: { active: true }, orderBy: { name: 'asc' } }) : [],
@@ -90,7 +93,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           </tbody>
         </table>
       </div>
-      {total > LIMIT && <p className="mt-2 text-xs text-ink-3">Hiển thị {LIMIT}/{vnd.format(total)} KOC. Dùng bộ lọc để thu hẹp.</p>}
+      <Pager params={filters} page={page} perPage={PER_PAGE} total={total} />
 
       {dialogOpen && (
         <Dialog title={editing ? 'Sửa KOC' : 'Thêm KOC'} closeHref={`/contacts${ret}`}>

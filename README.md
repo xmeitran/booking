@@ -39,3 +39,11 @@ Người chưa được thêm bấm đăng nhập sẽ thấy Lark User ID của
 | Nhân viên | sửa booking mình phụ trách | xem | — |
 
 Khóa user hoặc đổi vai trò có hiệu lực ngay ở request kế tiếp (phiên chỉ lưu id, quyền đọc lại từ DB).
+
+## Đồng bộ booking từ Lark Base
+
+- Nguồn: base **B2C_Quản lý Booking**, bảng **3.2 List duyệt book** (`W6vRbbuOVar3qtsV18dlan1xgXb` / `tbluWrjJd9Pt9uzb`). App Lark "Booking" phải được thêm vào base (… > Add application) và có quyền đọc Base.
+- `POST /api/cron/sync-bookings` đọc lướt cả bảng (~1,5 phút), chỉ ghi bản ghi mới / vừa sửa, xoá bản ghi đã xoá trên Lark. 10 phút chỉ chạy được 1 lần.
+- Lịch mỗi giờ: `.github/workflows/sync-bookings.yml` (GitHub Actions). Repo public không có commit trong 60 ngày thì GitHub tắt lịch, vào tab Actions bật lại.
+- Kênh mới trong booking được tự thêm vào Danh bạ KOC (TikTok). KOL đã có thì không ghi đè.
+- Tab Booking chỉ đọc; sửa dữ liệu trên Lark.
