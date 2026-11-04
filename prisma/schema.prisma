@@ -64,7 +64,11 @@ model Koc {
   avatarUrl    String?
   ttsProfile   Json?     // hồ sơ creator nguyên văn: chân dung follower, tỷ trọng GMV theo kênh / ngành...
 
-  kl           String?   // cấp KOL KL1–KL7; trống thì lấy theo booking gần nhất trên Lark
+  kl           String?   // cấp KOL KL1–KL7 nhập tay; trống thì dùng klAuto
+  // Gộp từ booking trên Lark mỗi lượt đồng bộ (refreshKocAggregates)
+  klAuto        String?
+  bookingCount  Int       @default(0)
+  lastBookingAt DateTime?
   // Nhận hàng mẫu
   receiverName  String?
   receiverPhone String?
@@ -98,6 +102,17 @@ model Booking {
   planAirDate   DateTime? // P.Ngày air
   cost          Float?    // Chi phí thanh toán Booking, VND
   linkAir       String?
+  slaLate       Boolean   @default(false) // Lark "Cảnh báo trễ SLA" = Trễ hạn
+  paymentStatus String?   // Trạng thái phiếu thanh toán (Under Review, Rejected...)
+  planShipDate     DateTime?
+  planReceiveDate  DateTime?
+  planScriptDate   DateTime?
+  planDemoDate     DateTime?
+  planPaymentDate  DateTime? // P.Ngày làm ĐNTT
+  bookingPic    String?
+  accountPic    String?
+  leader        String?
+  syncVersion   Int       @default(0)
   extra         Json      // các cột phụ: sản phẩm, tệp kênh, nền tảng, KL, views/GMV 30 ngày...
   larkUpdatedAt DateTime  // last_modified_time của Lark, để chỉ ghi bản ghi mới/đã sửa
   syncedAt      DateTime  @updatedAt
@@ -107,6 +122,9 @@ model Booking {
   @@index([pipeline])
   @@index([owner])
   @@index([code])
+  @@index([slaLate])
+  @@index([airDate])
+  @@index([planAirDate])
 }
 
 model SyncState {

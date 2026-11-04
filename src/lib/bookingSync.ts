@@ -24,6 +24,16 @@ const COL = {
   planAirDate: 'P.Ngày air',
   cost: '🎃Chi phí thanh toán Booking',
   linkAir: '🎃 Link air/Link nghiệm thu',
+  sla: 'Cảnh báo trễ SLA', // "Trễ hạn" / "Bình thường"
+  paymentStatus: 'Trạng thái phiếu thanh toán',
+  planShipDate: 'P.Ngày gửi hàng',
+  planReceiveDate: 'P.Ngày nhận hàng',
+  planScriptDate: 'P.Ngày KOC gửi kịch bản',
+  planDemoDate: 'P.Ngày KOC gửi demo',
+  planPaymentDate: 'P.Ngày làm ĐNTT',
+  bookingPic: 'Booking PIC',
+  accountPic: 'Account PIC',
+  leader: 'Leader',
 } as const;
 const EXTRA = {
   product: '🎃 Sản phẩm',
@@ -34,7 +44,25 @@ const EXTRA = {
   kl: 'KL',
   views30: '🌸 Views 30 ngày',
   gmv30: '🌸 GMV 30 ngày',
+  orders30: '🌸 Số đơn hàng 30 ngày',
+  views14: '🌼 Views 14 ngày',
+  gmv14: '🌼 GMV 14 ngày',
+  airLinkOnTime: 'Trễ/Đúng hạn điền link air',
+  airLinkFilledAt: 'Ngày điền link air',
+  slaNote: 'Giải trình trễ SLA',
+  amountDue: 'Số tiền cần phải thanh toán',
+  amountPaid: 'Số tiền đã thanh toán',
+  amountPending: 'Số tiền chờ thanh toán',
+  advance: '🎃 Số tiền tạm ứng trước',
+  advanceStatus: 'Trạng thái phiếu tạm ứng',
+  accountType: '🎃📝Loại tài khoản thanh toán',
+  adsCode: 'Mã ủy quyền ads',
+  contractLink: '🎃Link hợp đồng (nếu có)',
+  listingRound: 'Đợt listing',
+  note: 'Ghi chú',
 } as const;
+// Tăng khi thêm cột: lượt đồng bộ sau ghi lại mọi dòng để lấp cột mới.
+const SYNC_VERSION = 2;
 
 // id → chữ: option "opt..." (cột công thức kiểu chọn) và record "rec..." của bảng được liên kết.
 type Options = Map<string, string>;
@@ -89,6 +117,17 @@ export function toBooking(r: LarkRecord, opts: Options) {
     planAirDate: toDate(f[COL.planAirDate], opts),
     cost: toNum(f[COL.cost], opts),
     linkAir: t(COL.linkAir),
+    slaLate: t(COL.sla) === 'Trễ hạn',
+    paymentStatus: t(COL.paymentStatus),
+    planShipDate: toDate(f[COL.planShipDate], opts),
+    planReceiveDate: toDate(f[COL.planReceiveDate], opts),
+    planScriptDate: toDate(f[COL.planScriptDate], opts),
+    planDemoDate: toDate(f[COL.planDemoDate], opts),
+    planPaymentDate: toDate(f[COL.planPaymentDate], opts),
+    bookingPic: t(COL.bookingPic),
+    accountPic: t(COL.accountPic),
+    leader: t(COL.leader),
+    syncVersion: SYNC_VERSION,
     extra: Object.fromEntries(Object.entries(EXTRA).map(([k, name]) => [k, t(name)])) as Record<keyof typeof EXTRA, string | null>,
     larkUpdatedAt: new Date(r.last_modified_time),
   };
@@ -151,7 +190,8 @@ export async function syncBookings() {
     }
   }
 
-  const known = new Map((await db.booking.findMany({ select: { id: true, larkUpdatedAt: true } })).map((b) => [b.id, b.larkUpdatedAt.getTime()]));
+  const known = new Map((await db.booking.findMany({ select: { id: true, larkUpdatedAt: true, syncVersion: true } }))
+    .map((b) => [b.id, b.syncVersion === SYNC_VERSION ? b.larkUpdatedAt.getTime() : -1]));
   const seen = new Set<string>();
   let created = 0, updated = 0, kocs = 0;
 
@@ -172,5 +212,18 @@ export async function syncBookings() {
   const gone = [...known.keys()].filter((id) => !seen.has(id));
   const removed = seen.size ? (await db.booking.deleteMany({ where: { id: { in: gone } } })).count : 0;
 
+  await refreshKocAggregates();
   return { total: seen.size, created, updated, removed, kocs };
+}
+
+/** Số booking, booking gần nhất, cấp KL gần nhất của từng KOC: để Danh bạ lọc / sắp xếp không phải gộp lại mỗi lần xem. */
+export async function refreshKocAggregates() {
+  await db.$executeRaw`
+    update "Koc" k set "bookingCount" = a.n, "lastBookingAt" = a.last, "klAuto" = a.kl
+    from (
+      select lower(channel) h, count(*)::int n, max(coalesce("airDate", "planAirDate", "larkUpdatedAt")) last,
+        (array_agg(extra->>'kl' order by coalesce("airDate", "planAirDate", "larkUpdatedAt") desc) filter (where extra->>'kl' is not null))[1] kl
+      from "Booking" where channel is not null group by 1
+    ) a
+    where a.h = k.handle and k.platform = 'TikTok'`;
 }
