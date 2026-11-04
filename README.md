@@ -55,3 +55,16 @@ Khóa user hoặc đổi vai trò có hiệu lực ngay ở request kế tiếp 
 - `POST /api/cron/creator-stats` mỗi giờ (sau đồng bộ booking), tối đa ~10 phút: tra `creator_open_id` cho KOL chưa tra (ưu tiên KOL có booking gần đây), cập nhật chỉ số KOL cũ quá 7 ngày. KOL không có trên Marketplace thì 30 ngày tra lại.
 - Hạn mức tần suất tính chung với Trạm dữ liệu: gọi cách nhau 25s, bị chặn thì chờ 60s thử lại.
 - TikTok chỉ trả GMV dạng khoảng cho creator VN (vd "1M₫+"); GPM tính bằng USD.
+
+## Hồ sơ KOC (KOC 360)
+
+`/contacts/[id]`: chỉ số TikTok 30 ngày, tỷ trọng GMV video / LIVE / thẻ sản phẩm và theo ngành, chân dung follower (giới tính, tuổi, tỉnh thành), lịch sử hợp tác với UpBase (booking trên Lark), liên hệ & nhận hàng, thanh toán (chỉ Admin / Leader). Nút "Cập nhật từ TikTok" tra ngay một KOC. Độ đầy đủ hồ sơ tính theo 5 nhóm: số TikTok, cấp KOL, liên hệ, nhận hàng, thanh toán.
+
+## Listing
+
+Thay file "Excel Listing" theo sheet *[Booking] - Requirement Excel Listing (UpAI)*:
+- Đợt listing (Brand · Store · Sản phẩm · Tháng, CR và AOV sản phẩm theo gian hàng). Dán nhiều ID kênh / link TikTok một lần; kênh chưa có trong Danh bạ được tạo và tra TikTok.
+- Tự điền: cấp KOL (theo booking gần nhất hoặc hồ sơ), giá đã hợp tác gần nhất cùng hình thức, phí kèm TNCN (= giá / 0,9, kế toán chưa chốt), số món, GPM, AOV, tỷ trọng GMV, chân dung khán giả, View Target, GMV Target, CTR, CPV.
+- GMV Target = View Target × CTR × CR × AOV với CTR = (GPM/1000)/(CR × AOV), tức = View Target × GPM / 1000. View Target KL1–KL5 = view TB video bán hàng 30 ngày; KL6–KL7 nhập tay (API không có video không gắn giỏ).
+- GPM TikTok trả bằng USD, quy đổi theo `USD_VND` (mặc định 26.000).
+- Xuất CSV theo thứ tự cột tab "Excel Listing _ Final": bản cho Brand bỏ email, Zalo, nhận hàng, ngân hàng, CCCD; ngân hàng / CCCD chỉ Admin, Leader xuất được.

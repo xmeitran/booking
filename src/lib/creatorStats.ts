@@ -59,9 +59,62 @@ export function toStats(c: Record<string, unknown>) {
   };
 }
 
-/** Một lượt: tra creator_open_id cho KOL mới, cập nhật chỉ số KOL cũ quá 7 ngày. Dừng ngay khi TikTok chặn tần suất. */
+type Call = (method: 'GET' | 'POST', path: string, body?: object) => Promise<{ ok: boolean; code: number | null; data: any }>;
+type Outcome = 'updated' | 'missing' | 'failed' | 'limited';
+
+const callVia = (shop: { accountId: string; shopCipher: string }): Call => async (method, path, body) => {
+  const r = await station('/api/console', {
+    method: 'POST',
+    body: JSON.stringify({ mode: 'raw', ...shop, method, path, query: method === 'POST' ? { page_size: 12 } : {}, ...(body && { body }) }),
+  });
+  return { ok: Boolean(r.ok), code: r.code as number | null, data: r.response?.data };
+};
+
+/** Tra (nếu chưa có open_id) rồi lấy hồ sơ 30 ngày của một KOC, ghi vào DB. */
+async function processKoc(k: { id: string; handle: string; ttsOpenId: string | null }, call: Call): Promise<Outcome> {
+  let openId = k.ttsOpenId;
+  if (!openId) {
+    // ID kênh nhập sai bên Lark (có dấu cách, " - FB"...): không tốn lượt gọi tìm kiếm.
+    if (!TIKTOK_USERNAME.test(k.handle)) {
+      await db.koc.update({ where: { id: k.id }, data: { ttsCheckedAt: new Date() } });
+      return 'missing';
+    }
+    const r = await call('POST', SEARCH, { keyword: k.handle });
+    if (r.code === RATE_LIMITED) return 'limited';
+    if (!r.ok) return 'failed';
+    // keyword khớp cả username lẫn nickname: chỉ nhận đúng username.
+    const hit = (r.data?.creators ?? []).find((c: { username?: string }) => String(c.username).toLowerCase() === k.handle);
+    if (!hit) {
+      await db.koc.update({ where: { id: k.id }, data: { ttsCheckedAt: new Date() } });
+      return 'missing';
+    }
+    openId = hit.creator_open_id as string;
+    await db.koc.update({ where: { id: k.id }, data: { ttsOpenId: openId, ttsCheckedAt: new Date() } });
+  }
+  const p = await call('GET', PERF(openId));
+  if (p.code === RATE_LIMITED) return 'limited';
+  if (p.code === NO_ECOMMERCE) {
+    await db.koc.update({ where: { id: k.id }, data: { ttsOpenId: null, ttsCheckedAt: new Date() } });
+    return 'missing';
+  }
+  if (!p.ok || !p.data?.creator) return 'failed';
+  const c = p.data.creator;
+  await db.koc.update({
+    where: { id: k.id },
+    data: { ...toStats(c), avatarUrl: c.avatar?.url, ttsProfile: c, statsAt: new Date(), ttsCheckedAt: new Date() },
+  });
+  return 'updated';
+}
+
+/** Nút "Cập nhật từ TikTok" trên hồ sơ KOC: gọi ngay, không chờ, không thử lại. */
+export async function refreshKoc(id: string): Promise<Outcome> {
+  const k = await db.koc.findUniqueOrThrow({ where: { id }, select: { id: true, handle: true, ttsOpenId: true } });
+  return processKoc(k, callVia(await pickShop()));
+}
+
+/** Một lượt: tra creator_open_id cho KOL mới, cập nhật chỉ số KOL cũ quá 7 ngày. Dừng khi TikTok chặn tần suất. */
 export async function refreshCreatorStats() {
-  const shop = await pickShop();
+  const base = callVia(await pickShop());
   // KOL chưa tra trước, rồi KOL có booking gần đây. Không có trên Marketplace thì 30 ngày tra lại.
   const due = await db.$queryRaw<{ id: string; handle: string; ttsOpenId: string | null }[]>`
     with recent as (select lower(channel) h, max("larkUpdatedAt") last from "Booking" where channel is not null group by 1)
@@ -73,54 +126,25 @@ export async function refreshCreatorStats() {
     order by (k."ttsCheckedAt" is null) desc, r.last desc nulls last
     limit 40`;
 
-  let calls = 0, updated = 0, missing = 0, failed = 0;
-  let stop: string | null = null;
+  let calls = 0;
   const deadline = Date.now() + RUN_MS;
   const timeLeft = () => Date.now() < deadline;
-  const call = async (method: 'GET' | 'POST', path: string, body?: object) => {
+  // Gọi cách nhau GAP_MS; bị chặn tần suất thì chờ RETRY_MS thử lại, tối đa 3 lần.
+  const call: Call = async (...args) => {
     for (let tries = 0; ; tries++) {
       if (calls++) await new Promise((r) => setTimeout(r, tries ? RETRY_MS : GAP_MS));
-      const r = await station('/api/console', {
-        method: 'POST',
-        body: JSON.stringify({ mode: 'raw', ...shop, method, path, query: method === 'POST' ? { page_size: 12 } : {}, ...(body && { body }) }),
-      });
-      if (r.code !== RATE_LIMITED || tries === 2 || !timeLeft()) return { ok: Boolean(r.ok), code: r.code as number | null, data: r.response?.data };
+      const r = await base(...args);
+      if (r.code !== RATE_LIMITED || tries === 2 || !timeLeft()) return r;
     }
   };
 
+  const n = { updated: 0, missing: 0, failed: 0 };
+  let stop: string | null = null;
   for (const k of due) {
     if (!timeLeft()) break;
-    let openId = k.ttsOpenId;
-    if (!openId && !TIKTOK_USERNAME.test(k.handle)) {
-      // ID kênh nhập sai bên Lark (có dấu cách, " - FB"...): không tốn lượt gọi tìm kiếm.
-      await db.koc.update({ where: { id: k.id }, data: { ttsCheckedAt: new Date() } });
-      missing++;
-      continue;
-    }
-    if (!openId) {
-      const r = await call('POST', SEARCH, { keyword: k.handle });
-      if (r.code === RATE_LIMITED) { stop = LIMITED; break; }
-      if (!r.ok) { failed++; continue; }
-      // keyword khớp cả username lẫn nickname: chỉ nhận đúng username.
-      const hit = (r.data?.creators ?? []).find((c: { username?: string }) => String(c.username).toLowerCase() === k.handle);
-      if (!hit) {
-        await db.koc.update({ where: { id: k.id }, data: { ttsCheckedAt: new Date() } });
-        missing++;
-        continue;
-      }
-      openId = hit.creator_open_id as string;
-      await db.koc.update({ where: { id: k.id }, data: { ttsOpenId: openId, ttsCheckedAt: new Date() } });
-    }
-    if (!timeLeft()) break;
-    const p = await call('GET', PERF(openId));
-    if (p.code === RATE_LIMITED) { stop = LIMITED; break; }
-    if (p.code === NO_ECOMMERCE) {
-      await db.koc.update({ where: { id: k.id }, data: { ttsOpenId: null, ttsCheckedAt: new Date() } });
-      missing++;
-    } else if (p.ok && p.data?.creator) {
-      await db.koc.update({ where: { id: k.id }, data: { ...toStats(p.data.creator), statsAt: new Date(), ttsCheckedAt: new Date() } });
-      updated++;
-    } else failed++;
+    const outcome = await processKoc(k, call);
+    if (outcome === 'limited') { stop = LIMITED; break; }
+    n[outcome]++;
   }
-  return { calls, updated, missing, failed, stop };
+  return { calls, ...n, stop };
 }

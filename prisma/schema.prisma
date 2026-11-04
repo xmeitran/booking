@@ -28,6 +28,8 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   kocs        Koc[]
+  listingBatches ListingBatch[]
+  listingItems   ListingItem[]
 }
 
 model Koc {
@@ -59,6 +61,21 @@ model Koc {
   gmvRange     String?   // TikTok VN chỉ trả khoảng, vd "1M₫+"
   gpmUsd       Float?    // GMV / 1.000 lượt xem, USD
   creatorLevel Int?
+  avatarUrl    String?
+  ttsProfile   Json?     // hồ sơ creator nguyên văn: chân dung follower, tỷ trọng GMV theo kênh / ngành...
+
+  kl           String?   // cấp KOL KL1–KL7; trống thì lấy theo booking gần nhất trên Lark
+  // Nhận hàng mẫu
+  receiverName  String?
+  receiverPhone String?
+  address       String?
+  // Thanh toán: chỉ Admin / Leader xem, không bao giờ xuất cho Brand
+  bankHolder    String?
+  bankAccount   String?
+  bankName      String?
+  idNumber      String?  // CCCD / MST
+
+  listingItems ListingItem[]
 
   @@unique([platform, handle])
   @@index([niche])
@@ -97,4 +114,47 @@ model SyncState {
   startedAt  DateTime?
   finishedAt DateTime?
   message    String?
+}
+
+// Đợt listing: danh sách KOC đề xuất cho Brand duyệt (thay file "Excel Listing").
+model ListingBatch {
+  id          String        @id @default(cuid())
+  name        String        // "pH Care – T11 – Đợt 1"
+  brand       String?
+  store       String?
+  product     String?
+  month       String        // "2026-11"
+  cr          Float?        // tỷ lệ chuyển đổi SP theo gian hàng, 0.05 = 5%
+  aov         Int?          // AOV sản phẩm theo gian hàng, VND
+  createdById String
+  createdBy   User          @relation(fields: [createdById], references: [id])
+  items       ListingItem[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([month])
+}
+
+// Một KOC trong đợt listing. Số liệu kênh (follower, GPM, chân dung...) đọc trực tiếp từ Koc, không chép vào đây.
+model ListingItem {
+  id             String       @id @default(cuid())
+  batchId        String
+  batch          ListingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  kocId          String
+  koc            Koc          @relation(fields: [kocId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  priceType      String       @default("Video")
+  price          Int?         // giá net đề xuất cho đợt này, VND
+  status         String?      // trạng thái liên hệ
+  recommendation String?      // Must Have / Recommend / Optional
+  contentNote    String?
+  brandChoice    String?      // Yes / No / Cân nhắc
+  rejectReason   String?
+  planAirDate    DateTime?
+  viewTarget     Int?         // nhập tay khi cần (KL6–KL7, hoặc chưa có số TikTok)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([batchId, kocId])
 }

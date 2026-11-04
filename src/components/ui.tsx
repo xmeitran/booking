@@ -73,9 +73,10 @@ export function BrandLogo({ size = 24 }: { size?: number }) {
   );
 }
 
+// Chỉ lấy chữ cái (tên kênh hay có emoji / ký tự trang trí; cắt theo UTF-16 sẽ vỡ ký tự và lệch hydrate).
 const initials = (name: string) => {
-  const w = name.trim().split(/\s+/);
-  return ((w[0]?.[0] ?? '') + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase();
+  const w = name.split(/\s+/).map((x) => x.match(/\p{L}/u)?.[0]).filter(Boolean);
+  return ((w[0] ?? '') + (w.length > 1 ? w[w.length - 1] : '')).toUpperCase() || '?';
 };
 
 export function Avatar({ src, name, size = 32 }: { src?: string | null; name?: string | null; size?: number }) {

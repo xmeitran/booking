@@ -5,7 +5,7 @@ import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 import { deleteKoc, saveKoc } from './actions';
-import { PLATFORMS } from './platforms';
+import { KL_LEVELS, PLATFORMS } from './platforms';
 
 const PER_PAGE = 50;
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
@@ -90,7 +90,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             {kocs.map((k) => (
               <tr key={k.id}>
                 <td>
-                  <div className="font-medium">{k.nickname ?? k.name}</div>
+                  <Link href={`/contacts/${k.id}`} className="font-medium hover:text-accent hover:underline">{k.nickname ?? k.name}</Link>
                   <div className="text-xs text-ink-3">
                     {k.platform} · {k.channelUrl ? <a href={k.channelUrl} target="_blank" rel="noreferrer" className="link">@{k.handle}</a> : `@${k.handle}`}
                     {k.niche && ` · ${k.niche}`}
@@ -167,8 +167,37 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                 {users.map((u) => <option key={u.id} value={u.id}>{u.name ?? u.larkUserId}</option>)}
               </select>
             </Field>
+            <Field label="Cấp KOL" id="kl">
+              <select id="kl" name="kl" defaultValue={editing?.kl ?? ''} className="input">
+                <option value="">Theo booking gần nhất</option>
+                {KL_LEVELS.map((l) => <option key={l}>{l}</option>)}
+              </select>
+            </Field>
             <Field label="Ghi chú" id="note" wide>
               <textarea id="note" name="note" rows={3} defaultValue={editing?.note ?? ''} className="input" />
+            </Field>
+            <p className="col-span-full -mb-1 border-t border-line pt-3 text-xs font-semibold text-ink-2">Nhận hàng mẫu</p>
+            <Field label="Người nhận" id="receiverName">
+              <input id="receiverName" name="receiverName" defaultValue={editing?.receiverName ?? ''} className="input" />
+            </Field>
+            <Field label="SĐT nhận hàng" id="receiverPhone">
+              <input id="receiverPhone" name="receiverPhone" type="tel" defaultValue={editing?.receiverPhone ?? ''} className="input" />
+            </Field>
+            <Field label="Địa chỉ nhận hàng" id="address" wide>
+              <input id="address" name="address" defaultValue={editing?.address ?? ''} className="input" />
+            </Field>
+            <p className="col-span-full -mb-1 border-t border-line pt-3 text-xs font-semibold text-ink-2">Thanh toán (chỉ Admin, Leader xem)</p>
+            <Field label="Chủ tài khoản" id="bankHolder">
+              <input id="bankHolder" name="bankHolder" defaultValue={editing?.bankHolder ?? ''} className="input" />
+            </Field>
+            <Field label="Số tài khoản" id="bankAccount">
+              <input id="bankAccount" name="bankAccount" defaultValue={editing?.bankAccount ?? ''} className="input" />
+            </Field>
+            <Field label="Ngân hàng" id="bankName">
+              <input id="bankName" name="bankName" defaultValue={editing?.bankName ?? ''} className="input" />
+            </Field>
+            <Field label="CCCD / MST" id="idNumber">
+              <input id="idNumber" name="idNumber" defaultValue={editing?.idNumber ?? ''} className="input" />
             </Field>
             <div className="col-span-full flex justify-end gap-2">
               <Link href={`/contacts${ret}`} className="btn">Hủy</Link>

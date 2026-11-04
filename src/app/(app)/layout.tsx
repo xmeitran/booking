@@ -9,6 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex h-14 items-center px-4"><BrandLogo size={20} /></div>
         <nav className="flex gap-0.5 overflow-x-auto px-2 pb-2 md:flex-col">
           <NavLink href="/booking">Booking</NavLink>
+          <NavLink href="/listing">Listing</NavLink>
           <NavLink href="/contacts">Danh bạ KOC</NavLink>
           {user.role === 'ADMIN' && <NavLink href="/users">User</NavLink>}
         </nav>
