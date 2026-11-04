@@ -76,3 +76,22 @@ export async function refreshFromTikTok(fd: FormData) {
   revalidatePath(`/contacts/${id}`);
   redirect(`/contacts/${id}?tiktok=${r}`);
 }
+
+// Nhật ký chăm sóc: mọi vai trò được ghi. Form dùng action trực tiếp nên React tự xoá ô nhập sau khi lưu.
+export async function addNote(fd: FormData) {
+  const me = await requireUser();
+  const kocId = str(fd, 'kocId');
+  const body = str(fd, 'body');
+  const follow = str(fd, 'followUpAt');
+  if (!kocId || !body) return;
+  await db.kocNote.create({
+    data: { kocId, authorId: me.id, body, followUpAt: /^\d{4}-\d{2}-\d{2}$/.test(follow) ? new Date(`${follow}T09:00:00+07:00`) : null },
+  });
+  revalidatePath(`/contacts/${kocId}`);
+}
+
+export async function closeFollowUp(fd: FormData) {
+  await requireUser();
+  const n = await db.kocNote.update({ where: { id: str(fd, 'id') }, data: { doneAt: new Date() } });
+  revalidatePath(`/contacts/${n.kocId}`);
+}

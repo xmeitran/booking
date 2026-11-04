@@ -30,6 +30,7 @@ model User {
   kocs        Koc[]
   listingBatches ListingBatch[]
   listingItems   ListingItem[]
+  kocNotes       KocNote[]
 }
 
 model Koc {
@@ -80,6 +81,8 @@ model Koc {
   idNumber      String?  // CCCD / MST
 
   listingItems ListingItem[]
+  snapshots    KocSnapshot[]
+  notes        KocNote[]
 
   @@unique([platform, handle])
   @@index([niche])
@@ -188,4 +191,36 @@ model CreatorMetric {
 
   @@id([source, handle])
   @@index([handle])
+}
+
+// Chỉ số Creator Marketplace mỗi lần tra thành công, để xem xu hướng (src/lib/creatorStats.ts).
+model KocSnapshot {
+  id           String   @id @default(cuid())
+  kocId        String
+  koc          Koc      @relation(fields: [kocId], references: [id], onDelete: Cascade)
+  at           DateTime @default(now())
+  followers    Int?
+  avgViews     Int?
+  avgLiveViews Int?
+  unitsSold    Int?
+  gmvRange     String?
+  gpmUsd       Float?
+
+  @@index([kocId, at])
+}
+
+// Nhật ký chăm sóc KOL; followUpAt = hẹn liên hệ lại, doneAt = đã xử lý hẹn.
+model KocNote {
+  id         String    @id @default(cuid())
+  kocId      String
+  koc        Koc       @relation(fields: [kocId], references: [id], onDelete: Cascade)
+  authorId   String?
+  author     User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  body       String
+  followUpAt DateTime?
+  doneAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([kocId, createdAt])
+  @@index([followUpAt])
 }

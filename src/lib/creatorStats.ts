@@ -99,10 +99,13 @@ async function processKoc(k: { id: string; handle: string; ttsOpenId: string | n
   }
   if (!p.ok || !p.data?.creator) return 'failed';
   const c = p.data.creator;
-  await db.koc.update({
-    where: { id: k.id },
-    data: { ...toStats(c), avatarUrl: c.avatar?.url, ttsProfile: c, statsAt: new Date(), ttsCheckedAt: new Date() },
-  });
+  const st = toStats(c);
+  await db.$transaction([
+    db.koc.update({ where: { id: k.id }, data: { ...st, avatarUrl: c.avatar?.url, ttsProfile: c, statsAt: new Date(), ttsCheckedAt: new Date() } }),
+    db.kocSnapshot.create({
+      data: { kocId: k.id, followers: st.followers, avgViews: st.avgViews, avgLiveViews: st.avgLiveViews, unitsSold: st.unitsSold, gmvRange: st.gmvRange, gpmUsd: st.gpmUsd },
+    }),
+  ]);
   return 'updated';
 }
 

@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { bookingsOf, collabSummary, profileInsights, USD_VND } from '@/lib/kocInsights';
 import { requireUser } from '@/lib/session';
-import { refreshFromTikTok } from '../actions';
+import { addNote, closeFollowUp, refreshFromTikTok } from '../actions';
 
 const TIKTOK_MSG: Record<string, string> = {
   updated: 'Đã cập nhật số liệu từ TikTok.',
@@ -23,7 +23,14 @@ export default async function KocPage({ params, searchParams }: { params: Promis
   if (!koc) notFound();
 
   const canEdit = me.role !== 'STAFF';
-  const [byHandle, sources] = await Promise.all([bookingsOf([koc.handle]), creatorSources(koc.handle)]);
+  const [byHandle, sources, history, notes] = await Promise.all([
+    bookingsOf([koc.handle]),
+    creatorSources(koc.handle),
+    db.kocSnapshot.findMany({ where: { kocId: koc.id }, orderBy: { at: 'desc' }, take: 12 }),
+    db.kocNote.findMany({ where: { kocId: koc.id }, include: { author: true }, orderBy: { createdAt: 'desc' }, take: 50 }),
+  ]);
+  const nextFollow = notes.filter((n) => n.followUpAt && !n.doneAt).sort((a, b) => +a.followUpAt! - +b.followUpAt!)[0];
+  const today = new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) + 'T23:59:59+07:00');
   const bookings = byHandle.get(koc.handle) ?? [];
   const collab = collabSummary(bookings);
   const p = profileInsights(koc.ttsProfile);
@@ -54,6 +61,9 @@ export default async function KocPage({ params, searchParams }: { params: Promis
               {kl && <span className="pill bg-accent-soft text-accent">{kl}</span>}
               {koc.niche && <span className="pill bg-sunken text-ink-2">{koc.niche}</span>}
               {koc.pic?.name && <span>PIC {koc.pic.name}</span>}
+              {nextFollow && (
+                <span className={`pill ${nextFollow.followUpAt! <= today ? 'bg-critical-soft text-critical' : 'bg-sunken text-ink-2'}`}>Hẹn liên hệ {fmtDate(nextFollow.followUpAt)}</span>
+              )}
               <span className={`pill ${missing.length ? 'bg-warning-soft text-warning' : 'bg-positive-soft text-positive'}`} title={missing.length ? `Thiếu: ${missing.join(', ')}` : undefined}>
                 Hồ sơ {groups.length - missing.length}/{groups.length}
               </span>
@@ -84,6 +94,29 @@ export default async function KocPage({ params, searchParams }: { params: Promis
           <Stat label="GMV / khách hàng" value={p.aovText ?? '—'} />
           <Stat label="Tỷ lệ tương tác video" value={fmtPct(p.engagement, 2)} />
         </div>
+        {history.length > 0 && (
+          <details className="mt-4 border-t border-line pt-3" open={history.length > 1}>
+            <summary className="cursor-pointer text-[13px] font-medium">Lịch sử chỉ số ({history.length} lần tra)</summary>
+            <table className="tbl mt-2">
+              <thead><tr><th>Ngày tra</th><th className="text-right">Follower</th><th className="text-right">View TB / video</th><th className="text-right">View TB / LIVE</th><th className="text-right">Số món bán</th><th>GMV</th></tr></thead>
+              <tbody>
+                {history.map((h, i) => {
+                  const prev = history[i + 1];
+                  return (
+                    <tr key={h.id}>
+                      <td>{fmtDate(h.at)}</td>
+                      <td className="text-right">{fmtNum(h.followers)}<Delta now={h.followers} before={prev?.followers} /></td>
+                      <td className="text-right">{fmtNum(h.avgViews)}<Delta now={h.avgViews} before={prev?.avgViews} /></td>
+                      <td className="text-right">{fmtNum(h.avgLiveViews)}<Delta now={h.avgLiveViews} before={prev?.avgLiveViews} /></td>
+                      <td className="text-right">{fmtNum(h.unitsSold)}<Delta now={h.unitsSold} before={prev?.unitsSold} /></td>
+                      <td>{h.gmvRange ?? '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </details>
+        )}
       </Section>
 
       {sources.length > 0 && (
@@ -165,6 +198,51 @@ export default async function KocPage({ params, searchParams }: { params: Promis
         ) : <Empty text="Chưa có booking nào với UpBase." />}
       </Section>
 
+      <Section title="Nhật ký chăm sóc" meta="Ghi lại trao đổi, báo giá, hẹn liên hệ lại">
+        <form action={addNote} className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          <input type="hidden" name="kocId" value={koc.id} />
+          <div>
+            <label htmlFor="note-body" className="label">Nội dung</label>
+            <textarea id="note-body" name="body" required rows={2} className="input" placeholder="VD: Đã gửi brief, KOC báo giá 3tr/video, chờ brand duyệt" />
+          </div>
+          <div>
+            <label htmlFor="note-follow" className="label">Hẹn liên hệ lại</label>
+            <input id="note-follow" name="followUpAt" type="date" className="input" />
+          </div>
+          <button className="btn btn-primary">Ghi</button>
+        </form>
+        {notes.length ? (
+          <ol className="space-y-3">
+            {notes.map((n) => (
+              <li key={n.id} className="flex gap-3">
+                <Avatar src={n.author?.avatarUrl} name={n.author?.name} size={28} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-ink-3">
+                    {n.author?.name ?? 'Đã xoá'} · {n.createdAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}
+                  </div>
+                  <p className="text-[13px] whitespace-pre-line">{n.body}</p>
+                  {n.followUpAt && (
+                    <div className="mt-1 flex items-center gap-2 text-xs">
+                      {n.doneAt ? (
+                        <span className="text-ink-3 line-through">Hẹn {fmtDate(n.followUpAt)}</span>
+                      ) : (
+                        <>
+                          <span className={`pill ${n.followUpAt <= today ? 'bg-critical-soft text-critical' : 'bg-warning-soft text-warning'}`}>Hẹn {fmtDate(n.followUpAt)}</span>
+                          <form action={closeFollowUp}>
+                            <input type="hidden" name="id" value={n.id} />
+                            <button className="link">Đã xử lý</button>
+                          </form>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : <Empty text="Chưa có ghi chú nào." />}
+      </Section>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Liên hệ & nhận hàng">
           <Info rows={[['SĐT', koc.phone], ['Zalo', koc.zalo], ['Email', koc.email], ['Người nhận hàng', koc.receiverName], ['SĐT nhận hàng', koc.receiverPhone], ['Địa chỉ', koc.address]]} />
@@ -225,3 +303,9 @@ function Info({ rows }: { rows: [string, string | null][] }) {
 }
 
 const Empty = ({ text = 'Chưa có số liệu.' }: { text?: string }) => <p className="text-[13px] text-ink-3">{text}</p>;
+
+function Delta({ now, before }: { now: number | null; before?: number | null }) {
+  if (now == null || before == null || now === before) return null;
+  const up = now > before;
+  return <span className={`ml-1 text-xs ${up ? 'text-positive' : 'text-critical'}`}>{up ? '▲' : '▼'}{fmtShort(Math.abs(now - before))}</span>;
+}

@@ -60,6 +60,10 @@ Khóa user hoặc đổi vai trò có hiệu lực ngay ở request kế tiếp 
 
 `/contacts/[id]`: chỉ số TikTok 30 ngày, tỷ trọng GMV video / LIVE / thẻ sản phẩm và theo ngành, chân dung follower (giới tính, tuổi, tỉnh thành), lịch sử hợp tác với UpBase (booking trên Lark), liên hệ & nhận hàng, thanh toán (chỉ Admin / Leader). Nút "Cập nhật từ TikTok" tra ngay một KOC. Độ đầy đủ hồ sơ tính theo 5 nhóm: số TikTok, cấp KOL, liên hệ, nhận hàng, thanh toán.
 
+- Mỗi lần tra Creator Marketplace thành công lưu một dòng `KocSnapshot` → mục "Lịch sử chỉ số" (tăng / giảm so với lần trước).
+- Nhật ký chăm sóc (`KocNote`): ghi chú + ngày hẹn liên hệ lại; mọi vai trò ghi được. Danh bạ có lọc nhanh "Đến hẹn liên hệ",
+  "Chưa có PIC", "Chưa có số TikTok", "Thiếu liên hệ / địa chỉ / thanh toán" kèm số đếm, lọc theo cấp KOL (nhập tay, trống thì theo booking).
+
 ## Listing
 
 Thay file "Excel Listing" theo sheet *[Booking] - Requirement Excel Listing (UpAI)*:

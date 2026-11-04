@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { pageOf, Pager } from '@/components/Pager';
 import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
+import { fmtDate } from '@/lib/format';
 import { requireUser } from '@/lib/session';
 import { deleteKoc, saveKoc } from './actions';
 import { KL_LEVELS, PLATFORMS } from './platforms';
@@ -11,7 +12,18 @@ const PER_PAGE = 50;
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 const vnd = new Intl.NumberFormat('vi-VN');
 
-type Search = { q?: string; platform?: string; niche?: string; sort?: string; edit?: string; page?: string };
+type Search = { q?: string; platform?: string; niche?: string; kl?: string; flag?: string; sort?: string; edit?: string; page?: string };
+
+const endOfToday = () => new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) + 'T23:59:59+07:00');
+// Lọc nhanh: việc cần làm với hồ sơ KOL.
+const FLAGS: Record<string, { label: string; where: () => Prisma.KocWhereInput }> = {
+  followUp: { label: 'Đến hẹn liên hệ', where: () => ({ notes: { some: { doneAt: null, followUpAt: { lte: endOfToday() } } } }) },
+  noPic: { label: 'Chưa có PIC', where: () => ({ picId: null }) },
+  noStats: { label: 'Chưa có số TikTok', where: () => ({ statsAt: null }) },
+  noContact: { label: 'Thiếu liên hệ', where: () => ({ phone: null, zalo: null, email: null }) },
+  noShip: { label: 'Thiếu địa chỉ nhận hàng', where: () => ({ OR: [{ receiverName: null }, { address: null }] }) },
+  noBank: { label: 'Thiếu thông tin thanh toán', where: () => ({ OR: [{ bankAccount: null }, { idNumber: null }] }) },
+};
 
 // Sắp xếp; KOL chưa có số liệu dồn xuống cuối.
 const SORTS: Record<string, { label: string; orderBy: Prisma.KocOrderByWithRelationInput }> = {
@@ -19,6 +31,8 @@ const SORTS: Record<string, { label: string; orderBy: Prisma.KocOrderByWithRelat
   followers: { label: 'Follower nhiều nhất', orderBy: { followers: { sort: 'desc', nulls: 'last' } } },
   units: { label: 'Bán nhiều món nhất (30 ngày)', orderBy: { unitsSold: { sort: 'desc', nulls: 'last' } } },
   views: { label: 'Lượt xem TB cao nhất', orderBy: { avgViews: { sort: 'desc', nulls: 'last' } } },
+  bookings: { label: 'Nhiều booking nhất', orderBy: { bookingCount: 'desc' } },
+  recent: { label: 'Book gần nhất', orderBy: { lastBookingAt: { sort: 'desc', nulls: 'last' } } },
 };
 const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 
@@ -26,18 +40,21 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const me = await requireUser();
   const canEdit = me.role !== 'STAFF';
   const sp = await searchParams;
-  const { q = '', platform = '', niche = '', edit } = sp;
+  const { q = '', platform = '', niche = '', kl = '', edit } = sp;
+  const flag = sp.flag && FLAGS[sp.flag] ? sp.flag : '';
   const sort = sp.sort && SORTS[sp.sort] ? sp.sort : '';
   const page = pageOf(sp.page);
 
   const contains = { contains: q.trim(), mode: 'insensitive' as const };
-  const where: Prisma.KocWhereInput = {
-    ...(platform && { platform }),
-    ...(niche && { niche }),
-    ...(q.trim() && { OR: [{ name: contains }, { handle: contains }, { phone: contains }, { zalo: contains }, { email: contains }] }),
-  };
+  const base: Prisma.KocWhereInput[] = [
+    platform ? { platform } : {},
+    niche ? { niche } : {},
+    kl ? { OR: [{ kl }, { kl: null, klAuto: kl }] } : {}, // cấp nhập tay, trống thì theo booking gần nhất
+    q.trim() ? { OR: [{ name: contains }, { handle: contains }, { phone: contains }, { zalo: contains }, { email: contains }] } : {},
+  ];
+  const where: Prisma.KocWhereInput = { AND: [...base, flag ? FLAGS[flag].where() : {}] };
 
-  const [kocs, total, niches, users, editing, statsRun, withStats] = await Promise.all([
+  const [kocs, total, niches, users, editing, statsRun, withStats, kls, allCount, flagCounts] = await Promise.all([
     db.koc.findMany({ where, include: { pic: true }, orderBy: SORTS[sort].orderBy, skip: (page - 1) * PER_PAGE, take: PER_PAGE }),
     db.koc.count({ where }),
     db.koc.findMany({ where: { niche: { not: null } }, distinct: ['niche'], select: { niche: true }, orderBy: { niche: 'asc' } }),
@@ -45,9 +62,18 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     canEdit && edit && edit !== 'new' ? db.koc.findUnique({ where: { id: edit } }) : null,
     db.syncState.findUnique({ where: { id: 'creators' } }),
     db.koc.count({ where: { statsAt: { not: null } } }),
+    db.koc.findMany({ where: { klAuto: { not: null } }, distinct: ['klAuto'], select: { klAuto: true } }),
+    db.koc.count({ where: { AND: base } }),
+    Promise.all(Object.keys(FLAGS).map(async (k) => [k, await db.koc.count({ where: { AND: [...base, FLAGS[k].where()] } })] as const)),
   ]);
+  const klOptions = [...new Set([...KL_LEVELS, ...kls.map((r) => r.klAuto!)])];
 
-  const filters = new URLSearchParams(Object.entries({ q, platform, niche, sort }).filter(([, v]) => v));
+  const filters = new URLSearchParams(Object.entries({ q, platform, niche, kl, flag, sort }).filter(([, v]) => v));
+  const withFlag = (f: string) => {
+    const p = new URLSearchParams(filters);
+    if (f) p.set('flag', f); else p.delete('flag');
+    return p.size ? `/contacts?${p}` : '/contacts';
+  };
   const ret = filters.size ? `?${filters}` : '';
   const withEdit = (id: string) => `?${new URLSearchParams([...filters, ['edit', id]])}`;
   const dialogOpen = canEdit && (edit === 'new' || editing);
@@ -64,7 +90,17 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         {canEdit && <Link href={withEdit('new')} className="btn btn-primary">Thêm KOC</Link>}
       </div>
 
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        <Link href={withFlag('')} className={`pill px-2.5 py-1 ${!flag ? 'bg-ink text-white' : 'bg-surface text-ink-2 ring-1 ring-line'}`}>Tất cả · {vnd.format(allCount)}</Link>
+        {flagCounts.map(([k, n]) => (
+          <Link key={k} href={withFlag(flag === k ? '' : k)} className={`pill px-2.5 py-1 ${flag === k ? 'bg-ink text-white' : k === 'followUp' && n ? 'bg-critical-soft text-critical' : 'bg-surface text-ink-2 ring-1 ring-line'}`}>
+            {FLAGS[k].label} · {vnd.format(n)}
+          </Link>
+        ))}
+      </div>
+
       <form className="mb-3 flex flex-wrap gap-2">
+        {flag && <input type="hidden" name="flag" value={flag} />}
         <input name="q" defaultValue={q} placeholder="Tìm tên, ID kênh, SĐT, Zalo, email" aria-label="Tìm kiếm" className="input max-w-xs" />
         <select name="platform" defaultValue={platform} aria-label="Nền tảng" className="input w-auto">
           <option value="">Mọi nền tảng</option>
@@ -73,6 +109,10 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         <select name="niche" defaultValue={niche} aria-label="Tệp kênh" className="input w-auto">
           <option value="">Mọi tệp kênh</option>
           {niches.map(({ niche: n }) => <option key={n}>{n}</option>)}
+        </select>
+        <select name="kl" defaultValue={kl} aria-label="Cấp KOL" className="input w-auto">
+          <option value="">Mọi cấp KOL</option>
+          {klOptions.map((l) => <option key={l}>{l}</option>)}
         </select>
         <select name="sort" defaultValue={sort} aria-label="Sắp xếp" className="input w-auto">
           {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -95,6 +135,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                     {k.platform} · {k.channelUrl ? <a href={k.channelUrl} target="_blank" rel="noreferrer" className="link">@{k.handle}</a> : `@${k.handle}`}
                     {k.niche && ` · ${k.niche}`}
                   </div>
+                  {(k.kl ?? k.klAuto ?? k.bookingCount > 0) && (
+                    <div className="mt-0.5 flex gap-1.5 text-xs text-ink-3">
+                      {(k.kl ?? k.klAuto) && <span className="pill bg-accent-soft text-accent">{k.kl ?? k.klAuto}</span>}
+                      {k.bookingCount > 0 && <span>{k.bookingCount} booking{k.lastBookingAt && ` · gần nhất ${fmtDate(k.lastBookingAt)}`}</span>}
+                    </div>
+                  )}
                   {k.note && <div className="mt-0.5 max-w-xs truncate text-xs text-ink-3" title={k.note}>{k.note}</div>}
                 </td>
                 <td className="text-right">{k.followers == null ? '—' : compact.format(k.followers)}</td>
