@@ -79,7 +79,7 @@ export async function matchFromLine(fd: FormData) {
       name, brand: line.brand?.name ?? null, brandId: line.brandId, planLineId: line.id, createdById: me.id,
       guideline: line.brand?.guideline ?? null,
       strategy: [line.product?.usp && `USP sản phẩm: ${line.product.usp}`, line.brand?.usp && `USP brand: ${line.brand.usp}`].filter(Boolean).join('\n') || null,
-      plan: `${line.quantity} KOC · ${line.contentType}${line.week ? ` · tuần ${line.week} tháng ${line.plan.month}` : ''}${line.budget ? ` · ngân sách ${line.budget.toLocaleString('vi-VN')} ₫` : ''}`,
+      plan: `${line.quantity} KOC · ${line.contentType}${line.week ? ` · tuần ${line.week} tháng ${line.plan.month.split('-').reverse().join('/')}` : ''}${line.budget ? ` · ngân sách ${line.budget.toLocaleString('vi-VN')} ₫` : ''}`,
       criteria: line.tier ? { kl: [line.tier] } : {},
     },
   });
