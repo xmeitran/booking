@@ -157,6 +157,7 @@ model ListingBatch {
   month       String        // "2026-11"
   cr          Float?        // tỷ lệ chuyển đổi SP theo gian hàng, 0.05 = 5%
   aov         Int?          // AOV sản phẩm theo gian hàng, VND
+  planLineId  String?       // đợt tạo từ matching của một dòng plan: job tạo từ đợt này gắn về dòng plan đó
   shareToken  String?       // link Brand duyệt /review/<token>; null = chưa tạo hoặc đã thu hồi. Index thường, không @unique: thêm unique
                             // vào bảng có sẵn khiến `prisma db push` trên Render dừng đòi --accept-data-loss; token ngẫu nhiên 144 bit.
   createdById String

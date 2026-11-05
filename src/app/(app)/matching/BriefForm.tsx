@@ -4,11 +4,11 @@ import { NUM_FIELDS, TIKTOK_CATEGORIES, type Criteria } from '@/lib/matching';
 import { KL_LEVELS } from '../contacts/platforms';
 import { saveBrief } from './actions';
 
-type Brief = { id?: string; name?: string; category?: string | null; brand?: string | null; guideline?: string | null; strategy?: string | null; plan?: string | null; note?: string | null };
+type Brief = { id?: string; name?: string; category?: string | null; brand?: string | null; brandId?: string | null; guideline?: string | null; strategy?: string | null; plan?: string | null; note?: string | null };
 
 /** Form best practice ngành hàng (template) hoặc brief brand; cả hai có bộ tiêu chí lọc KOC. */
-export function BriefForm({ brief, template, criteria, niches, categories, cancel }: {
-  brief?: Brief; template: boolean; criteria: Criteria; niches: string[]; categories: string[]; cancel: string;
+export function BriefForm({ brief, template, criteria, niches, categories, cancel, brands = [] }: {
+  brief?: Brief; template: boolean; criteria: Criteria; niches: string[]; categories: string[]; cancel: string; brands?: { id: string; name: string }[];
 }) {
   const area = (name: keyof Brief, label: string, placeholder: string) => (
     <label className="col-span-full block">
@@ -27,7 +27,12 @@ export function BriefForm({ brief, template, criteria, niches, categories, cance
       {!template && (
         <label className="block">
           <span className="label">Brand</span>
-          <input name="brand" defaultValue={brief?.brand ?? ''} className="input" />
+          {brands.length ? (
+            <select name="brandId" defaultValue={brief?.brandId ?? ''} className="input">
+              <option value="">— Chọn từ Danh mục —</option>
+              {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          ) : <input name="brand" defaultValue={brief?.brand ?? ''} className="input" />}
         </label>
       )}
       <label className="block">

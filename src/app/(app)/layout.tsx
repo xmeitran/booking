@@ -9,9 +9,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex h-14 items-center px-4"><BrandLogo size={20} /></div>
         <nav className="flex gap-0.5 overflow-x-auto px-2 pb-2 md:flex-col">
           <NavLink href="/overview">Tổng quan</NavLink>
-          <NavLink href="/booking">Booking</NavLink>
-          <NavLink href="/listing">Listing</NavLink>
+          <NavLink href="/plan">Plan</NavLink>
           <NavLink href="/matching">Creator matching</NavLink>
+          <NavLink href="/listing">Listing</NavLink>
+          <NavLink href="/jobs">Job</NavLink>
+          <NavLink href="/payments">Thanh toán</NavLink>
+          <NavLink href="/booking">Booking (Lark)</NavLink>
           <NavLink href="/contacts">Danh bạ KOC</NavLink>
           <NavLink href="/data">Dữ liệu</NavLink>
           <NavLink href="/catalog">Danh mục</NavLink>

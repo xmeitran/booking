@@ -13,10 +13,11 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
   await requireUser();
   const sp = await searchParams;
   const creating = sp.new === 'template' || sp.new === 'brief' ? sp.new : null;
-  const [briefs, niches, from] = await Promise.all([
+  const [briefs, niches, from, brands] = await Promise.all([
     db.matchBrief.findMany({ include: { createdBy: { select: { name: true } } }, orderBy: { updatedAt: 'desc' } }),
     creating ? db.koc.findMany({ where: { niche: { not: null } }, distinct: ['niche'], select: { niche: true }, orderBy: { niche: 'asc' } }) : [],
     sp.from ? db.matchBrief.findUnique({ where: { id: sp.from } }) : null,
+    creating === 'brief' ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }) : [],
   ]);
   const templates = briefs.filter((b) => b.template);
   const list = briefs.filter((b) => !b.template);
@@ -95,6 +96,7 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
             criteria={(from?.criteria ?? {}) as Criteria}
             niches={niches.map((n) => n.niche!)}
             categories={categories}
+            brands={brands}
             cancel="/matching"
           />
         </Dialog>

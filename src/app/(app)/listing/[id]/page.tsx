@@ -7,6 +7,8 @@ import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, loadListing, PRICE_TYPES, RECOMMEND, type Col, type ListingRow } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
 import { addKocs, createShare, deleteBatch, removeItem, revokeShare, saveBatch, saveItem, setItemField } from '../actions';
+import { createJobsFromListing } from '../../jobs/actions';
+import { jobCode } from '@/lib/jobs';
 
 const CHOICE_TONE: Record<string, string> = { Yes: 'bg-positive-soft text-positive', No: 'bg-critical-soft text-critical', 'Cân nhắc': 'bg-warning-soft text-warning' };
 const REC_TONE: Record<string, string> = { 'Must Have': 'bg-accent-soft text-accent', Recommend: 'bg-sunken text-ink-2', Optional: 'bg-sunken text-ink-3' };
@@ -95,6 +97,12 @@ export default async function ListingBatchPage({ params, searchParams }: { param
           <a href={`/listing/${batch.id}/export?mode=brand`} className="btn">Tải file cho Brand</a>
           <a href={`/listing/${batch.id}/export?mode=internal`} className="btn">Tải file nội bộ</a>
           <Link href="?edit=1" className="btn">Sửa đợt</Link>
+          {rows.some((r) => r.item.brandChoice === 'Yes' && !r.item.job) && (
+            <form action={createJobsFromListing}>
+              <input type="hidden" name="batchId" value={batch.id} />
+              <button className="btn btn-primary">Tạo job cho {rows.filter((r) => r.item.brandChoice === 'Yes' && !r.item.job).length} KOC Brand chọn Yes</button>
+            </form>
+          )}
         </div>
       </div>
 
@@ -334,6 +342,7 @@ function Row({ r }: { r: ListingRow }) {
           {item.brandChoice && <span className={`pill ${CHOICE_TONE[item.brandChoice]}`}>Brand: {item.brandChoice}</span>}
         </div>
         {item.status && <div className="mt-0.5 text-ink-3">{item.status}</div>}
+        {item.job && <Link href={`/jobs/${item.job.id}`} className="mt-0.5 block text-accent hover:underline">{jobCode(item.job.number)} · {item.job.stage}</Link>}
         {item.rejectReason && <div className="max-w-40 truncate text-critical" title={item.rejectReason}>{item.rejectReason}</div>}
       </td>
       <td className="text-right"><Link href={`?item=${item.id}`} className="link">Sửa</Link></td>

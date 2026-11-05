@@ -32,7 +32,7 @@ const prevMonth = (m: string) => {
 export async function loadListing(batchId: string) {
   const batch = await db.listingBatch.findUnique({
     where: { id: batchId },
-    include: { createdBy: true, items: { include: { koc: true, createdBy: true }, orderBy: { createdAt: 'asc' } } },
+    include: { createdBy: true, items: { include: { koc: true, createdBy: true, job: { select: { id: true, number: true, stage: true } } }, orderBy: { createdAt: 'asc' } } },
   });
   if (!batch) return null;
   const [bookings, others] = await Promise.all([
