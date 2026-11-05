@@ -8,7 +8,8 @@ import { CANCELLED, jobCode, RESULT_TONE, RESULTS, SAMPLE, STAGE_HINT, STAGE_TON
 import { FEE_DIVISOR } from '@/lib/kocInsights';
 import { PRICE_TYPES } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
-import { draftBrief, moveStage, reviewJob, saveBrief, updateJob } from '../actions';
+import { aiDraftBrief, draftBrief, moveStage, reviewJob, saveBrief, updateJob } from '../actions';
+import { aiEnabled } from '@/lib/ai';
 
 const iso = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
 const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
@@ -124,7 +125,8 @@ export default async function JobPage({ params, searchParams }: { params: Promis
             <textarea name="brief" rows={14} defaultValue={j.brief ?? ''} placeholder="Bấm &quot;Tạo brief nháp&quot; để có bản đầu từ USP, guideline của brand và checklist nghiệm thu." className="input font-mono text-xs" />
             <div className="flex flex-wrap items-center justify-end gap-2">
               {j.brief && <CopyButton text={j.brief} />}
-              <button formAction={draftBrief} formNoValidate className="btn h-8 px-3 text-xs">Tạo brief nháp</button>
+              <button formAction={aiDraftBrief} formNoValidate disabled={!aiEnabled()} title={aiEnabled() ? 'Claude viết bản nháp từ brand, sản phẩm, KOC và checklist (~30 giây)' : 'Chưa cấu hình ANTHROPIC_API_KEY'} className="btn h-8 px-3 text-xs">AI viết brief</button>
+              <button formAction={draftBrief} formNoValidate className="btn h-8 px-3 text-xs">Tạo brief nháp (mẫu)</button>
               <button name="approve" value="" className="btn h-8 px-3 text-xs">Lưu nháp</button>
               <button name="approve" value="1" className="btn btn-primary h-8 px-3 text-xs">Duyệt brief</button>
             </div>

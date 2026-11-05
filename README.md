@@ -97,6 +97,24 @@ và nút **Xem dữ liệu gốc** (50 dòng mới nhất TikTok trả về) đ�
 số kéo sẵn lúc nào hay vừa tra trực tiếp, và nhãn "Số TikTok trả về" / "Team tự điền". Số lấy từ bản kéo sẵn; creator ngoài
 Danh bạ chưa có trong bản kéo sẵn thì tra trực tiếp Trạm (~0,5 giây / bảng).
 
+## Luồng booking trong app (theo tài liệu chức năng B2C-Ops)
+
+Plan → Creator matching → Listing → Brand duyệt → Job → Nghiệm thu → Đề nghị thanh toán. Booking cũ trên Lark Base vẫn đọc ở tab
+"Booking (Lark)"; job mới quản lý trong app, không ghi ngược vào Lark.
+
+- **Danh mục** (`/catalog`): brand (USP, guideline, checklist nghiệm thu, nhân sự phụ trách), gian hàng (CR, AOV), sản phẩm,
+  bảng giá theo tier. Nút "Lấy brand từ booking Lark" tạo nhanh brand + gian hàng từ cột Brand / Store. User có vai trò nghiệp vụ
+  (Trưởng phòng, Booking PIC, Booking Support, Brand Manager) bên cạnh quyền trong app.
+- **Plan** (`/plan`): plan tháng → dòng chi tiết (brand, sản phẩm, tuần, tier, loại content, số KOC, ngân sách, PIC; trống PIC =
+  Booking PIC của brand). "Tìm KOC" tạo brief matching từ dòng; tiến độ = số job, ngân sách đã chốt = tổng giá job.
+- **Matching**: chọn / loại từng KOC, loại bắt buộc lý do. KOC blacklist không bao giờ được gợi ý.
+- **Job** (`/jobs`): tạo từ KOC Brand chọn "Yes" ở Listing. Chặng Đã duyệt → Đã chốt → Gửi hàng → Đang quay → Đã nộp → Nghiệm thu →
+  Thanh toán. Nhập link video tự chuyển "Đã nộp"; nghiệm thu theo checklist của brand (Đạt / Cần sửa / Không đạt + mốc thời gian),
+  chưa đạt thì về "Đang quay" và có sẵn tin nhắn yêu cầu sửa. Brief: mẫu từ dữ liệu, hoặc **AI viết brief** (Claude, cần
+  `ANTHROPIC_API_KEY`; chỉ gửi thông tin công khai). Mọi thay đổi ghi `AuditLog`.
+- **Thanh toán** (`/payments`): gom job nghiệm thu Đạt thành ĐNTT, tải file cho kế toán, theo dõi trạng thái. Chưa đẩy sang Lark
+  Approval (cần approval code).
+
 ## Creator matching
 
 `/matching`: B2C soạn **best practice theo ngành hàng** (ghi chú + bộ tiêu chí). Mỗi **brief brand** chép tiêu chí từ best practice

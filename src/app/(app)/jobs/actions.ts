@@ -127,3 +127,27 @@ export async function draftBrief(fd: FormData) {
   await audit(me.id, 'Job', id, 'Tạo brief nháp');
   done(id);
 }
+
+/** Content Copilot: Claude viết brief nháp từ brand, sản phẩm, KOC, checklist; người dùng sửa và duyệt. */
+export async function aiDraftBrief(fd: FormData) {
+  const me = await requireUser();
+  const id = str(fd, 'id');
+  const { aiBrief, aiEnabled } = await import('@/lib/ai');
+  if (!aiEnabled()) redirect(`/jobs/${id}?err=${encodeURIComponent('Chưa cấu hình AI (biến ANTHROPIC_API_KEY trên Render).')}`);
+  const j = await db.job.findUniqueOrThrow({ where: { id }, include: { koc: true, brand: true, product: true } });
+  let brief: string;
+  try {
+    brief = await aiBrief({
+      brand: j.brand?.name ?? null, brandUsp: j.brand?.usp ?? null, guideline: j.brand?.guideline ?? null,
+      product: j.product?.name ?? null, productUsp: j.product?.usp ?? null, productLink: j.product?.link ?? null,
+      koc: { handle: j.koc.handle, name: j.koc.nickname ?? j.koc.name, niche: j.koc.niche, tier: j.koc.kl ?? j.koc.klAuto, followers: j.koc.followers, avgViews: j.koc.avgViews },
+      format: j.priceType, deadline: j.deadline?.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) ?? null, note: j.note,
+      checklist: checklistOf(j.brand?.checklist),
+    });
+  } catch (e) {
+    redirect(`/jobs/${id}?err=${encodeURIComponent(`AI chưa viết được brief: ${e instanceof Error ? e.message : String(e)}`)}`);
+  }
+  await db.job.update({ where: { id }, data: { brief, briefApproved: false } });
+  await audit(me.id, 'Job', id, 'AI viết brief nháp');
+  done(id);
+}
