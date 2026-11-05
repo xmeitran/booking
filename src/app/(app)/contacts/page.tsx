@@ -13,7 +13,7 @@ const PER_PAGE = 50;
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 const vnd = new Intl.NumberFormat('vi-VN');
 
-type Search = { q?: string; platform?: string; niche?: string; kl?: string; flag?: string; sort?: string; edit?: string; page?: string };
+type Search = { q?: string; platform?: string; niche?: string; kl?: string; tag?: string; flag?: string; sort?: string; edit?: string; page?: string };
 
 // Sắp xếp; KOL chưa có số liệu dồn xuống cuối.
 const SORTS: Record<string, { label: string; orderBy: Prisma.KocOrderByWithRelationInput }> = {
@@ -30,15 +30,15 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const me = await requireUser();
   const canEdit = me.role !== 'STAFF';
   const sp = await searchParams;
-  const { q = '', platform = '', niche = '', kl = '', edit } = sp;
+  const { q = '', platform = '', niche = '', kl = '', tag = '', edit } = sp;
   const flag = sp.flag && FLAGS[sp.flag] ? sp.flag : '';
   const sort = sp.sort && SORTS[sp.sort] ? sp.sort : '';
   const page = pageOf(sp.page);
 
-  const base = kocBase({ q, platform, niche, kl });
-  const where = kocWhere({ q, platform, niche, kl, flag });
+  const base = kocBase({ q, platform, niche, kl, tag });
+  const where = kocWhere({ q, platform, niche, kl, tag, flag });
 
-  const [kocs, total, niches, users, editing, statsRun, withStats, kls, allCount, flagCounts] = await Promise.all([
+  const [kocs, total, niches, users, editing, statsRun, withStats, kls, allCount, flagCounts, tagRows] = await Promise.all([
     db.koc.findMany({ where, include: { pic: true }, orderBy: SORTS[sort].orderBy, skip: (page - 1) * PER_PAGE, take: PER_PAGE }),
     db.koc.count({ where }),
     db.koc.findMany({ where: { niche: { not: null } }, distinct: ['niche'], select: { niche: true }, orderBy: { niche: 'asc' } }),
@@ -49,10 +49,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     db.koc.findMany({ where: { klAuto: { not: null } }, distinct: ['klAuto'], select: { klAuto: true } }),
     db.koc.count({ where: { AND: base } }),
     Promise.all(Object.keys(FLAGS).map(async (k) => [k, await db.koc.count({ where: { AND: [...base, FLAGS[k].where()] } })] as const)),
+    db.$queryRaw<{ tag: string }[]>`select distinct unnest(tags) tag from "Koc" order by 1`,
   ]);
+  const allTags = tagRows.map((r) => r.tag);
   const klOptions = [...new Set([...KL_LEVELS, ...kls.map((r) => r.klAuto!)])];
 
-  const filters = new URLSearchParams(Object.entries({ q, platform, niche, kl, flag, sort }).filter(([, v]) => v));
+  const filters = new URLSearchParams(Object.entries({ q, platform, niche, kl, tag, flag, sort }).filter(([, v]) => v));
   const withFlag = (f: string) => {
     const p = new URLSearchParams(filters);
     if (f) p.set('flag', f); else p.delete('flag');
@@ -97,6 +99,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           <option value="">Mọi tệp kênh</option>
           {niches.map(({ niche: n }) => <option key={n}>{n}</option>)}
         </select>
+        {allTags.length > 0 && (
+          <select name="tag" defaultValue={tag} aria-label="Tag" className="input w-auto">
+            <option value="">Mọi tag</option>
+            {allTags.map((t) => <option key={t}>{t}</option>)}
+          </select>
+        )}
         <select name="kl" defaultValue={kl} aria-label="Cấp KOL" className="input w-auto">
           <option value="">Mọi cấp KOL</option>
           {klOptions.map((l) => <option key={l}>{l}</option>)}
@@ -122,6 +130,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                     {k.platform} · {k.channelUrl ? <a href={k.channelUrl} target="_blank" rel="noreferrer" className="link">@{k.handle}</a> : `@${k.handle}`}
                     {k.niche && ` · ${k.niche}`}
                   </div>
+                  {(k.blacklisted || k.tags.length > 0) && (
+                    <div className="mt-0.5 flex flex-wrap gap-1 text-xs">
+                      {k.blacklisted && <span className="pill bg-critical-soft text-critical" title={k.blacklistReason ?? ''}>Blacklist</span>}
+                      {k.tags.map((t) => <span key={t} className="pill bg-sunken text-ink-2">{t}</span>)}
+                    </div>
+                  )}
                   {(k.kl ?? k.klAuto ?? k.bookingCount > 0) && (
                     <div className="mt-0.5 flex gap-1.5 text-xs text-ink-3">
                       {(k.kl ?? k.klAuto) && <span className="pill bg-accent-soft text-accent">{k.kl ?? k.klAuto}</span>}
@@ -208,6 +222,17 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             </Field>
             <Field label="Ghi chú" id="note" wide>
               <textarea id="note" name="note" rows={3} defaultValue={editing?.note ?? ''} className="input" />
+            </Field>
+            <Field label="Tag (cách nhau dấu phẩy)" id="tags" wide>
+              <input id="tags" name="tags" list="tag-list" defaultValue={editing?.tags.join(', ') ?? ''} placeholder="VD: Giao hàng chậm, Hợp mẹ bé" className="input" />
+              <datalist id="tag-list">{allTags.map((t) => <option key={t} value={t} />)}</datalist>
+            </Field>
+            <label className="col-span-full flex items-center gap-2 text-[13px]">
+              <input type="checkbox" name="blacklisted" defaultChecked={editing?.blacklisted} className="size-4" />
+              Blacklist: không book nữa (ẩn khỏi Creator matching, cảnh báo ở Listing)
+            </label>
+            <Field label="Lý do blacklist (bắt buộc nếu tick)" id="blacklistReason" wide>
+              <input id="blacklistReason" name="blacklistReason" defaultValue={editing?.blacklistReason ?? ''} className="input" />
             </Field>
             <p className="col-span-full -mb-1 border-t border-line pt-3 text-xs font-semibold text-ink-2">Nhận hàng mẫu</p>
             <Field label="Người nhận" id="receiverName">

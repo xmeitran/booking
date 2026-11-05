@@ -5,6 +5,7 @@ import { Role } from '@prisma/client';
 import { db } from '@/lib/db';
 import { isUniqueError, str } from '@/lib/form';
 import { fetchLarkProfiles } from '@/lib/lark';
+import { JOB_ROLES } from '@/lib/catalog';
 import { requireUser } from '@/lib/session';
 
 export async function saveUser(_: string | null, fd: FormData): Promise<string | null> {
@@ -14,6 +15,7 @@ export async function saveUser(_: string | null, fd: FormData): Promise<string |
   const role = str(fd, 'role') as Role;
   if (!larkUserId) return 'Nhập Lark User ID.';
   if (!Object.values(Role).includes(role)) return 'Vai trò không hợp lệ.';
+  const jobRole = JOB_ROLES.includes(str(fd, 'jobRole')) ? str(fd, 'jobRole') : null;
   // Admin không tự đổi ID / quyền / khóa chính mình để tránh mất quyền truy cập.
   if (id === me.id) redirect('/users');
 
@@ -37,8 +39,8 @@ export async function saveUser(_: string | null, fd: FormData): Promise<string |
   }
 
   try {
-    if (current) await db.user.update({ where: { id }, data: { larkUserId, role, active: fd.get('active') === 'on', ...profile } });
-    else await db.user.create({ data: { larkUserId, role, ...profile } });
+    if (current) await db.user.update({ where: { id }, data: { larkUserId, role, jobRole, active: fd.get('active') === 'on', ...profile } });
+    else await db.user.create({ data: { larkUserId, role, jobRole, ...profile } });
   } catch (e) {
     if (isUniqueError(e)) return 'Lark User ID này đã có trong danh sách.';
     throw e;

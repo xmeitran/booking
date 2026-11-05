@@ -101,7 +101,7 @@ export async function matchKocs(c: Criteria, brand?: string | null): Promise<Mat
   const norm = (brand ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   const [kocs, prices, booked] = await Promise.all([
     db.koc.findMany({
-      where: { platform: 'TikTok' },
+      where: { platform: 'TikTok', blacklisted: false }, // KOC blacklist không bao giờ được gợi ý
       select: {
         id: true, handle: true, name: true, nickname: true, avatarUrl: true, niche: true, kl: true, klAuto: true, followers: true,
         avgViews: true, unitsSold: true, gpmUsd: true, ttsProfile: true, bookingCount: true, statsAt: true, gmvRange: true,

@@ -56,6 +56,7 @@ export async function loadListing(batchId: string) {
     // "Doanh số ước tính 30 ngày" = GMV / khách × số món bán (spec); có GMV chính xác thì dùng luôn.
     const gmv30 = p.gmvExactVnd ?? (p.aovMid && k.unitsSold ? p.aovMid * k.unitsSold : null);
     const dup = [
+      ...(k.blacklisted ? [`Blacklist: ${k.blacklistReason ?? 'không ghi lý do'}`] : []),
       ...others.filter((o) => o.kocId === k.id).map((o) => `Ở đợt "${o.batch.name}" (${o.batch.createdBy.name ?? '—'})`),
       ...(bookings.get(k.handle) ?? []).filter((b) => sameBrand(b.brand, batch.brand) && months.includes(b.planMonth ?? ''))
         .map((b) => `Đã book ${b.brand} tháng ${b.planMonth}: ${b.code} (${b.pipeline ?? '—'})`),

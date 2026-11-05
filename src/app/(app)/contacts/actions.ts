@@ -42,6 +42,8 @@ export async function saveKoc(_: string | null, fd: FormData): Promise<string | 
   if (account === undefined) return 'Số tài khoản chỉ gồm 6–19 chữ số.';
   if (idNo === undefined) return 'CCCD 12 số, CMND 9 số hoặc MST 10 / 13 số.';
 
+  if (fd.get('blacklisted') === 'on' && !str(fd, 'blacklistReason')) return 'Ghi lý do đưa KOC vào blacklist.';
+
   const picId = str(fd, 'picId') || null;
   const data = {
     platform, handle, name, channelUrl, followers, rateCard,
@@ -50,6 +52,9 @@ export async function saveKoc(_: string | null, fd: FormData): Promise<string | 
     zalo: str(fd, 'zalo') || null,
     email: str(fd, 'email') || null,
     note: str(fd, 'note') || null,
+    tags: [...new Set(str(fd, 'tags').split(',').map((t) => t.trim()).filter(Boolean))].slice(0, 20),
+    blacklisted: fd.get('blacklisted') === 'on',
+    blacklistReason: fd.get('blacklisted') === 'on' ? str(fd, 'blacklistReason') || null : null,
     picId,
     kl: KL_LEVELS.includes(str(fd, 'kl')) ? str(fd, 'kl') : null,
     receiverName: str(fd, 'receiverName') || null,

@@ -80,6 +80,13 @@ export default async function KocPage({ params, searchParams }: { params: Promis
         </div>
       </div>
 
+      {(koc.blacklisted || koc.tags.length > 0) && (
+        <div className={`mb-4 flex flex-wrap items-center gap-2 rounded-md px-3 py-2 text-[13px] ${koc.blacklisted ? 'bg-critical-soft text-critical' : 'bg-sunken'}`}>
+          {koc.blacklisted && <b>Blacklist: {koc.blacklistReason ?? 'không ghi lý do'}.</b>}
+          {koc.tags.map((t) => <Link key={t} href={`/contacts?tag=${encodeURIComponent(t)}`} className="pill bg-surface text-ink-2">{t}</Link>)}
+        </div>
+      )}
+
       {tiktok && TIKTOK_MSG[tiktok] && (
         <div role="status" className={`mb-4 rounded-md px-3 py-2.5 ${tiktok === 'updated' ? 'bg-positive-soft text-positive' : 'bg-warning-soft text-warning'}`}>{TIKTOK_MSG[tiktok]}</div>
       )}

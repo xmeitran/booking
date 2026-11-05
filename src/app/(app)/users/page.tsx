@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Role } from '@prisma/client';
+import { JOB_ROLES } from '@/lib/catalog';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { requireUser, ROLE_LABEL } from '@/lib/session';
@@ -46,7 +47,10 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                   {u.jobTitle && <div className="text-xs text-ink-3">{u.jobTitle}</div>}
                 </td>
                 <td className="font-mono text-xs">{u.larkUserId}</td>
-                <td><span className={`pill ${ROLE_TONE[u.role]}`}>{ROLE_LABEL[u.role]}</span></td>
+                <td>
+                  <span className={`pill ${ROLE_TONE[u.role]}`}>{ROLE_LABEL[u.role]}</span>
+                  {u.jobRole && <div className="mt-0.5 text-xs text-ink-3">{u.jobRole}</div>}
+                </td>
                 <td>{u.active ? <span className="pill bg-positive-soft text-positive">Hoạt động</span> : <span className="pill bg-critical-soft text-critical">Đã khóa</span>}</td>
                 <td>{u.lastLoginAt ? fmtTime(u.lastLoginAt) : <span className="text-ink-3">Chưa đăng nhập</span>}</td>
                 <td className="text-right">{u.id !== me.id && <Link href={`?edit=${u.id}`} className="link">Sửa</Link>}</td>
@@ -66,10 +70,18 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
               <p className="mt-1 text-xs text-ink-3">Tên, email, avatar, phòng ban tự lấy từ Lark khi lưu.</p>
             </div>
             <div>
-              <label className="label" htmlFor="role">Vai trò</label>
+              <label className="label" htmlFor="role">Quyền trong app</label>
               <select id="role" name="role" defaultValue={editing?.role ?? 'STAFF'} className="input">
                 {Object.values(Role).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="jobRole">Vai trò nghiệp vụ</label>
+              <select id="jobRole" name="jobRole" defaultValue={editing?.jobRole ?? ''} className="input">
+                <option value="">—</option>
+                {JOB_ROLES.map((r) => <option key={r}>{r}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-ink-3">Quyền trong app vẫn theo ô ở trên; brand phụ trách gán ở Danh mục → brand.</p>
             </div>
             {editing && (
               <label className="flex items-center gap-2">

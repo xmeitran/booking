@@ -23,6 +23,7 @@ model User {
   department  String?
   jobTitle    String?
   role        Role      @default(STAFF)
+  jobRole     String?   // vai trò nghiệp vụ: Trưởng phòng / Booking PIC / Booking Support / Brand Manager
   active      Boolean   @default(true)
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
@@ -32,6 +33,9 @@ model User {
   listingItems   ListingItem[]
   kocNotes       KocNote[]
   matchBriefs    MatchBrief[]
+  brandMembers   BrandMember[]
+  planLines      PlanLine[]
+  jobs           Job[]
 }
 
 model Koc {
@@ -84,6 +88,10 @@ model Koc {
   listingItems ListingItem[]
   snapshots    KocSnapshot[]
   notes        KocNote[]
+  jobs         Job[]
+  tags            String[] @default([]) // nhãn nội bộ, vd "Giao hàng chậm", "Hợp brand mẹ bé"
+  blacklisted     Boolean  @default(false) // không book nữa: ẩn khỏi Creator matching
+  blacklistReason String?
 
   @@unique([platform, handle])
   @@index([niche])
@@ -163,6 +171,7 @@ model ListingBatch {
 
 // Một KOC trong đợt listing. Số liệu kênh (follower, GPM, chân dung...) đọc trực tiếp từ Koc, không chép vào đây.
 model ListingItem {
+  job          Job?
   id             String       @id @default(cuid())
   batchId        String
   batch          ListingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
@@ -243,6 +252,11 @@ model MatchBrief {
   plan        String?  // Content plan
   note        String?  // best practice (template) / ghi chú (brief)
   criteria    Json     @default("{}") // src/lib/matching.ts Criteria
+  brandId     String?
+  brandRef    Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  planLineId  String?
+  planLine    PlanLine? @relation(fields: [planLineId], references: [id], onDelete: SetNull)
+  decisions   MatchDecision[]
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -260,4 +274,186 @@ model SourceCache {
   updatedAt DateTime @default(now())
 
   @@id([source, kind])
+}
+
+// ---------------------------------------------------------------- Master data
+model Brand {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  logoUrl   String?
+  usp       String?  // điểm bán hàng chính
+  guideline String?  // brand guideline: link tài liệu + điểm chính (tone, từ cấm, claim được phép)
+  checklist String?  // tiêu chí nghiệm thu video, mỗi dòng một tiêu chí; trống = checklist mặc định
+  note      String?
+  stores    Store[]
+  products  Product[]
+  members   BrandMember[]
+  planLines PlanLine[]
+  jobs      Job[]
+  briefs    MatchBrief[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Store { // gian hàng
+  id       String    @id @default(cuid())
+  brandId  String
+  brand    Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name     String
+  platform String    @default("TikTok Shop")
+  url      String?
+  cr       Float?    // tỷ lệ chuyển đổi sản phẩm theo gian hàng, 0.05 = 5%
+  aov      Int?      // giá trị đơn trung bình, VND
+  products Product[]
+
+  @@unique([brandId, name])
+}
+
+model Product {
+  id        String     @id @default(cuid())
+  brandId   String
+  brand     Brand      @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  storeId   String?
+  store     Store?     @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  name      String
+  imageUrl  String?
+  usp       String?
+  price     Int?
+  link      String?
+  planLines PlanLine[]
+  jobs      Job[]
+}
+
+model TierPrice { // bảng giá booking theo tier KOC
+  id        String  @id @default(cuid())
+  tier      String  // KL1–KL7
+  priceType String  // Video, Phiên livestream...
+  minPrice  Int?
+  maxPrice  Int?
+  note      String?
+
+  @@unique([tier, priceType])
+}
+
+model BrandMember { // nhân sự phụ trách brand
+  brandId String
+  brand   Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    String // Booking PIC / Booking Support / Brand Manager
+
+  @@id([brandId, userId, role])
+}
+
+// ---------------------------------------------------------------- Plan
+model Plan {
+  id          String     @id @default(cuid())
+  name        String
+  month       String     // "2026-12"
+  budget      Int?
+  note        String?
+  createdById String
+  lines       PlanLine[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([month])
+}
+
+model PlanLine { // plan chi tiết: brand × tuần × tier × loại content
+  id          String       @id @default(cuid())
+  planId      String
+  plan        Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+  brandId     String?
+  brand       Brand?       @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  productId   String?
+  product     Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  week        Int?         // tuần 1–5 của tháng
+  tier        String?      // KL1–KL7
+  contentType String       @default("Video")
+  quantity    Int          @default(1)
+  budget      Int?
+  picId       String?
+  pic         User?        @relation(fields: [picId], references: [id], onDelete: SetNull)
+  note        String?
+  briefs      MatchBrief[]
+  jobs        Job[]
+}
+
+// ---------------------------------------------------------------- Matching
+model MatchDecision { // chọn / loại KOC trong một brief; loại bắt buộc có lý do
+  briefId  String
+  brief    MatchBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  kocId    String
+  decision String     // pick | reject
+  reason   String?
+  byId     String
+  at       DateTime   @default(now())
+
+  @@id([briefId, kocId])
+}
+
+// ---------------------------------------------------------------- Job (booking quản lý trong app)
+model Job {
+  id            String          @id @default(cuid())
+  number        Int             @unique @default(autoincrement())
+  kocId         String
+  koc           Koc             @relation(fields: [kocId], references: [id])
+  brandId       String?
+  brand         Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  productId     String?
+  product       Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  planLineId    String?
+  planLine      PlanLine?       @relation(fields: [planLineId], references: [id], onDelete: SetNull)
+  listingItemId String?         @unique
+  listingItem   ListingItem?    @relation(fields: [listingItemId], references: [id], onDelete: SetNull)
+  picId         String?
+  pic           User?           @relation(fields: [picId], references: [id], onDelete: SetNull)
+  stage         String          @default("Đã duyệt") // src/lib/jobs.ts STAGES
+  priceType     String          @default("Video")
+  price         Int?            // giá net
+  deadline      DateTime?       // hạn air
+  sample        String?         // hàng mẫu: Cần gửi / Đã gửi / KOC đã nhận / Đã hoàn / Không cần
+  brief         String?
+  briefApproved Boolean         @default(false)
+  submittedUrl  String?         // link video KOC nộp
+  submittedAt   DateTime?
+  review        Json?           // [{ item, result, at, note }] theo checklist nghiệm thu
+  reviewResult  String?         // Đạt / Cần sửa / Không đạt
+  reviewNote    String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  paymentId     String?
+  payment       PaymentRequest? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  note          String?
+  createdById   String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([stage])
+  @@index([brandId])
+  @@index([picId])
+}
+
+model PaymentRequest { // đề nghị thanh toán (ĐNTT) gom từ job đã nghiệm thu đạt
+  id          String   @id @default(cuid())
+  number      Int      @unique @default(autoincrement())
+  status      String   @default("Nháp") // Nháp / Đã gửi duyệt / Đã duyệt / Đã thanh toán
+  note        String?
+  createdById String
+  jobs        Job[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog { // lịch sử thay đổi
+  id       String   @id @default(cuid())
+  at       DateTime @default(now())
+  userId   String?
+  entity   String   // Job, Plan, Brand...
+  entityId String
+  action   String
+  detail   Json?
+
+  @@index([entity, entityId])
 }
