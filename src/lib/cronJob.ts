@@ -7,8 +7,18 @@ import { db } from './db';
  */
 export async function runOnce(id: string, gapMin: number, job: () => Promise<string>) {
   await db.syncState.createMany({ data: [{ id }], skipDuplicates: true });
+  const ago = (min: number) => new Date(Date.now() - min * 60_000);
+  // Chạy khi: chưa từng chạy; hoặc đã quá gapMin VÀ lượt trước đã xong (không chạy chồng khi Lark automation gọi dồn);
+  // hoặc lượt trước bắt đầu quá 30 phút mà chưa xong (bị ngắt giữa chừng do deploy / Render khởi động lại).
   const { count } = await db.syncState.updateMany({
-    where: { id, OR: [{ startedAt: null }, { startedAt: { lt: new Date(Date.now() - gapMin * 60_000) } }] },
+    where: {
+      id,
+      OR: [
+        { startedAt: null },
+        { startedAt: { lt: ago(gapMin) }, finishedAt: { not: null } },
+        { startedAt: { lt: ago(Math.max(gapMin, 30)) } },
+      ],
+    },
     data: { startedAt: new Date(), finishedAt: null },
   });
   if (!count) return NextResponse.json({ skipped: `Vừa chạy hoặc đang chạy, thử lại sau ${gapMin} phút.` }, { status: 429 });

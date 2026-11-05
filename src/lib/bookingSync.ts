@@ -216,6 +216,9 @@ export async function syncBookings() {
   return { total: seen.size, created, updated, removed, kocs };
 }
 
+/** Đồng bộ tự động (Lark automation, GitHub cron) chạy tối đa 1 lần / giờ; 55 để lịch gọi mỗi giờ lệch vài phút vẫn chạy. */
+export const AUTO_SYNC_GAP_MIN = 55;
+
 /** Một lượt đồng bộ, trả câu tóm tắt lưu ở SyncState (dùng cho cron và nút "Đồng bộ ngay"). */
 export async function syncBookingsJob() {
   const r = await syncBookings();

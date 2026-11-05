@@ -1,5 +1,5 @@
-import { syncBookingsJob } from '@/lib/bookingSync';
+import { AUTO_SYNC_GAP_MIN, syncBookingsJob } from '@/lib/bookingSync';
 import { runOnce } from '@/lib/cronJob';
 
-// Gọi 15 phút / lần từ GitHub Actions (.github/workflows/sync-bookings.yml); chạy tối đa 10 phút / lần.
-export const POST = () => runOnce('bookings', 10, syncBookingsJob);
+// Dự phòng cho Lark automation: GitHub Actions gọi 15 phút / lần (.github/workflows/sync-bookings.yml), chạy tối đa 1 lần / giờ.
+export const POST = () => runOnce('bookings', AUTO_SYNC_GAP_MIN, syncBookingsJob);
