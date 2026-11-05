@@ -70,7 +70,8 @@ export default async function KocPage({ params, searchParams }: { params: Promis
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {koc.platform === 'TikTok' && <Link href={`/creator/${koc.handle}`} className="btn">Hiệu quả ở mọi nguồn</Link>}
           <form action={refreshFromTikTok}>
             <input type="hidden" name="id" value={koc.id} />
             <button className="btn">Cập nhật từ TikTok</button>

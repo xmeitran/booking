@@ -8,7 +8,7 @@ import { db } from './db';
 // Chỉ dùng phép gộp cộng được qua các lô handle (mỗi creator chỉ nằm ở một lô): sum, count, count_distinct theo
 // trường của riêng creator, max. Không dùng avg vì không gộp đúng được.
 type Agg = 'sum' | 'count' | 'count_distinct' | 'max';
-export type Metric = { label: string; money?: boolean; field?: string; agg?: Agg };
+export type Metric = { label: string; hint?: string; money?: boolean; field?: string; agg?: Agg }; // hint: cách tính, hiện cho người xem
 // shop: cột để tách hiệu quả creator theo shop / brand / sản phẩm. target = mã tài khoản, Trạm trả tên đọc được kèm theo.
 export type Source = {
   key: string; group: 'lark' | 'partner' | 'seller'; name: string; note: string; user?: string; date?: string; metrics: Metric[];
@@ -17,42 +17,78 @@ export type Source = {
 export type ShopRow = { key: string; shop: string; m: number[] };
 export type SourceStats = { rows: number; creators: number; from: string | null; to: string | null; m: number[]; ours: { creators: number; m: number[] } };
 
-const GMV: Metric = { field: 'gmv', agg: 'sum', label: 'GMV', money: true };
-const ORDERS: Metric = { field: 'order_id', agg: 'count_distinct', label: 'Đơn' };
-const QTY: Metric = { field: 'quantity', agg: 'sum', label: 'Sản phẩm bán' };
-const ITEMS: Metric = { field: 'items', agg: 'sum', label: 'Sản phẩm bán' };
+const GMV: Metric = { field: 'gmv', agg: 'sum', label: 'GMV', money: true, hint: 'Giá × số lượng của các dòng đơn, tính cả đơn sau đó hoàn / huỷ' };
+const ORDERS: Metric = { field: 'order_id', agg: 'count_distinct', label: 'Đơn', hint: 'Số mã đơn khác nhau' };
+const QTY: Metric = { field: 'quantity', agg: 'sum', label: 'Sản phẩm bán', hint: 'Tổng số lượng sản phẩm trong các đơn' };
+const ITEMS: Metric = { field: 'items', agg: 'sum', label: 'Sản phẩm bán', hint: 'Tổng số lượng sản phẩm trong các đơn' };
+
+// Dữ liệu đi từ đâu tới Booking Hub, ai tạo ra số, bao lâu cập nhật: hiện ở tab Dữ liệu và trang creator để người xem tin số.
+export const ORIGIN = {
+  lark: { name: 'Lark Base', path: 'Team B2C nhập trên bảng "3.2 List duyệt book" → Booking Hub đồng bộ mỗi giờ', kind: 'Team tự điền', schedule: 'mỗi giờ' },
+  partner: { name: 'TikTok Partner Center', path: 'API TikTok của tài khoản MCN / TAP UpBase → Trạm dữ liệu lấy mỗi ngày → Booking Hub tổng hợp', kind: 'Số TikTok trả về', schedule: '6 giờ / lần' },
+  seller: { name: 'TikTok Seller Center', path: 'API TikTok của 8 shop seller → Trạm dữ liệu lấy mỗi ngày → Booking Hub tổng hợp', kind: 'Số TikTok trả về', schedule: '6 giờ / lần' },
+  marketplace: { name: 'Creator Marketplace', path: 'Booking Hub tự gọi API TikTok Shop (token shop của Trạm), số 30 ngày gần nhất của từng KOL Danh bạ', kind: 'Số TikTok trả về', schedule: 'mỗi giờ, KOL cũ hơn 7 ngày' },
+} as const;
+export const originOf = (s: Source) => ORIGIN[s.key === 'marketplace' ? 'marketplace' : s.group];
 const SHOP = { field: 'target', label: 'Shop', target: true }; // 8 shop seller trên Trạm
 
 export const LARK: Source = {
   key: 'lark', group: 'lark', name: '3.2 List duyệt book', note: 'Mỗi dòng là một booking; số video do team điền trên Lark',
-  metrics: [{ label: 'Booking' }, { label: 'Chi phí', money: true }, { label: 'View 30 ngày' }, { label: 'GMV 30 ngày', money: true }, { label: 'Đơn 30 ngày' }],
+  metrics: [
+    { label: 'Booking', hint: 'Số dòng booking' }, { label: 'Chi phí', money: true, hint: 'Cột chi phí booking trên Lark' },
+    { label: 'View 30 ngày', hint: 'Team điền trên Lark (cột 🌸 Views 30 ngày), không phải số TikTok trả' },
+    { label: 'GMV 30 ngày', money: true, hint: 'Team điền trên Lark (cột 🌸 GMV 30 ngày)' }, { label: 'Đơn 30 ngày', hint: 'Team điền trên Lark (cột 🌸 Số đơn hàng 30 ngày)' },
+  ],
   shop: { field: 'brand', label: 'Brand' },
 };
 export const MARKET: Source = {
   key: 'marketplace', group: 'seller', name: 'Creator Marketplace (Booking Hub tự tra)', note: 'Hồ sơ 30 ngày của KOL Danh bạ, tra mỗi giờ bằng token shop của Trạm',
-  metrics: [{ label: 'Follower' }, { label: 'View TB / video' }, { label: 'View TB / LIVE' }, { label: 'Sản phẩm bán 30 ngày' }],
+  metrics: [
+    { label: 'Follower', hint: 'TikTok trả lúc tra' }, { label: 'View TB / video', hint: 'Lượt xem trung bình / video bán hàng, 30 ngày' },
+    { label: 'View TB / LIVE', hint: 'Lượt xem trung bình / LIVE bán hàng, 30 ngày' }, { label: 'Sản phẩm bán 30 ngày', hint: 'Mọi shop trên TikTok Shop, không riêng shop UpBase' },
+  ],
 };
 
 // Bảng của Trạm dữ liệu. user = cột username creator, date = cột ngày (để biết dữ liệu phủ từ ngày nào tới ngày nào).
 export const STATION: Source[] = [
   { key: 'cap_orders', group: 'partner', name: 'Đơn MCN (CAP)', note: 'Đơn của creator thuộc MCN, mọi shop trên sàn', user: 'creator_username', date: 'day', metrics: [GMV, ORDERS, QTY], shop: { field: 'shop_name', label: 'Shop' } },
   { key: 'live_sessions', group: 'partner', name: 'Phiên live MCN', note: 'Phiên live của creator thuộc MCN', user: 'creator_username', date: 'day',
-    metrics: [{ field: 'session_id', agg: 'count', label: 'Phiên live' }, GMV, ITEMS] },
+    metrics: [{ field: 'session_id', agg: 'count', label: 'Phiên live', hint: 'Số phiên live; đơn sau nửa đêm tính về ngày phiên bắt đầu' }, GMV, ITEMS] },
   { key: 'tap_orders', group: 'partner', name: 'Đơn chiến dịch TAP', note: 'Đơn thuộc chiến dịch TAP của partner', user: 'creator_username', date: 'day', metrics: [GMV, ORDERS, QTY], shop: { field: 'product_name', label: 'Sản phẩm' } },
   { key: 'tap_campaign_creators', group: 'partner', name: 'Creator nhận chiến dịch TAP', note: 'Creator đã nhận sản phẩm trong chiến dịch TAP', user: 'user_name', date: 'effective_start',
-    metrics: [{ field: 'follower_num', agg: 'max', label: 'Follower (cao nhất)' }, { field: 'video_count', agg: 'sum', label: 'Video' }, { field: 'room_count', agg: 'sum', label: 'Phiên live' }, { field: 'paid_amount', agg: 'sum', label: 'Đã trả', money: true }] },
+    metrics: [
+      { field: 'follower_num', agg: 'max', label: 'Follower (cao nhất)', hint: 'Follower lúc nhận chiến dịch, lấy số cao nhất' },
+      { field: 'video_count', agg: 'sum', label: 'Video', hint: 'Video làm cho sản phẩm chiến dịch' }, { field: 'room_count', agg: 'sum', label: 'Phiên live', hint: 'Phiên live cho sản phẩm chiến dịch' },
+      { field: 'paid_amount', agg: 'sum', label: 'Đã trả', money: true, hint: 'Tiền đã trả theo chiến dịch' },
+    ] },
   { key: 'seller_creator_insights', group: 'partner', name: 'Hồ sơ creator MCN (30 ngày)', note: 'Creator MCN tra trên Creator Marketplace, chụp mỗi ngày', user: 'username', date: 'day',
-    metrics: [{ field: 'follower_count', agg: 'max', label: 'Follower (cao nhất)' }, { field: 'avg_video_views', agg: 'max', label: 'View TB / video (cao nhất)' }, { field: 'units_sold', agg: 'max', label: 'Sản phẩm bán 30 ngày (cao nhất)' }] },
+    metrics: [
+      { field: 'follower_count', agg: 'max', label: 'Follower (cao nhất)', hint: 'Ảnh chụp hồ sơ mỗi ngày, lấy số cao nhất' },
+      { field: 'avg_video_views', agg: 'max', label: 'View TB / video (cao nhất)', hint: 'Lượt xem trung bình / video bán hàng 30 ngày' },
+      { field: 'units_sold', agg: 'max', label: 'Sản phẩm bán 30 ngày (cao nhất)', hint: 'Mọi shop trên TikTok Shop' },
+    ] },
   { key: 'shop_creators', group: 'seller', name: 'Creator hợp tác với shop', note: 'Gộp đơn, video, LIVE theo creator của 8 shop', user: 'creator_username', date: 'day',
-    metrics: [GMV, ITEMS, { field: 'video_views', agg: 'sum', label: 'Lượt xem video' }, { field: 'live_viewers', agg: 'sum', label: 'Người xem LIVE' }], shop: SHOP },
+    metrics: [
+      { ...GMV, hint: 'GMV đơn affiliate creator bán cho shop' }, ITEMS,
+      { field: 'video_views', agg: 'sum', label: 'Lượt xem video', hint: 'Lượt xem các video gắn sản phẩm của shop' },
+      { field: 'live_viewers', agg: 'sum', label: 'Người xem LIVE', hint: 'Người xem các phiên LIVE bán sản phẩm của shop' },
+    ], shop: SHOP },
   { key: 'seller_orders', group: 'seller', name: 'Đơn affiliate của shop', note: 'Mọi đơn affiliate, của mọi creator bán cho shop', user: 'creator_username', date: 'day',
-    metrics: [GMV, ORDERS, QTY, { field: 'est_paid_commission', agg: 'sum', label: 'Hoa hồng ước tính', money: true }], shop: SHOP },
+    metrics: [GMV, ORDERS, QTY, { field: 'est_paid_commission', agg: 'sum', label: 'Hoa hồng ước tính', money: true, hint: 'Hoa hồng shop trả creator, ước tính lúc đặt đơn' }], shop: SHOP },
   { key: 'shop_videos', group: 'seller', name: 'Video gắn sản phẩm shop', note: 'Hiệu quả từng video theo ngày', user: 'creator_username', date: 'day',
-    metrics: [{ field: 'video_id', agg: 'count_distinct', label: 'Video' }, { field: 'views', agg: 'sum', label: 'Lượt xem' }, { field: 'attributed_gmv', agg: 'sum', label: 'GMV', money: true }, { field: 'items_sold', agg: 'sum', label: 'Sản phẩm bán' }], shop: SHOP },
+    metrics: [
+      { field: 'video_id', agg: 'count_distinct', label: 'Video', hint: 'Số video khác nhau gắn sản phẩm của shop' },
+      { field: 'views', agg: 'sum', label: 'Lượt xem', hint: 'Cộng lượt xem từng ngày của các video' },
+      { field: 'attributed_gmv', agg: 'sum', label: 'GMV', money: true, hint: 'GMV trực tiếp + gián tiếp TikTok tính cho video' },
+      { field: 'items_sold', agg: 'sum', label: 'Sản phẩm bán', hint: 'Sản phẩm bán từ video' },
+    ], shop: SHOP },
   { key: 'shop_lives', group: 'seller', name: 'Phiên LIVE bán sản phẩm shop', note: 'Số của trọn phiên', user: 'creator_username', date: 'day',
-    metrics: [{ field: 'live_id', agg: 'count_distinct', label: 'Phiên' }, { field: 'viewers', agg: 'sum', label: 'Người xem' }, GMV, { field: 'items_sold', agg: 'sum', label: 'Sản phẩm bán' }], shop: SHOP },
+    metrics: [
+      { field: 'live_id', agg: 'count_distinct', label: 'Phiên', hint: 'Số phiên LIVE có bán sản phẩm của shop' }, { field: 'viewers', agg: 'sum', label: 'Người xem', hint: 'Người xem của các phiên' },
+      { ...GMV, hint: 'GMV trọn phiên, trực tiếp + gián tiếp' }, { field: 'items_sold', agg: 'sum', label: 'Sản phẩm bán', hint: 'Sản phẩm bán trong phiên' },
+    ], shop: SHOP },
   { key: 'seller_samples', group: 'seller', name: 'Yêu cầu hàng mẫu', note: 'Creator xin mẫu sản phẩm của shop, mọi trạng thái', user: 'creator_username', date: 'first_seen_at',
-    metrics: [{ field: 'application_id', agg: 'count', label: 'Yêu cầu mẫu' }], shop: SHOP },
+    metrics: [{ field: 'application_id', agg: 'count', label: 'Yêu cầu mẫu', hint: 'Số lần creator xin mẫu, mọi trạng thái' }], shop: SHOP },
 ];
 
 export const sourceOf = (key: string) => [LARK, MARKET, ...STATION].find((s) => s.key === key);
@@ -294,4 +330,42 @@ export async function creatorSources(handle: string) {
     const r = rows.find((x) => x.source === s.key);
     return r ? [{ s, m: r.m, shops: (r.shops ?? []) as ShopRow[], at: r.updatedAt }] : [];
   });
+}
+
+export type CreatorSource = { s: Source; m: number[] | null; shops: ShopRow[]; from: 'saved' | 'top' | 'live' | null };
+
+/**
+ * Một creator ở từng bảng Trạm, từ bản kéo sẵn: KOL Danh bạ (CreatorMetric, đã đối chiếu mọi bảng nên không có = không có)
+ * hoặc top 200 của bảng (SourceCache). from = null: chưa có trong bản kéo sẵn.
+ */
+export async function creatorStation(handle: string): Promise<CreatorSource[]> {
+  const h = handle.toLowerCase();
+  const [saved, tops] = await Promise.all([
+    db.creatorMetric.findMany({ where: { handle: h } }),
+    db.$queryRaw<{ source: string; elem: TopRow }[]>`
+      select source, elem from "SourceCache", jsonb_array_elements(data) elem where kind = 'top' and lower(elem->>'handle') = ${h}`,
+  ]);
+  return STATION.map((s): CreatorSource => {
+    const a = saved.find((x) => x.source === s.key);
+    if (a) return { s, m: a.m, shops: (a.shops ?? []) as ShopRow[], from: 'saved' };
+    const t = tops.find((x) => x.source === s.key)?.elem;
+    return t ? { s, m: t.m, shops: t.shops ?? [], from: 'top' } : { s, m: null, shops: [], from: null };
+  });
+}
+
+/** Tra trực tiếp một creator ở một bảng Trạm (khi chưa có trong bản kéo sẵn). null = creator không có ở bảng này. */
+export async function liveCreator(s: Source, handle: string): Promise<CreatorSource> {
+  const f = [{ field: s.user, op: 'eq', value: handle }];
+  const t = (await explore({ dataset: s.key, limit: 1, metrics: [{ field: '*', agg: 'count' }, ...metricsOf(s)], filters: f })).totals;
+  if (!Number(t.m0)) return { s, m: null, shops: [], from: 'live' };
+  const r = s.shop ? await explore({ dataset: s.key, groupBy: [{ field: s.shop.field }], metrics: metricsOf(s), filters: f, sort: [{ by: 'm0', dir: 'desc' }], limit: SHOPS_KEPT }) : null;
+  return { s, m: vals(t, 1, s.metrics.length), shops: r ? r.rows.map((x: Record<string, unknown>) => toShop(s, x, r.labels, 0)) : [], from: 'live' };
+}
+
+export type RawColumn = { id: string; label: string; type: string };
+
+/** Dòng gốc mới nhất của creator ở một bảng Trạm (đơn, video, phiên...), để người xem tự đối chiếu số tổng. */
+export async function rawRows(s: Source, handle: string, limit = 50) {
+  const r = await explore({ dataset: s.key, filters: [{ field: s.user, op: 'eq', value: handle }], limit });
+  return { columns: r.columns as RawColumn[], rows: r.rows as Record<string, unknown>[], total: Number(r.total), labels: (r.labels?.target ?? {}) as Record<string, string> };
 }

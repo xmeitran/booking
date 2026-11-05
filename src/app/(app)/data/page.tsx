@@ -2,12 +2,12 @@ import Link from 'next/link';
 import { Avatar } from '@/components/ui';
 import { CHECKS, QUALITY_DAYS, qualityCounts, qualityRows } from '@/lib/dataQuality';
 import { db } from '@/lib/db';
-import { byShop, LARK, larkStats, MARKET, marketStats, sourceOf, STATION, topCreators, type ShopRow, type Source, type SourceStats, type TopRow } from '@/lib/dataSources';
+import { byShop, LARK, larkStats, MARKET, marketStats, ORIGIN, originOf, sourceOf, STATION, topCreators, type ShopRow, type Source, type SourceStats, type TopRow } from '@/lib/dataSources';
 import { fmtDate, fmtNum, fmtPct, fmtShort } from '@/lib/format';
 import { requireUser } from '@/lib/session';
 import { refreshData } from './actions';
 
-type Search = { src?: string; ours?: string; by?: string; check?: string; view?: string; shop?: string };
+type Search = { src?: string; ours?: string; by?: string; check?: string; view?: string; shop?: string; notfound?: string };
 type Saved = SourceStats | { error: string } | undefined;
 
 const GROUP = { lark: 'Lark Base', partner: 'TikTok Partner Center', seller: 'TikTok Seller Center' };
@@ -22,13 +22,16 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
   if (src) return <Drill s={src} ours={sp.ours === '1'} shopView={sp.view === 'shop' && Boolean(src.shop)} shop={src.shop ? sp.shop : undefined} by={Math.min(Math.max(Math.trunc(Number(sp.by)) || 0, 0), src.metrics.length - 1)} />;
   if (sp.check && CHECKS.some((c) => c.key === sp.check)) return <CheckList check={sp.check} />;
 
-  const [state, lark, market, kocTotal, quality] = await Promise.all([
+  const [state, lark, market, kocTotal, quality, syncs] = await Promise.all([
     db.syncState.findUnique({ where: { id: 'data-sources' } }),
     larkStats(),
     marketStats(),
     db.koc.count({ where: { platform: 'TikTok' } }),
     qualityCounts(),
+    db.syncState.findMany({ where: { id: { in: ['bookings', 'creators'] } } }),
   ]);
+  const syncAt = (id: string) => syncs.find((x) => x.id === id)?.finishedAt ?? null;
+  const origins: [keyof typeof ORIGIN, Date | null][] = [['lark', syncAt('bookings')], ['partner', state?.finishedAt ?? null], ['seller', state?.finishedAt ?? null], ['marketplace', syncAt('creators')]];
   const saved = (state?.data ?? {}) as Record<string, Saved>;
   const running = Boolean(state?.startedAt && !state.finishedAt);
   const groups: { key: keyof typeof GROUP; note: string; rows: [Source, Saved, string?][] }[] = [
@@ -45,21 +48,52 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Dữ liệu</h1>
-          <p className="mt-1 text-[13px] text-ink-2">Mỗi nguồn có bao nhiêu creator, bao nhiêu KOL trong Danh bạ ({fmtNum(kocTotal)}) có mặt, và hiệu quả của họ. Bấm tên bảng để xem từng creator.</p>
+          <p className="mt-1 max-w-3xl text-[13px] text-ink-2">
+            Booking Hub lấy số về creator từ 4 nơi dưới đây. Mỗi bảng cho biết có bao nhiêu creator, bao nhiêu KOL trong Danh bạ ({fmtNum(kocTotal)}) có mặt và hiệu quả của họ.
+            Bấm tên bảng để xem từng creator; bấm một creator để xem đủ mọi nguồn và dữ liệu gốc.
+          </p>
         </div>
-        <form action={refreshData} className="flex items-center gap-3">
-          <span className="text-xs text-ink-3">
-            {running ? 'Đang tổng hợp TikTok, tải lại trang sau 1–2 phút' : state?.finishedAt ? `TikTok tổng hợp ${fmtTime(state.finishedAt)} · ${state.message}` : 'TikTok chưa tổng hợp'}
-          </span>
-          <button className="btn" disabled={running}>Làm mới</button>
-        </form>
+        <div className="flex flex-col items-end gap-2">
+          <form action="/creator" className="flex gap-2">
+            <input name="h" required placeholder="@username hoặc link TikTok" aria-label="Tra một creator" className="input h-8 w-64 text-[13px]" />
+            <button className="btn h-8 px-3 text-xs">Tra creator</button>
+          </form>
+          <form action={refreshData} className="flex items-center gap-2">
+            <span className="text-xs text-ink-3">
+              {running ? 'Đang tổng hợp TikTok (~10 phút), tải lại trang sau' : state?.finishedAt ? `TikTok tổng hợp ${fmtTime(state.finishedAt)} · ${state.message}` : 'TikTok chưa tổng hợp'}
+            </span>
+            <button className="btn h-8 px-3 text-xs" disabled={running}>Làm mới</button>
+          </form>
+        </div>
       </div>
+      {sp.notfound && <p role="alert" className="mb-3 rounded-md bg-warning-soft px-3 py-2 text-warning">Không đọc được username TikTok. Nhập dạng @username hoặc dán link kênh.</p>}
+
+      <section className="mb-6">
+        <h2 className="mb-2 text-base font-semibold">Dữ liệu đến từ đâu</h2>
+        <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {origins.map(([k, at], i) => (
+            <li key={k} className="rounded-lg border border-line bg-surface px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[13px] font-semibold"><span className="mr-1.5 text-ink-3">{i + 1}.</span>{ORIGIN[k].name}</span>
+                <KindPill k={k} />
+              </div>
+              <p className="mt-1 text-xs text-ink-2">{ORIGIN[k].path}</p>
+              <p className="mt-1.5 text-xs text-ink-3">Cập nhật {ORIGIN[k].schedule}{at ? ` · lần cuối ${fmtTime(at)}` : ' · chưa chạy'}</p>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-2 text-xs text-ink-3">
+          <span className="pill bg-positive-soft text-positive">Số TikTok trả về</span> = API TikTok trả, không ai sửa tay.{' '}
+          <span className="pill bg-warning-soft text-warning">Team tự điền</span> = team nhập trên Lark, có thể thiếu hoặc sai (xem mục Kiểm soát nhập liệu cuối trang).
+        </p>
+      </section>
 
       <div className="space-y-5">
         {groups.map((g) => (
           <section key={g.key}>
-            <div className="mb-2 flex flex-wrap items-baseline gap-x-3">
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
               <h2 className="text-base font-semibold">{GROUP[g.key]}</h2>
+              <KindPill k={g.key} />
               <span className="text-xs text-ink-3">{g.note}</span>
             </div>
             <div className="overflow-x-auto rounded-lg border border-line bg-surface">
@@ -133,7 +167,7 @@ function Metrics({ s, m }: { s: Source; m: number[] }) {
     <dl className="grid grid-cols-[auto_1fr] gap-x-3 text-[13px] whitespace-nowrap">
       {s.metrics.map((x, i) => (
         <div key={x.label} className="contents">
-          <dt className="text-ink-3">{x.label}</dt>
+          <dt className={`text-ink-3 ${x.hint ? 'cursor-help underline decoration-dotted underline-offset-2' : ''}`} title={x.hint}>{x.label}</dt>
           <dd className="text-right tabular-nums">{val(m[i], x.money)}</dd>
         </div>
       ))}
@@ -168,8 +202,8 @@ async function Drill({ s, ours, shopView, shop, by }: { s: Source; ours: boolean
     return `/data?${p}`;
   };
   const shopName = shop !== undefined ? rows[0]?.shops?.find((x) => x.key === shop)?.shop ?? (shop || '(trống)') : '';
-  const sortHead = (x: { label: string }, i: number) => (
-    <th key={x.label} className="text-right">
+  const sortHead = (x: { label: string; hint?: string }, i: number) => (
+    <th key={x.label} className="text-right" title={x.hint}>
       <Link href={href({ by: i })} className={i === by ? 'text-ink' : 'hover:text-ink'}>{x.label}{i === by ? ' ↓' : ''}</Link>
     </th>
   );
@@ -198,6 +232,15 @@ async function Drill({ s, ours, shopView, shop, by }: { s: Source; ours: boolean
           </div>
         )}
       </div>
+
+      <dl className="mb-3 grid gap-x-6 gap-y-1 rounded-md bg-sunken px-3 py-2 text-xs sm:grid-cols-3">
+        <div><dt className="inline text-ink-3">Đến từ: </dt><dd className="inline">{originOf(s).path}</dd></div>
+        <div><dt className="inline text-ink-3">Loại số: </dt><dd className="inline"><KindPill k={s.key === 'marketplace' ? 'marketplace' : s.group} /></dd></div>
+        <div>
+          <dt className="inline text-ink-3">Số trên trang: </dt>
+          <dd className="inline">{at ? `kéo sẵn lúc ${fmtTime(at)}` : local || ours ? 'lưu trong Booking Hub' : 'tra trực tiếp lúc mở trang'} · cập nhật {originOf(s).schedule}</dd>
+        </div>
+      </dl>
 
       {shop !== undefined && !shopView && (
         <p className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
@@ -248,15 +291,11 @@ async function Drill({ s, ours, shopView, shop, by }: { s: Source; ours: boolean
                   <tr key={r.handle} className="align-top">
                     <td className="text-ink-3 tabular-nums">{n + 1}</td>
                     <td>
-                      {k ? (
-                        <Link href={`/contacts/${k.id}`} className="flex items-center gap-2">
-                          <Avatar src={k.avatarUrl} name={k.nickname ?? k.name} size={24} />
-                          <span className="link">@{r.handle}</span>
-                          <span className="pill bg-accent-soft text-accent">Danh bạ</span>
-                        </Link>
-                      ) : (
-                        <a href={`https://www.tiktok.com/@${encodeURIComponent(r.handle)}`} target="_blank" rel="noreferrer" className="hover:underline">@{r.handle}</a>
-                      )}
+                      <Link href={`/creator/${encodeURIComponent(r.handle.toLowerCase())}`} className="flex items-center gap-2" title="Xem hiệu quả ở mọi nguồn và dữ liệu gốc">
+                        <Avatar src={k?.avatarUrl} name={k ? k.nickname ?? k.name : r.handle} size={24} />
+                        <span className="link">@{r.handle}</span>
+                        {k && <span className="pill bg-accent-soft text-accent">Danh bạ</span>}
+                      </Link>
                     </td>
                     {s.metrics.map((x, i) => <td key={x.label} className="text-right tabular-nums">{cell(x, r.m[i])}</td>)}
                     {s.shop && <td><Shops s={s} list={r.shops ?? []} href={(key) => href({ shop: key })} /></td>}
@@ -276,6 +315,14 @@ async function Drill({ s, ours, shopView, shop, by }: { s: Source; ours: boolean
         {s.shop && !shopView && ` Cột ${s.shop.label.toLowerCase()}: tối đa 20 ${s.shop.label.toLowerCase()} lớn nhất mỗi creator, theo ${s.metrics[0].label}; bấm để lọc.`}
         {at && ` Số kéo sẵn lúc ${fmtTime(at)} (tự cập nhật 6 giờ một lần, hoặc bấm Làm mới ở trang Dữ liệu).`}
       </p>
+      <section className="mt-4 rounded-lg border border-line bg-sunken px-5 py-3 text-[13px]">
+        <h2 className="mb-1.5 text-sm font-semibold">Các cột được tính thế nào</h2>
+        <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+          {s.metrics.map((x) => (
+            <div key={x.label}><dt className="inline font-medium">{x.label}: </dt><dd className="inline text-ink-2">{x.hint ?? '—'}</dd></div>
+          ))}
+        </dl>
+      </section>
     </>
   );
 }
@@ -328,4 +375,9 @@ async function CheckList({ check }: { check: string }) {
       </div>
     </>
   );
+}
+
+function KindPill({ k }: { k: keyof typeof ORIGIN }) {
+  const team = ORIGIN[k].kind === 'Team tự điền';
+  return <span className={`pill ${team ? 'bg-warning-soft text-warning' : 'bg-positive-soft text-positive'}`}>{ORIGIN[k].kind}</span>;
 }

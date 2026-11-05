@@ -85,6 +85,14 @@ Thay file "Excel Listing" theo sheet *[Booking] - Requirement Excel Listing (UpA
 - **Brand duyệt online**: nút Tạo link sinh `/review/<token>`; Brand mở không cần đăng nhập, chọn Yes / No / Cân nhắc + lý do.
   Trang này không có SĐT, địa chỉ, ngân hàng, CCCD; thu hồi link là hết hiệu lực ngay.
 
+## Trang hiệu quả creator
+
+`/creator/<username>` (bấm creator ở bất kỳ bảng nào trong tab Dữ liệu, nút "Hiệu quả ở mọi nguồn" trong hồ sơ KOC, hoặc ô
+"Tra creator"): creator có mặt ở bảng nào trong 4 nguồn, số mỗi bảng kèm cách tính, theo shop / brand, booking với UpBase,
+và nút **Xem dữ liệu gốc** (50 dòng mới nhất TikTok trả về) để đối chiếu. Mỗi bảng ghi rõ dữ liệu đến từ đâu, phủ từ ngày nào,
+số kéo sẵn lúc nào hay vừa tra trực tiếp, và nhãn "Số TikTok trả về" / "Team tự điền". Số lấy từ bản kéo sẵn; creator ngoài
+Danh bạ chưa có trong bản kéo sẵn thì tra trực tiếp Trạm (~0,5 giây / bảng).
+
 ## Creator matching
 
 `/matching`: B2C soạn **best practice theo ngành hàng** (ghi chú + bộ tiêu chí). Mỗi **brief brand** chép tiêu chí từ best practice
