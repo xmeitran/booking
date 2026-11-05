@@ -64,3 +64,10 @@ test('parseHandle nhận @username, username, link kênh / link video', async ()
   assert.equal(parseHandle('https://www.tiktok.com/@_thanhthuy.hhvn_/video/7687586402111933716?q=_'), '_thanhthuy.hhvn_');
   assert.equal(parseHandle('CTV Tuấn Anh'), null);
 });
+
+test('gmvLabel quy USD ra ₫, giữ nguyên khoảng', async () => {
+  const { gmvLabel } = await import('./kocInsights');
+  assert.equal(gmvLabel('1M₫+'), '1M₫+');
+  assert.equal(gmvLabel(null), null);
+  assert.match(gmvLabel('3.064 USD')!, /^~79,7\sTr ₫$/);
+});

@@ -4,6 +4,7 @@ import { bookingWhere, FLAGS } from '@/lib/bookings';
 import { extraNum } from '@/lib/dataSources';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort } from '@/lib/format';
+import { CANCELLED, jobCode } from '@/lib/jobs';
 import { requireUser } from '@/lib/session';
 
 const vnDay = (offset = 0) => {
@@ -26,7 +27,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
   const pick = { id: true, code: true, channel: true, brand: true, planAirDate: true, airDate: true, pipeline: true } as const;
   const upcoming: Prisma.BookingWhereInput = { airDate: null, planAirDate: { gte: vnDay(), lt: vnDay(8) }, pipeline: { notIn: ['Làm ĐNTT', 'Done'] } };
 
-  const [airLate, noLink, soon, follow, listings, flagCounts, agg] = await Promise.all([
+  const [airLate, noLink, soon, follow, listings, flagCounts, agg, myJobs, myLines] = await Promise.all([
     db.booking.findMany({ where: { AND: [mine, FLAGS.airLate.where()] }, select: pick, orderBy: { planAirDate: 'asc' } }),
     db.booking.findMany({ where: { AND: [mine, FLAGS.noLink.where()] }, select: pick, orderBy: { airDate: 'desc' } }),
     db.booking.findMany({ where: { AND: [mine, upcoming] }, select: pick, orderBy: { planAirDate: 'asc' } }),
@@ -35,8 +36,10 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
       include: { koc: { select: { id: true, handle: true, name: true, nickname: true } } }, orderBy: { followUpAt: 'asc' },
     }),
     db.listingBatch.findMany({
-      where: { createdById: me.id, items: { some: { brandChoice: null } } },
-      select: { id: true, name: true, brand: true, shareToken: true, items: { select: { brandChoice: true } } }, orderBy: { updatedAt: 'desc' },
+      // Đợt của tôi còn KOC chưa được Brand chọn, hoặc chưa thêm KOC nào.
+      where: { createdById: me.id, OR: [{ items: { some: { brandChoice: null, koc: { blacklisted: false } } } }, { items: { none: {} } }] },
+      // KOC blacklist không đưa cho Brand chọn nên không tính là "chưa chọn".
+      select: { id: true, name: true, brand: true, shareToken: true, items: { where: { koc: { blacklisted: false } }, select: { brandChoice: true } } }, orderBy: { updatedAt: 'desc' },
     }),
     Promise.all(Object.keys(FLAGS).map(async (k) => [k, await db.booking.count({ where: bookingWhere({ flag: k }) })] as const)),
     db.$queryRaw<Agg[]>`
@@ -45,7 +48,25 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         coalesce(sum(${extraNum('views30')}), 0)::float views, coalesce(sum(${extraNum('gmv30')}), 0)::float gmv
       from "Booking" where "planMonth" = ${month}
       group by grouping sets ((brand), (owner), ())`,
+    // Job và plan quản lý trong app (luồng mới), giao cho tôi.
+    db.job.findMany({
+      where: { picId: me.id, stage: { not: CANCELLED } },
+      select: { id: true, number: true, stage: true, deadline: true, koc: { select: { nickname: true, name: true } }, brand: { select: { name: true } } },
+      orderBy: { deadline: { sort: 'asc', nulls: 'last' } },
+    }),
+    db.planLine.findMany({
+      where: { picId: me.id, plan: { month: { gte: thisMonth().replace('/', '-') } } },
+      include: { plan: { select: { id: true, name: true, month: true } }, brand: { select: { name: true } }, _count: { select: { jobs: { where: { stage: { not: CANCELLED } } } } } },
+    }),
   ]);
+  const beforeSubmit = ['Đã duyệt', 'Đã chốt', 'Gửi hàng', 'Đang quay'];
+  const jobsLate = myJobs.filter((j) => j.deadline && j.deadline < vnDay() && beforeSubmit.includes(j.stage));
+  const jobsReview = myJobs.filter((j) => j.stage === 'Đã nộp');
+  const jobsPay = myJobs.filter((j) => j.stage === 'Nghiệm thu');
+  const linesShort = myLines.filter((l) => l._count.jobs < l.quantity);
+  const jobLine = (j: (typeof myJobs)[number], note: string) => (
+    <Line key={j.id} href={`/jobs/${j.id}`} main={`${j.koc.nickname ?? j.koc.name} · ${j.brand?.name ?? '—'}`} sub={`${jobCode(j.number)} · ${note}`} />
+  );
   const total = agg.find((a) => a.gb && a.go);
   const byBrand = agg.filter((a) => !a.gb).sort((a, b) => b.cost - a.cost);
   const byOwner = agg.filter((a) => !a.go).sort((a, b) => b.n - a.n);
@@ -60,7 +81,31 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
       </div>
 
       <h2 className="mb-2 text-base font-semibold">Việc của bạn</h2>
-      <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <h3 className="mb-2 text-[13px] font-semibold text-ink-2">Listing, job và plan (quản lý trong app)</h3>
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <Card title="Listing chờ Brand chọn" count={listings.length} href="/listing" empty="Không có đợt listing nào chờ Brand.">
+          {listings.slice(0, 5).map((l) => (
+            <Line key={l.id} href={`/listing/${l.id}`} main={l.name}
+              sub={!l.items.length ? 'Chưa thêm KOC' : `${l.items.filter((i) => !i.brandChoice).length}/${l.items.length} KOC chưa chọn${l.shareToken ? ' · đã gửi link' : ' · chưa gửi link'}`} />
+          ))}
+        </Card>
+        <Card title="Job trễ deadline" tone="critical" count={jobsLate.length} href="/jobs?mine=1&late=1" empty="Không có job trễ.">
+          {jobsLate.slice(0, 5).map((j) => jobLine(j, `hạn ${fmtDate(j.deadline)} · ${j.stage}`))}
+        </Card>
+        <Card title="Job chờ nghiệm thu" tone="warning" count={jobsReview.length} href="/jobs?mine=1" empty="Không có video chờ nghiệm thu.">
+          {jobsReview.slice(0, 5).map((j) => jobLine(j, 'KOC đã nộp link'))}
+        </Card>
+        <Card title="Job chờ đề nghị thanh toán" count={jobsPay.length} href="/payments" empty="Không có job chờ ĐNTT.">
+          {jobsPay.slice(0, 5).map((j) => jobLine(j, 'nghiệm thu đạt'))}
+        </Card>
+        <Card title="Dòng plan chưa đủ KOC" tone="warning" count={linesShort.length} href="/plan" empty="Các dòng plan của bạn đã đủ job.">
+          {linesShort.slice(0, 5).map((l) => (
+            <Line key={l.id} href={`/plan/${l.plan.id}`} main={`${l.brand?.name ?? '—'} · ${l.plan.name}`} sub={`${l._count.jobs}/${l.quantity} KOC${l.week ? ` · tuần ${l.week}` : ''}${l.tier ? ` · ${l.tier}` : ''}`} />
+          ))}
+        </Card>
+      </div>
+      <h3 className="mb-2 text-[13px] font-semibold text-ink-2">Booking trên Lark Base</h3>
+      <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card title="Trễ air" tone="critical" count={airLate.length} href={`${myBookings}&flag=airLate`} empty="Không có booking trễ air.">
           {airLate.slice(0, 5).map((b) => <BookingLine key={b.id} b={b} note={`dự kiến ${fmtDate(b.planAirDate)}`} />)}
         </Card>
@@ -73,12 +118,6 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         <Card title="Hẹn liên hệ KOL" tone="critical" count={follow.length} href="/contacts?flag=followUp" empty="Không có hẹn đến hạn.">
           {follow.slice(0, 5).map((n) => (
             <Line key={n.id} href={`/contacts/${n.koc.id}`} main={n.koc.nickname ?? n.koc.name} sub={`${fmtDate(n.followUpAt)} · ${n.body}`} />
-          ))}
-        </Card>
-        <Card title="Listing chờ Brand chọn" count={listings.length} href="/listing" empty="Không có đợt listing nào chờ Brand.">
-          {listings.slice(0, 5).map((l) => (
-            <Line key={l.id} href={`/listing/${l.id}`} main={l.name}
-              sub={`${l.items.filter((i) => !i.brandChoice).length}/${l.items.length} KOC chưa chọn${l.shareToken ? ' · đã gửi link' : ' · chưa gửi link'}`} />
           ))}
         </Card>
       </div>

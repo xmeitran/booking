@@ -8,14 +8,14 @@ import { CANCELLED, jobCode, RESULT_TONE, RESULTS, SAMPLE, STAGE_HINT, STAGE_TON
 import { FEE_DIVISOR } from '@/lib/kocInsights';
 import { PRICE_TYPES } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
-import { aiDraftBrief, draftBrief, moveStage, reviewJob, saveBrief, updateJob } from '../actions';
+import { aiDraftBrief, deleteJob, draftBrief, moveStage, reviewJob, saveBrief, updateJob } from '../actions';
 import { aiEnabled } from '@/lib/ai';
 
 const iso = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
 const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 
 export default async function JobPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ err?: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const { id } = await params;
   const { err } = await searchParams;
   const j = await db.job.findUnique({
@@ -66,6 +66,12 @@ export default async function JobPage({ params, searchParams }: { params: Promis
             <form action={moveStage}>
               <input type="hidden" name="id" value={j.id} /><input type="hidden" name="stage" value={next} />
               <button className="btn btn-primary">Chuyển sang &quot;{next}&quot;</button>
+            </form>
+          )}
+          {me.role === 'ADMIN' && !j.paymentId && (
+            <form action={deleteJob}>
+              <input type="hidden" name="id" value={j.id} />
+              <button className="btn btn-danger" title="Xoá job tạo nhầm (chỉ Admin)">Xoá job</button>
             </form>
           )}
           {j.stage !== CANCELLED && j.stage !== 'Thanh toán' && (

@@ -53,6 +53,11 @@ export async function addMatchesToListing(_: string | null, fd: FormData): Promi
     const brief = await db.matchBrief.findUnique({ where: { id: str(fd, 'briefId') }, select: { brand: true, planLineId: true } });
     batchId = (await db.listingBatch.create({ data: { name, month, brand: brief?.brand ?? null, planLineId: brief?.planLineId ?? null, createdById: me.id } })).id;
   } else if (!batchId) return 'Chọn đợt listing.';
+  else {
+    // Đợt có sẵn chưa gắn plan: gắn theo dòng plan của brief để job tạo ra tính vào tiến độ plan.
+    const brief = await db.matchBrief.findUnique({ where: { id: str(fd, 'briefId') }, select: { planLineId: true } });
+    if (brief?.planLineId) await db.listingBatch.updateMany({ where: { id: batchId, planLineId: null }, data: { planLineId: brief.planLineId } });
+  }
   await db.listingItem.createMany({ data: kocIds.map((kocId) => ({ batchId, kocId, createdById: me.id, priceType: 'Video' })), skipDuplicates: true });
   // KOL chưa có số TikTok: tra vài kênh đầu ngay sau khi trả trang, còn lại để lượt mỗi giờ.
   const fresh = await db.koc.findMany({ where: { id: { in: kocIds }, ttsCheckedAt: null }, select: { id: true }, take: 3 });

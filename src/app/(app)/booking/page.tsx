@@ -4,6 +4,7 @@ import { bookingWhere, FLAGS, isPayIssue, PIPELINE, PIPELINE_TONE, type BookingF
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort } from '@/lib/format';
 import { requireUser } from '@/lib/session';
+import { syncNow } from './actions';
 
 const PER_PAGE = 50;
 const KANBAN_CARDS = 30;
@@ -67,9 +68,11 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-xl font-semibold">Booking</h1>
-          <p className="text-xs text-ink-3">
-            {sync?.finishedAt ? <>Lark Base · đồng bộ {fmtTime(sync.finishedAt)} · {sync.message}</> : 'Chưa đồng bộ từ Lark Base'}
-          </p>
+          <form action={syncNow} className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
+            {sync?.startedAt && !sync.finishedAt ? <span>Đang đồng bộ từ Lark Base, tải lại trang sau 2–3 phút</span>
+              : sync?.finishedAt ? <span>Lark Base · đồng bộ {fmtTime(sync.finishedAt)} · {sync.message}</span> : <span>Chưa đồng bộ từ Lark Base</span>}
+            <button className="link" disabled={Boolean(sync?.startedAt && !sync.finishedAt)}>Đồng bộ ngay</button>
+          </form>
         </div>
         <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
           <Link href={withParam('view', '')} className={`rounded px-3 py-1 ${!kanban ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Danh sách</Link>

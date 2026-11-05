@@ -18,7 +18,8 @@ const done = (id: string) => {
 /** Tạo job cho mọi KOC Brand chọn "Yes" trong một đợt listing (chưa có job). Brand, sản phẩm khớp Danh mục theo tên. */
 export async function createJobsFromListing(fd: FormData) {
   const me = await requireUser();
-  const batch = await db.listingBatch.findUniqueOrThrow({ where: { id: str(fd, 'batchId') }, include: { items: { where: { brandChoice: 'Yes', job: null } } } });
+  // KOC blacklist không tạo job dù Brand đã chọn.
+  const batch = await db.listingBatch.findUniqueOrThrow({ where: { id: str(fd, 'batchId') }, include: { items: { where: { brandChoice: 'Yes', job: null, koc: { blacklisted: false } } } } });
   const brands = await db.brand.findMany({ include: { products: true, members: { where: { role: 'Booking PIC' } } } });
   const brand = brands.find((b) => sameBrand(b.name, batch.brand));
   const product = brand?.products.find((p) => sameBrand(p.name, batch.product));
@@ -150,4 +151,16 @@ export async function aiDraftBrief(fd: FormData) {
   await db.job.update({ where: { id }, data: { brief, briefApproved: false } });
   await audit(me.id, 'Job', id, 'AI viết brief nháp');
   done(id);
+}
+
+/** Xoá job tạo nhầm: chỉ Admin, chỉ khi job chưa nằm trong đề nghị thanh toán. KOC ở listing có thể tạo job lại. */
+export async function deleteJob(fd: FormData) {
+  const me = await requireUser('ADMIN');
+  const id = str(fd, 'id');
+  const job = await db.job.findUniqueOrThrow({ where: { id } });
+  if (job.paymentId) redirect(`/jobs/${id}?err=${encodeURIComponent('Job đã nằm trong ĐNTT, bỏ khỏi ĐNTT trước khi xoá')}`);
+  await db.job.delete({ where: { id } });
+  await audit(me.id, 'Job', id, 'Xoá job', { number: job.number, kocId: job.kocId });
+  revalidatePath('/jobs');
+  redirect('/jobs');
 }

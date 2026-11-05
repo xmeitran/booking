@@ -43,7 +43,7 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
                   <td className="text-right tabular-nums">{fmtNum(qty)}</td>
                   <td className="text-right tabular-nums">{fmtNum(jobs.length)} <span className="text-xs text-ink-3">{qty ? fmtPct(jobs.length / qty, 0) : ''}</span></td>
                   <td className="text-right tabular-nums">{fmtShort(budget || null)}</td>
-                  <td className="text-right tabular-nums">{fmtShort(spent || null)} <span className="text-xs text-ink-3">{budget ? fmtPct(spent / budget, 0) : ''}</span></td>
+                  <td className="text-right tabular-nums">{spent ? fmtShort(spent) : 0} <span className="text-xs text-ink-3">{budget ? fmtPct(spent / budget, 0) : ''}</span></td>
                 </tr>
               );
             })}

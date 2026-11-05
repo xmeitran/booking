@@ -30,7 +30,19 @@ export async function saveBatch(_: string | null, fd: FormData): Promise<string 
   if (!/^\d{4}-\d{2}$/.test(month)) return 'Chọn tháng.';
   if (Number.isNaN(cr)) return 'CR là phần trăm từ 0 tới 100.';
   if (Number.isNaN(aov)) return 'AOV phải là số nguyên ≥ 0.';
-  const data = { name, month, cr, aov, brand: str(fd, 'brand') || null, store: str(fd, 'store') || null, product: str(fd, 'product') || null };
+  // Brand / gian hàng / sản phẩm chọn từ Danh mục; CR, AOV trống thì lấy của gian hàng.
+  const place = str(fd, 'place');
+  const storeRow = place.startsWith('s:') ? await db.store.findUnique({ where: { id: place.slice(2) }, include: { brand: true } }) : null;
+  const brandRow = storeRow?.brand ?? (place.startsWith('b:') ? await db.brand.findUnique({ where: { id: place.slice(2) } }) : null);
+  if (place && !brandRow) return 'Brand / gian hàng không còn trong Danh mục, chọn lại.';
+  const productRow = str(fd, 'productId') ? await db.product.findUnique({ where: { id: str(fd, 'productId') } }) : null;
+  if (productRow && brandRow && productRow.brandId !== brandRow.id) return `Sản phẩm "${productRow.name}" không thuộc brand ${brandRow.name}.`;
+  const data = {
+    name, month, cr: cr ?? storeRow?.cr ?? null, aov: aov ?? storeRow?.aov ?? null,
+    brand: brandRow?.name ?? (str(fd, 'brand') || null),
+    store: storeRow?.name ?? (place ? null : str(fd, 'store') || null),
+    product: productRow?.name ?? (str(fd, 'product') || null),
+  };
   const batch = id
     ? await db.listingBatch.update({ where: { id }, data })
     : await db.listingBatch.create({ data: { ...data, createdById: me.id } });

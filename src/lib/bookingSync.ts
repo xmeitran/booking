@@ -216,6 +216,12 @@ export async function syncBookings() {
   return { total: seen.size, created, updated, removed, kocs };
 }
 
+/** Một lượt đồng bộ, trả câu tóm tắt lưu ở SyncState (dùng cho cron và nút "Đồng bộ ngay"). */
+export async function syncBookingsJob() {
+  const r = await syncBookings();
+  return `${r.total} booking · ${r.created} mới · ${r.updated} cập nhật · ${r.removed} xoá · ${r.kocs} KOL mới`;
+}
+
 /** Số booking, booking gần nhất, cấp KL gần nhất của từng KOC: để Danh bạ lọc / sắp xếp không phải gộp lại mỗi lần xem. */
 export async function refreshKocAggregates() {
   await db.$executeRaw`

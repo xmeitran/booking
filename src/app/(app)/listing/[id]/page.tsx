@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
+import { CatalogPick, placeKey } from '@/components/CatalogPick';
 import { InlineField } from '@/components/InlineField';
 import { ActionForm, Avatar, CopyButton, Dialog } from '@/components/ui';
+import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, loadListing, PRICE_TYPES, RECOMMEND, type Col, type ListingRow } from '@/lib/listing';
+import { gmvLabel } from '@/lib/kocInsights';
 import { requireUser } from '@/lib/session';
 import { addKocs, createShare, deleteBatch, removeItem, revokeShare, saveBatch, saveItem, setItemField } from '../actions';
 import { createJobsFromListing } from '../../jobs/actions';
@@ -47,6 +50,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   const sort = sp.sort && SORTS[sp.sort] ? sp.sort : '';
   const data = await loadListing(id);
   if (!data) notFound();
+  const catalog = edit ? await db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, stores: { select: { id: true, name: true }, orderBy: { name: 'asc' } }, products: { select: { id: true, name: true }, orderBy: { name: 'asc' } } } }) : [];
   const { batch, rows } = data;
   const editingRow = rows.find((r) => r.item.id === itemId);
   const canDelete = me.role !== 'STAFF' || batch.createdById === me.id;
@@ -97,10 +101,10 @@ export default async function ListingBatchPage({ params, searchParams }: { param
           <a href={`/listing/${batch.id}/export?mode=brand`} className="btn">Tải file cho Brand</a>
           <a href={`/listing/${batch.id}/export?mode=internal`} className="btn">Tải file nội bộ</a>
           <Link href="?edit=1" className="btn">Sửa đợt</Link>
-          {rows.some((r) => r.item.brandChoice === 'Yes' && !r.item.job) && (
+          {rows.some((r) => r.item.brandChoice === 'Yes' && !r.item.job && !r.koc.blacklisted) && (
             <form action={createJobsFromListing}>
               <input type="hidden" name="batchId" value={batch.id} />
-              <button className="btn btn-primary">Tạo job cho {rows.filter((r) => r.item.brandChoice === 'Yes' && !r.item.job).length} KOC Brand chọn Yes</button>
+              <button className="btn btn-primary">Tạo job cho {rows.filter((r) => r.item.brandChoice === 'Yes' && !r.item.job && !r.koc.blacklisted).length} KOC Brand chọn Yes</button>
             </form>
           )}
         </div>
@@ -264,9 +268,11 @@ export default async function ListingBatchPage({ params, searchParams }: { param
           <ActionForm action={saveBatch} className="grid gap-4 sm:grid-cols-2">
             <input type="hidden" name="id" value={batch.id} />
             <F label="Tên đợt" wide><input name="name" required defaultValue={batch.name} className="input" /></F>
-            <F label="Brand"><input name="brand" defaultValue={batch.brand ?? ''} className="input" /></F>
-            <F label="Store"><input name="store" defaultValue={batch.store ?? ''} className="input" /></F>
-            <F label="Sản phẩm" wide><input name="product" defaultValue={batch.product ?? ''} className="input" /></F>
+            <CatalogPick
+              brands={catalog} place={placeKey(catalog, batch.brand, batch.store)}
+              productId={catalog.flatMap((b) => b.products).find((p) => p.name === batch.product)?.id ?? ''}
+              productText={catalog.flatMap((b) => b.products).some((p) => p.name === batch.product) ? '' : batch.product ?? ''}
+            />
             <F label="Tháng"><input name="month" type="month" required defaultValue={batch.month} className="input" /></F>
             <div />
             <F label="CR sản phẩm (%)"><input name="cr" inputMode="decimal" defaultValue={batch.cr == null ? '' : String(+(batch.cr * 100).toFixed(4))} className="input" /></F>
@@ -308,7 +314,7 @@ function Row({ r }: { r: ListingRow }) {
         {k.statsAt ? (
           <>
             <div>{fmtNum(k.avgViews)} view TB · {fmtNum(k.unitsSold)} món</div>
-            <div className="text-ink-3">GMV {r.gmv30 != null ? `~${fmtShort(r.gmv30)}` : k.gmvRange ?? '—'} · GPM {fmtShort(r.f.gpmVnd)}</div>
+            <div className="text-ink-3">GMV {r.gmv30 != null ? `~${fmtShort(r.gmv30)}` : gmvLabel(k.gmvRange) ?? '—'} · GPM {fmtShort(r.f.gpmVnd)}</div>
           </>
         ) : <span className="text-ink-3">{pending ? 'Chờ tra TikTok (lượt mỗi giờ)' : 'Không có trên Marketplace'}</span>}
       </td>

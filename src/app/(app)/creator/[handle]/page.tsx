@@ -52,6 +52,7 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
       c.from || inDanhBa ? c : liveCreator(c.s, handle).catch((): CreatorSource => ({ ...c, from: null }))))));
   }
   const coverage = (state?.data ?? {}) as Record<string, SourceStats | { error: string }>;
+  const jobCount = koc ? await db.job.count({ where: { kocId: koc.id, stage: { not: 'Đã huỷ' } } }) : 0;
   const updated = state?.finishedAt ?? null;
 
   // Lark: booking của kênh này. Marketplace: hồ sơ 30 ngày trong Danh bạ.
@@ -93,7 +94,7 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
     { label: 'GMV 30 ngày (toàn sàn)', v: [p.gmvExactVnd, mk], money: true, text: p.gmvExactVnd == null && mk ? koc?.gmvRange ?? null : null },
     { label: 'GMV bán cho 8 shop UpBase', v: [so?.[0], so ? `Seller Center · Đơn affiliate${covSo ? `, ${covSo}` : ''}` : null], money: true, sub: so ? `${fmtNum(so[2])} món · ${fmtNum(so[1])} đơn` : undefined, anchor: 'seller_orders' },
     { label: 'GMV qua MCN UpBase (mọi shop)', v: [cap?.[0], cap ? `Partner Center · Đơn MCN${covCap ? `, ${covCap}` : ''}` : null], money: true, sub: cap ? `${fmtNum(cap[2])} món · ${fmtNum(cap[1])} đơn` : undefined, anchor: 'cap_orders' },
-    { label: 'Booking với UpBase', v: [bookings.length || null, bookings.length ? 'Lark Base' : null], sub: bookings.length ? `Chi phí ${fmtShort(larkM[1])} ₫` : undefined, anchor: 'lark' },
+    { label: 'Booking với UpBase', v: [bookings.length + jobCount || null, bookings.length + jobCount ? `Lark Base${jobCount ? ' + job trong app' : ''}` : null], sub: bookings.length || jobCount ? `${bookings.length} booking Lark · ${jobCount} job trong app · chi phí Lark ${fmtShort(larkM[1])} ₫` : undefined, anchor: 'lark' },
   ];
   const tiktokState = !koc ? 'Chưa có trong Danh bạ nên chưa tra TikTok Shop'
     : koc.statsAt ? `Số TikTok Shop tra ${fmtDate(koc.statsAt)}`

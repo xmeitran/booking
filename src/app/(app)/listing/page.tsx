@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CatalogPick } from '@/components/CatalogPick';
 import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate } from '@/lib/format';
@@ -10,13 +11,12 @@ const thisMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia
 export default async function ListingPage({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
   await requireUser();
   const { new: isNew } = await searchParams;
-  const [batches, brands, stores] = await Promise.all([
+  const [batches, brands] = await Promise.all([
     db.listingBatch.findMany({
       orderBy: { createdAt: 'desc' },
       include: { createdBy: true, items: { select: { brandChoice: true, recommendation: true } } },
     }),
-    isNew ? db.booking.findMany({ where: { brand: { not: null } }, distinct: ['brand'], select: { brand: true }, orderBy: { brand: 'asc' } }) : [],
-    isNew ? db.booking.findMany({ where: { store: { not: null } }, distinct: ['store'], select: { store: true }, orderBy: { store: 'asc' } }) : [],
+    isNew ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, stores: { select: { id: true, name: true }, orderBy: { name: 'asc' } }, products: { select: { id: true, name: true }, orderBy: { name: 'asc' } } } }) : [],
   ]);
 
   return (
@@ -61,20 +61,7 @@ export default async function ListingPage({ searchParams }: { searchParams: Prom
               <label className="label" htmlFor="name">Tên đợt</label>
               <input id="name" name="name" required placeholder="VD: pH Care – T11 – Đợt 1" className="input" />
             </div>
-            <div>
-              <label className="label" htmlFor="brand">Brand</label>
-              <input id="brand" name="brand" list="brands" className="input" />
-              <datalist id="brands">{brands.map((b) => <option key={b.brand} value={b.brand!} />)}</datalist>
-            </div>
-            <div>
-              <label className="label" htmlFor="store">Store</label>
-              <input id="store" name="store" list="stores" className="input" />
-              <datalist id="stores">{stores.map((s) => <option key={s.store} value={s.store!} />)}</datalist>
-            </div>
-            <div className="col-span-full">
-              <label className="label" htmlFor="product">Sản phẩm</label>
-              <input id="product" name="product" className="input" />
-            </div>
+            <CatalogPick brands={brands} />
             <div>
               <label className="label" htmlFor="month">Tháng</label>
               <input id="month" name="month" type="month" required defaultValue={thisMonth()} className="input" />
@@ -82,11 +69,11 @@ export default async function ListingPage({ searchParams }: { searchParams: Prom
             <div />
             <div>
               <label className="label" htmlFor="cr">CR sản phẩm theo gian hàng (%)</label>
-              <input id="cr" name="cr" inputMode="decimal" placeholder="VD: 5" className="input" />
+              <input id="cr" name="cr" inputMode="decimal" placeholder="Trống = lấy CR của gian hàng" className="input" />
             </div>
             <div>
               <label className="label" htmlFor="aov">AOV sản phẩm theo gian hàng (₫)</label>
-              <input id="aov" name="aov" type="number" min={0} step={1000} placeholder="VD: 139000" className="input" />
+              <input id="aov" name="aov" type="number" min={0} step={1000} placeholder="Trống = lấy AOV của gian hàng" className="input" />
             </div>
             <div className="col-span-full flex justify-end gap-2">
               <Link href="/listing" className="btn">Hủy</Link>

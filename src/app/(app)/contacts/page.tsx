@@ -4,6 +4,7 @@ import { pageOf, Pager } from '@/components/Pager';
 import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate } from '@/lib/format';
+import { gmvLabel } from '@/lib/kocInsights';
 import { requireUser } from '@/lib/session';
 import { deleteKoc, saveKoc } from './actions';
 import { FLAGS, kocBase, kocWhere } from './filters';
@@ -139,7 +140,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   {(k.kl ?? k.klAuto ?? k.bookingCount > 0) && (
                     <div className="mt-0.5 flex gap-1.5 text-xs text-ink-3">
                       {(k.kl ?? k.klAuto) && <span className="pill bg-accent-soft text-accent">{k.kl ?? k.klAuto}</span>}
-                      {k.bookingCount > 0 && <span>{k.bookingCount} booking{k.lastBookingAt && ` · gần nhất ${fmtDate(k.lastBookingAt)}`}</span>}
+                      {k.bookingCount > 0 && <span>{k.bookingCount} booking{k.lastBookingAt && (k.lastBookingAt > new Date() ? ` · lịch air ${fmtDate(k.lastBookingAt)}` : ` · gần nhất ${fmtDate(k.lastBookingAt)}`)}</span>}
                     </div>
                   )}
                   {k.note && <div className="mt-0.5 max-w-xs truncate text-xs text-ink-3" title={k.note}>{k.note}</div>}
@@ -149,7 +150,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   {k.statsAt ? (
                     <div title={`TikTok Shop, cập nhật ${fmtTime(k.statsAt)}`}>
                       <div>{k.avgViews == null ? '—' : vnd.format(k.avgViews)} view TB/video{k.avgLiveViews ? ` · ${compact.format(k.avgLiveViews)} view/live` : ''}</div>
-                      <div>{k.unitsSold == null ? '—' : vnd.format(k.unitsSold)} món{k.gmvRange && ` · GMV ${k.gmvRange}`}</div>
+                      <div>{k.unitsSold == null ? '—' : vnd.format(k.unitsSold)} món{k.gmvRange && ` · GMV ${gmvLabel(k.gmvRange)}`}</div>
                     </div>
                   ) : <span className="text-ink-3">{k.ttsCheckedAt ? 'Không có trên Marketplace' : 'Chưa tra'}</span>}
                 </td>

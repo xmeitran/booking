@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Avatar } from '@/components/ui';
 import { creatorSources } from '@/lib/dataSources';
+import { jobCode } from '@/lib/jobs';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
-import { bookingsOf, collabSummary, profileInsights, USD_VND } from '@/lib/kocInsights';
+import { bookingsOf, collabSummary, gmvLabel, profileInsights, USD_VND } from '@/lib/kocInsights';
 import { requireUser } from '@/lib/session';
 import { addNote, closeFollowUp, refreshFromTikTok } from '../actions';
 
@@ -23,12 +24,21 @@ export default async function KocPage({ params, searchParams }: { params: Promis
   if (!koc) notFound();
 
   const canEdit = me.role !== 'STAFF';
-  const [byHandle, sources, history, notes] = await Promise.all([
+  const [byHandle, sources, history, notes, jobs] = await Promise.all([
     bookingsOf([koc.handle]),
     creatorSources(koc.handle),
     db.kocSnapshot.findMany({ where: { kocId: koc.id }, orderBy: { at: 'desc' }, take: 12 }),
     db.kocNote.findMany({ where: { kocId: koc.id }, include: { author: true }, orderBy: { createdAt: 'desc' }, take: 50 }),
+    db.job.findMany({ where: { kocId: koc.id }, include: { brand: { select: { name: true } } }, orderBy: { number: 'desc' } }),
   ]);
+  // Tỷ lệ nghiệm thu đạt ngay lần đầu: lấy kết quả nghiệm thu đầu tiên của mỗi job trong lịch sử thay đổi.
+  const reviews = jobs.length
+    ? await db.auditLog.findMany({ where: { entity: 'Job', entityId: { in: jobs.map((j) => j.id) }, action: { startsWith: 'Nghiệm thu:' } }, orderBy: { at: 'asc' } })
+    : [];
+  const firstReview = new Map<string, string>();
+  for (const r of reviews) if (!firstReview.has(r.entityId)) firstReview.set(r.entityId, r.action.replace('Nghiệm thu: ', ''));
+  const reviewed = [...firstReview.values()];
+  const firstPass = reviewed.filter((x) => x === 'Đạt').length;
   const nextFollow = notes.filter((n) => n.followUpAt && !n.doneAt).sort((a, b) => +a.followUpAt! - +b.followUpAt!)[0];
   const today = new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) + 'T23:59:59+07:00');
   const bookings = byHandle.get(koc.handle) ?? [];
@@ -117,7 +127,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
                       <td className="text-right">{fmtNum(h.avgViews)}<Delta now={h.avgViews} before={prev?.avgViews} /></td>
                       <td className="text-right">{fmtNum(h.avgLiveViews)}<Delta now={h.avgLiveViews} before={prev?.avgLiveViews} /></td>
                       <td className="text-right">{fmtNum(h.unitsSold)}<Delta now={h.unitsSold} before={prev?.unitsSold} /></td>
-                      <td>{h.gmvRange ?? '—'}</td>
+                      <td>{gmvLabel(h.gmvRange) ?? '—'}</td>
                     </tr>
                   );
                 })}
@@ -217,6 +227,29 @@ export default async function KocPage({ params, searchParams }: { params: Promis
             </div>
           </>
         ) : <Empty text="Chưa có booking nào với UpBase." />}
+      </Section>
+
+      <Section
+        title="Job trong app"
+        meta={jobs.length ? `${jobs.length} job · nghiệm thu đạt ngay lần đầu ${firstPass}/${reviewed.length}${reviewed.length ? ` (${fmtPct(firstPass / reviewed.length, 0)})` : ''}` : undefined}
+      >
+        {jobs.length ? (
+          <table className="tbl">
+            <thead><tr><th>Job</th><th>Brand</th><th>Chặng</th><th>Deadline</th><th className="text-right">Giá</th><th>Nghiệm thu</th></tr></thead>
+            <tbody>
+              {jobs.map((j) => (
+                <tr key={j.id}>
+                  <td><Link href={`/jobs/${j.id}`} className="font-mono text-xs text-accent hover:underline">{jobCode(j.number)}</Link></td>
+                  <td>{j.brand?.name ?? '—'}</td>
+                  <td>{j.stage}</td>
+                  <td>{fmtDate(j.deadline)}</td>
+                  <td className="text-right">{fmtNum(j.price)}</td>
+                  <td>{j.reviewResult ?? '—'}{firstReview.get(j.id) && firstReview.get(j.id) !== j.reviewResult && <span className="text-xs text-ink-3"> (lần đầu: {firstReview.get(j.id)})</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <Empty text="Chưa có job nào trong app (job tạo từ KOC Brand chọn Yes ở Listing)." />}
       </Section>
 
       <Section title="Nhật ký chăm sóc" meta="Ghi lại trao đổi, báo giá, hẹn liên hệ lại">

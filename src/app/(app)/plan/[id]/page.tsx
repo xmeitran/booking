@@ -65,8 +65,8 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label="KOC cần book" value={fmtNum(qty)} sub={`${plan.lines.length} dòng chi tiết`} />
         <Kpi label="Đã có job" value={fmtNum(jobs.length)} sub={qty ? `${fmtPct(jobs.length / qty, 0)} plan` : undefined} />
-        <Kpi label="Ngân sách" value={`${fmtShort(budget || null)} ₫`} sub={plan.budget ? 'Ngân sách tổng' : 'Cộng từ các dòng'} />
-        <Kpi label="Đã chốt (giá job)" value={`${fmtShort(spent || null)} ₫`} sub={budget ? `Còn ${fmtShort(budget - spent)} ₫` : undefined} />
+        <Kpi label="Ngân sách" value={budget ? `${fmtShort(budget)} ₫` : 'Chưa nhập'} sub={plan.budget ? 'Ngân sách tổng' : 'Cộng từ các dòng'} />
+        <Kpi label="Đã chốt (giá job)" value={spent ? `${fmtShort(spent)} ₫` : '0 ₫'} sub={budget ? (spent > budget ? `Vượt ngân sách ${fmtShort(spent - budget)} ₫` : `Còn ${fmtShort(budget - spent)} ₫`) : undefined} />
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">

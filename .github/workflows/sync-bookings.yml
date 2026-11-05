@@ -1,12 +1,17 @@
-# Mỗi giờ gọi app trên Render: (1) đồng bộ "3.2 List duyệt book" từ Lark Base (src/lib/bookingSync.ts),
+# Gọi app trên Render: (1) đồng bộ "3.2 List duyệt book" từ Lark Base (src/lib/bookingSync.ts),
 # (2) cập nhật chỉ số KOL từ TikTok Shop qua Trạm dữ liệu (src/lib/creatorStats.ts, ~10 phút).
 # (3) tổng hợp tab Dữ liệu từ Trạm (6 giờ một lần, gọi trong giờ khác trả 429 là bình thường).
 # Gọi cũng đánh thức Render free nếu đang ngủ. Chạy tay: tab Actions > Sync bookings > Run workflow.
+# Lịch 15 phút / lần: GitHub hay hoãn hoặc bỏ lịch của repo ít hoạt động (lịch "mỗi giờ" thực tế 5–8 giờ mới chạy,
+# đo 05/11/2026). Mỗi job tự giới hạn trong app (bookings 10 phút, creators 30 phút, data-sources 6 giờ), gọi dư trả 429.
 name: Sync bookings
 on:
   schedule:
-    - cron: '7 * * * *' # phút 7 mỗi giờ; GitHub hay trễ vào đầu giờ
+    - cron: '4,19,34,49 * * * *' # tránh phút 0 vì GitHub dồn tải đầu giờ
   workflow_dispatch:
+concurrency: # không chạy chồng; lượt mới chờ lượt đang chạy
+  group: sync-bookings
+  cancel-in-progress: false
 jobs:
   sync:
     runs-on: ubuntu-latest

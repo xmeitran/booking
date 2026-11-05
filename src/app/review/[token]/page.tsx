@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { BrandLogo } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
+import { gmvLabel } from '@/lib/kocInsights';
 import { BRAND_CHOICE, loadListing } from '@/lib/listing';
 import { submitReview } from '../actions';
 
@@ -12,7 +13,9 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
   const { token } = await params;
   const { saved } = await searchParams;
   const b = await db.listingBatch.findFirst({ where: { shareToken: token }, select: { id: true } });
-  const data = b ? await loadListing(b.id) : null;
+  const loaded = b ? await loadListing(b.id) : null;
+  // KOC blacklist (không book nữa) không đưa cho Brand chọn.
+  const data = loaded && { ...loaded, rows: loaded.rows.filter((r) => !r.koc.blacklisted) };
 
   return (
     <div className="min-h-screen bg-canvas">
@@ -50,7 +53,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
                         <td className="text-right">{fmtShort(r.koc.followers)}</td>
                         <td className="text-xs whitespace-nowrap">
                           <div>{fmtNum(r.koc.avgViews)} view TB / video</div>
-                          <div className="text-ink-3">{fmtNum(r.koc.unitsSold)} món · GMV {r.koc.gmvRange ?? '—'}</div>
+                          <div className="text-ink-3">{fmtNum(r.koc.unitsSold)} món · GMV {gmvLabel(r.koc.gmvRange) ?? '—'}</div>
                         </td>
                         <td className="text-xs whitespace-nowrap">
                           {r.p.female != null ? <>Nữ {fmtPct(r.p.female, 0)} · 18–24 {fmtPct(r.p.age18_24, 0)} · 25–34 {fmtPct(r.p.age25_34, 0)}</> : '—'}

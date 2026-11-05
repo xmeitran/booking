@@ -128,3 +128,11 @@ export function collabSummary(bookings: BookingRow[], priceType = 'Video') {
     best: best && num(best.extra?.gmv30) ? { code: best.code, brand: best.brand, gmv30: num(best.extra.gmv30)!, views30: num(best.extra.views30) } : null,
   };
 }
+
+const compactVnd = new Intl.NumberFormat('vi-VN', { notation: 'compact', maximumFractionDigits: 1 });
+/** GMV TikTok để hiển thị: số chính xác lưu dạng "3.064 USD" → "~79,7 Tr ₫"; khoảng như "1M₫+" giữ nguyên. */
+export function gmvLabel(s: string | null | undefined) {
+  if (!s) return null;
+  const m = s.match(/^([\d.,]+)\s*USD$/);
+  return m ? `~${compactVnd.format(Number(m[1].replace(/[.,]/g, '')) * USD_VND)} ₫` : s;
+}

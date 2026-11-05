@@ -6,7 +6,7 @@ import { jobCode } from '@/lib/jobs';
 import { FEE_DIVISOR } from '@/lib/kocInsights';
 import { PAY_STATUS, PAY_TONE } from '@/lib/payments';
 import { requireUser } from '@/lib/session';
-import { removeFromPayment, setPaymentStatus } from '../actions';
+import { deletePayment, removeFromPayment, setPaymentStatus } from '../actions';
 
 export default async function PaymentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ err?: string }> }) {
   const me = await requireUser();
@@ -31,6 +31,12 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
         </div>
         <div className="flex flex-wrap gap-2">
           <a href={`/payments/${p.id}/export`} className="btn">Tải file ĐNTT</a>
+          {p.status === 'Nháp' && (
+            <form action={deletePayment}>
+              <input type="hidden" name="id" value={p.id} />
+              <button className="btn btn-danger">Xoá ĐNTT nháp</button>
+            </form>
+          )}
           {PAY_STATUS[step + 1] && (
             <form action={setPaymentStatus}>
               <input type="hidden" name="id" value={p.id} /><input type="hidden" name="status" value={PAY_STATUS[step + 1]} />

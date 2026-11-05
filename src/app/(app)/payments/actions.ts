@@ -46,3 +46,15 @@ export async function removeFromPayment(fd: FormData) {
   revalidatePath(`/payments/${job.paymentId}`);
   redirect(`/payments/${job.paymentId}`);
 }
+
+/** Xoá ĐNTT còn Nháp: các job về "Nghiệm thu" để gom lại. */
+export async function deletePayment(fd: FormData) {
+  const me = await requireUser();
+  const p = await db.paymentRequest.findUniqueOrThrow({ where: { id: str(fd, 'id') } });
+  if (p.status !== 'Nháp') redirect(`/payments/${p.id}?err=${encodeURIComponent('Chỉ xoá được ĐNTT còn Nháp')}`);
+  await db.job.updateMany({ where: { paymentId: p.id }, data: { paymentId: null, stage: 'Nghiệm thu' } });
+  await db.paymentRequest.delete({ where: { id: p.id } });
+  await audit(me.id, 'PaymentRequest', p.id, `Xoá ĐNTT #${p.number}`);
+  revalidatePath('/payments');
+  redirect('/payments');
+}
