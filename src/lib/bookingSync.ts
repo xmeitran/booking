@@ -6,6 +6,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from './db';
 import { larkGet, larkPost, tenantToken } from './lark';
+import { bankAccount, idNumber } from './validate';
 
 const APP = 'W6vRbbuOVar3qtsV18dlan1xgXb';
 const TABLE = 'tbluWrjJd9Pt9uzb';
@@ -61,6 +62,9 @@ const EXTRA = {
   listingRound: 'Đợt listing',
   note: 'Ghi chú',
 } as const;
+// Thông tin thanh toán của KOC trên từng booking: chỉ dùng để điền ô còn trống ở Danh bạ (Admin / Leader xem, không lưu vào Booking).
+const BANK = { holder: 'Tên tài khoản ngân hàng', account: 'Số tài khoản', bank: 'Ngân hàng', id: 'CCCD/MST/Passport' } as const;
+
 // Tăng khi thêm cột: lượt đồng bộ sau ghi lại mọi dòng để lấp cột mới.
 const SYNC_VERSION = 3; // 3: chuẩn hoá kênh (bỏ khoảng trắng, @)
 
@@ -175,6 +179,7 @@ async function fieldsOf(table: string, token: string) {
 export async function syncBookings() {
   const token = await tenantToken();
   const used = [...Object.values(COL), ...Object.values(EXTRA)] as string[];
+  const fetched = [...used, ...Object.values(BANK)];
 
   const opts: Options = new Map();
   const linkTables = new Set<string>();
@@ -198,8 +203,24 @@ export async function syncBookings() {
   const alias = new Map((await db.kocAlias.findMany({ select: { handle: true, koc: { select: { handle: true } } } })).map((a) => [a.handle, a.koc.handle]));
   const canon = (r: Row): Row => (r.channel && alias.has(r.channel.toLowerCase()) ? { ...r, channel: alias.get(r.channel.toLowerCase())! } : r);
 
-  for await (const page of searchPages(TABLE, used, token)) {
+  // handle → thông tin thanh toán ở booking sửa gần nhất có số tài khoản hợp lệ.
+  const banks = new Map<string, { at: number; holder: string | null; account: string; bank: string | null; id: string | null }>();
+
+  for await (const page of searchPages(TABLE, fetched, token)) {
     const rows = page.map((r) => canon(toBooking(r, opts)));
+    page.forEach((r, i) => {
+      const h = rows[i].channel?.toLowerCase();
+      const account = bankAccount(toText(r.fields[BANK.account], opts) ?? '');
+      if (!h || !account) return;
+      const at = r.last_modified_time;
+      if ((banks.get(h)?.at ?? 0) > at) return;
+      banks.set(h, {
+        at, account,
+        holder: toText(r.fields[BANK.holder], opts)?.trim() || null,
+        bank: toText(r.fields[BANK.bank], opts)?.trim() || null,
+        id: idNumber(toText(r.fields[BANK.id], opts) ?? '') ?? null,
+      });
+    });
     rows.forEach((r) => seen.add(r.id));
 
     const fresh = rows.filter((r) => !known.has(r.id));
@@ -215,8 +236,22 @@ export async function syncBookings() {
   const gone = [...known.keys()].filter((id) => !seen.has(id));
   const removed = seen.size ? (await db.booking.deleteMany({ where: { id: { in: gone } } })).count : 0;
 
+  await fillBankInfo(banks);
   await refreshKocAggregates();
   return { total: seen.size, created, updated, removed, kocs };
+}
+
+/** Điền số tài khoản / CCCD từ Lark vào Danh bạ, chỉ ô đang trống (sửa tay ở Danh bạ không bị ghi đè). */
+async function fillBankInfo(banks: Map<string, { holder: string | null; account: string; bank: string | null; id: string | null }>) {
+  if (!banks.size) return;
+  const list = [...banks];
+  await db.$executeRaw`
+    update "Koc" k set
+      "bankAccount" = coalesce(k."bankAccount", v.account), "bankHolder" = coalesce(k."bankHolder", v.holder),
+      "bankName" = coalesce(k."bankName", v.bank), "idNumber" = coalesce(k."idNumber", v.idn)
+    from unnest(${list.map(([h]) => h)}::text[], ${list.map(([, b]) => b.account)}::text[], ${list.map(([, b]) => b.holder)}::text[],
+                ${list.map(([, b]) => b.bank)}::text[], ${list.map(([, b]) => b.id)}::text[]) as v(h, account, holder, bank, idn)
+    where k.handle = v.h and (k."bankAccount" is null or k."bankHolder" is null or k."bankName" is null or k."idNumber" is null)`;
 }
 
 /** Đồng bộ tự động (Lark automation, GitHub cron) chạy tối đa 1 lần / giờ; 55 để lịch gọi mỗi giờ lệch vài phút vẫn chạy. */
