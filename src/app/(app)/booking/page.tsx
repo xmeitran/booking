@@ -66,17 +66,24 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <div>
           <h1 className="text-xl font-semibold">Booking</h1>
-          <form action={syncNow} className="flex flex-wrap items-center gap-2 text-xs text-ink-3">
-            {sync?.startedAt && !sync.finishedAt ? <span>Đang đồng bộ từ Lark Base, tải lại trang sau 2–3 phút</span>
-              : sync?.finishedAt ? <span>Lark Base · đồng bộ {fmtTime(sync.finishedAt)} · {sync.message}</span> : <span>Chưa đồng bộ từ Lark Base</span>}
-            <button className="link" disabled={Boolean(sync?.startedAt && !sync.finishedAt)}>Đồng bộ ngay</button>
-          </form>
+          <p className="text-xs text-ink-3">
+            {sync?.startedAt && !sync.finishedAt ? 'Đang đồng bộ từ Lark Base, tải lại trang sau 2–3 phút'
+              : sync?.finishedAt ? `Lark Base · đồng bộ ${fmtTime(sync.finishedAt)} · ${sync.message}` : 'Chưa đồng bộ từ Lark Base'}
+          </p>
         </div>
-        <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
-          <Link href={withParam('view', '')} className={`rounded px-3 py-1 ${!kanban ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Danh sách</Link>
-          <Link href={withParam('view', 'kanban')} className={`rounded px-3 py-1 ${kanban ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Kanban</Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
+            <Link href={withParam('view', '')} className={`rounded px-3 py-1 ${!kanban ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Danh sách</Link>
+            <Link href={withParam('view', 'kanban')} className={`rounded px-3 py-1 ${kanban ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Kanban</Link>
+          </div>
+          {/* Dữ liệu chỉ cập nhật khi bấm nút này (đã tắt Lark automation vì tốn hạn mức) hoặc khi lịch GitHub chạy. */}
+          <form action={syncNow}>
+            <button className="btn btn-primary" disabled={Boolean(sync?.startedAt && !sync.finishedAt)}>
+              {sync?.startedAt && !sync.finishedAt ? 'Đang đồng bộ…' : 'Đồng bộ ngay từ Lark'}
+            </button>
+          </form>
         </div>
       </div>
 
