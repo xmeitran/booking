@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { isUniqueError, optInt, str } from '@/lib/form';
 import { refreshKoc } from '@/lib/creatorStats';
+import { refreshKocAggregates } from '@/lib/bookingSync';
+import { audit } from '@/lib/catalog';
 import { parseHandle } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
 import { bankAccount, idNumber, phoneVN } from '@/lib/validate';
@@ -80,6 +82,47 @@ export async function deleteKoc(fd: FormData) {
   await requireUser('ADMIN', 'LEADER');
   await db.koc.delete({ where: { id: str(fd, 'id') } });
   back(fd);
+}
+
+// Thông tin liên hệ / nhận hàng / thanh toán: KOC gộp vào còn trống thì lấy từ KOC bị gộp.
+const FILL = ['channelUrl', 'followers', 'niche', 'phone', 'zalo', 'email', 'rateCard', 'note', 'picId', 'kl', 'receiverName', 'receiverPhone', 'address', 'bankHolder', 'bankAccount', 'bankName', 'idNumber'] as const;
+
+/**
+ * Gộp KOC trùng (cùng người, Lark ghi nhiều ID kênh): chuyển listing, job, ghi chú, quyết định matching, booking sang KOC giữ lại,
+ * lưu ID cũ làm alias để lần đồng bộ Lark sau tự quy về, rồi xoá hồ sơ trùng.
+ */
+export async function mergeKoc(fd: FormData) {
+  const me = await requireUser('ADMIN', 'LEADER');
+  const src = await db.koc.findUniqueOrThrow({ where: { id: str(fd, 'id') } });
+  const raw = str(fd, 'target').trim();
+  const key = parseHandle(raw) ?? raw.replace(/^@/, '').toLowerCase();
+  const dst = key ? await db.koc.findFirst({ where: { handle: key } }) : null;
+  const fail = (m: string) => redirect(`/contacts/${src.id}?merge=${encodeURIComponent(m)}`);
+  if (!dst) fail(`Không có KOC "${raw}" trong Danh bạ.`);
+  if (dst!.id === src.id) fail('Chọn một KOC khác để gộp vào.');
+  const clash = await db.listingItem.findFirst({ where: { kocId: src.id, batch: { items: { some: { kocId: dst!.id } } } }, select: { batch: { select: { name: true } } } });
+  if (clash) fail(`Cả 2 KOC cùng nằm trong đợt listing "${clash.batch.name}": xoá bớt một dòng ở Listing rồi gộp lại.`);
+  const to = dst!;
+  const fill = Object.fromEntries(FILL.filter((k) => to[k] == null && src[k] != null).map((k) => [k, src[k]]));
+  await db.$transaction([
+    db.listingItem.updateMany({ where: { kocId: src.id }, data: { kocId: to.id } }),
+    db.job.updateMany({ where: { kocId: src.id }, data: { kocId: to.id } }),
+    db.kocNote.updateMany({ where: { kocId: src.id }, data: { kocId: to.id } }),
+    db.$executeRaw`update "MatchDecision" set "kocId" = ${to.id} where "kocId" = ${src.id} and "briefId" not in (select "briefId" from "MatchDecision" where "kocId" = ${to.id})`,
+    db.matchDecision.deleteMany({ where: { kocId: src.id } }),
+    db.kocAlias.updateMany({ where: { kocId: src.id }, data: { kocId: to.id } }),
+    db.kocAlias.upsert({ where: { handle: src.handle }, create: { handle: src.handle, kocId: to.id }, update: { kocId: to.id } }),
+    db.booking.updateMany({ where: { channel: { equals: src.handle, mode: 'insensitive' } }, data: { channel: to.handle } }),
+    db.koc.update({
+      where: { id: to.id },
+      data: { ...fill, tags: [...new Set([...to.tags, ...src.tags])], blacklisted: to.blacklisted || src.blacklisted, blacklistReason: to.blacklistReason ?? src.blacklistReason },
+    }),
+    db.koc.delete({ where: { id: src.id } }),
+  ]);
+  await refreshKocAggregates();
+  await audit(me.id, 'Koc', to.id, 'Gộp KOC trùng', { from: src.handle, fromName: src.name });
+  revalidatePath('/contacts');
+  redirect(`/contacts/${to.id}?merge=ok`);
 }
 
 export async function refreshFromTikTok(fd: FormData) {

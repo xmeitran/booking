@@ -66,17 +66,20 @@ export async function addKocs(_: string | null, fd: FormData): Promise<string | 
   const priceType = oneOf(PRICE_TYPES, str(fd, 'priceType')) ?? 'Video';
   const lines = str(fd, 'ids').split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
   if (!lines.length) return 'Nhập ID kênh hoặc link TikTok.';
-  const bad = lines.filter((l) => !parseHandle(l));
-  if (bad.length) return `ID kênh không hợp lệ: ${bad.slice(0, 5).join(', ')}`;
-  const handles = [...new Set(lines.map((l) => parseHandle(l)!))];
-
-  const existing = await db.koc.findMany({ where: { platform: 'TikTok', handle: { in: handles } } });
+  // ID không đúng dạng TikTok handle (kênh brand / UGC Lark ghi "phcarevietnam_VJ Xuân Mai") vẫn nhận nếu Danh bạ đã có;
+  // ID đã gộp (alias) quy về KOC giữ lại.
+  const keys = [...new Set(lines.map((l) => parseHandle(l) ?? l.replace(/^@/, '').toLowerCase()))];
+  const aliases = await db.kocAlias.findMany({ where: { handle: { in: keys } }, select: { handle: true, koc: { select: { handle: true } } } });
+  const handles = [...new Set(keys.map((k) => aliases.find((a) => a.handle === k)?.koc.handle ?? k))];
+  const existing = await db.koc.findMany({ where: { handle: { in: handles } } });
   const known = new Set(existing.map((k) => k.handle));
+  const bad = handles.filter((h) => !known.has(h) && !parseHandle(h));
+  if (bad.length) return `ID kênh không hợp lệ và chưa có trong Danh bạ: ${bad.slice(0, 5).join(', ')}`;
   await db.koc.createMany({
     data: handles.filter((h) => !known.has(h)).map((h) => ({ platform: 'TikTok', handle: h, name: h, channelUrl: `https://www.tiktok.com/@${h}` })),
     skipDuplicates: true,
   });
-  const kocs = await db.koc.findMany({ where: { platform: 'TikTok', handle: { in: handles } } });
+  const kocs = await db.koc.findMany({ where: { handle: { in: handles } } });
   await db.listingItem.createMany({
     data: kocs.map((k) => ({ batchId, kocId: k.id, createdById: me.id, priceType })),
     skipDuplicates: true,

@@ -13,10 +13,15 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
   const me = await requireUser();
   const sp = await searchParams;
   const plans = await db.plan.findMany({
-    include: { lines: { select: { quantity: true, budget: true, jobs: { where: { stage: { not: CANCELLED } }, select: { price: true } } } } },
+    include: { lines: { select: { id: true, quantity: true, budget: true, jobs: { where: { stage: { not: CANCELLED } }, select: { price: true } } } } },
     orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
   });
   const canEdit = me.role !== 'STAFF';
+  // Job ngoài plan (tier không có dòng nào): tính vào "Đã chốt" như trang chi tiết plan.
+  const outside = await db.job.findMany({
+    where: { planLineId: null, stage: { not: CANCELLED }, listingItem: { batch: { planLineId: { not: null } } } },
+    select: { price: true, listingItem: { select: { batch: { select: { planLineId: true } } } } },
+  });
 
   return (
     <>
@@ -35,7 +40,8 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
               const qty = p.lines.reduce((s, l) => s + l.quantity, 0);
               const jobs = p.lines.flatMap((l) => l.jobs);
               const budget = p.budget ?? p.lines.reduce((s, l) => s + (l.budget ?? 0), 0);
-              const spent = jobs.reduce((s, j) => s + (j.price ?? 0), 0);
+              const ids = new Set(p.lines.map((l) => l.id));
+              const spent = [...jobs, ...outside.filter((j) => ids.has(j.listingItem!.batch.planLineId!))].reduce((s, j) => s + (j.price ?? 0), 0);
               return (
                 <tr key={p.id}>
                   <td><Link href={`/plan/${p.id}`} className="font-medium text-accent hover:underline">{p.name}</Link><div className="text-xs text-ink-3">{p.lines.length} dòng chi tiết</div></td>

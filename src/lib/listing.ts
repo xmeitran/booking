@@ -19,6 +19,10 @@ export function parseHandle(s: string): string | null {
   return m ? m[1].toLowerCase() : null;
 }
 
+/** Khoá so trùng KOC: bỏ dấu, chữ thường, bỏ khoảng trắng . _ - và số ở cuối ("chengtom02", "chengtom2", "Cheng Tôm" → "chengtom"). */
+export const dupKey = (handle: string) =>
+  handle.normalize('NFD').replace(/\p{M}/gu, '').replace(/đ/gi, 'd').toLowerCase().replace(/[\s._-]+/g, '').replace(/\d+$/, '');
+
 /** "pH Care", "pHCare", "PH CARE" là một brand. */
 export const sameBrand = (a?: string | null, b?: string | null) => {
   const n = (s?: string | null) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');

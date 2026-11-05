@@ -43,8 +43,9 @@ export async function saveLine(_: string | null, fd: FormData): Promise<string |
   const tier = str(fd, 'tier');
   if (!brandId) return 'Chọn brand.';
   if (Number.isNaN(week) || (week != null && (week < 1 || week > 5))) return 'Tuần từ 1 tới 5.';
-  if (!quantity || Number.isNaN(quantity)) return 'Số KOC cần book phải ≥ 1.';
+  if (quantity == null || Number.isNaN(quantity)) return 'Nhập số KOC cần book (0 nếu dòng chỉ giữ ngân sách).';
   if (Number.isNaN(budget)) return 'Ngân sách là số nguyên ≥ 0.';
+  if (!quantity && !budget) return 'Dòng plan cần số KOC hoặc ngân sách.';
   // PIC trống: lấy Booking PIC của brand (Danh mục → brand → Nhân sự phụ trách).
   const picId = str(fd, 'picId') || (await db.brandMember.findFirst({ where: { brandId, role: 'Booking PIC' } }))?.userId || null;
   const data = {

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { sameBrand } from '@/lib/listing';
 import { notFound } from 'next/navigation';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
@@ -30,9 +31,9 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
   const b = await db.matchBrief.findUnique({ where: { id }, include: { createdBy: { select: { name: true } }, planLine: { include: { plan: { select: { id: true, name: true } } } }, decisions: true } });
   if (!b) notFound();
   const c = b.criteria as Criteria;
-  const [matches, batches, niches, cats, brands] = await Promise.all([
+  const [matches, allBatches, niches, cats, brands] = await Promise.all([
     matchKocs(c, b.brand),
-    db.listingBatch.findMany({ orderBy: { updatedAt: 'desc' }, take: 30, select: { id: true, name: true, brand: true, month: true } }),
+    db.listingBatch.findMany({ orderBy: { updatedAt: 'desc' }, take: 200, select: { id: true, name: true, brand: true, month: true } }),
     edit ? db.koc.findMany({ where: { niche: { not: null } }, distinct: ['niche'], select: { niche: true }, orderBy: { niche: 'asc' } }) : [],
     edit ? db.matchBrief.findMany({ where: { category: { not: null } }, distinct: ['category'], select: { category: true } }) : [],
     edit && !b.template ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }) : [],
@@ -48,8 +49,8 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
     .sort((x, y) => Number(decisionOf.get(y.koc.id)?.decision === 'pick') - Number(decisionOf.get(x.koc.id)?.decision === 'pick'));
   const picked = b.decisions.filter((d) => d.decision === 'pick').length;
   const shown = visible.slice(0, SHOW);
-  const sameBrand = (x: string | null) => Boolean(b.brand && x && x.toLowerCase().replace(/\W/g, '') === b.brand.toLowerCase().replace(/\W/g, ''));
-  batches.sort((x, y) => Number(sameBrand(y.brand)) - Number(sameBrand(x.brand)));
+  // Đợt có sẵn: chỉ đợt cùng brand với brief (hoặc đợt chưa ghi brand); brief chưa có brand thì hiện mọi đợt.
+  const batches = allBatches.filter((x) => !b.brand || !x.brand || sameBrand(x.brand, b.brand)).slice(0, 30);
   const docs = ([['Brand guideline', b.guideline], ['Content strategy', b.strategy], ['Content plan', b.plan], [b.template ? 'Best practice' : 'Ghi chú', b.note]] as const).filter(([, v]) => v);
   const chips = describe(c);
   const withStats = matches.filter((m) => m.koc.statsAt).length;

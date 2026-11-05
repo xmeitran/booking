@@ -89,6 +89,7 @@ model Koc {
   snapshots    KocSnapshot[]
   notes        KocNote[]
   jobs         Job[]
+  aliases      KocAlias[]
   tags            String[] @default([]) // nhãn nội bộ, vd "Giao hàng chậm", "Hợp brand mẹ bé"
   blacklisted     Boolean  @default(false) // không book nữa: ẩn khỏi Creator matching
   blacklistReason String?
@@ -171,6 +172,17 @@ model ListingBatch {
 }
 
 // Một KOC trong đợt listing. Số liệu kênh (follower, GPM, chân dung...) đọc trực tiếp từ Koc, không chép vào đây.
+// ID kênh khác của cùng một KOC (Lark ghi "chengtom2", "Cheng Tôm"... cho "chengtom02"). Gộp ở Danh bạ tạo alias;
+// đồng bộ Lark đổi booking có ID này sang handle của KOC đã gộp nên mọi thống kê theo booking vẫn khớp.
+model KocAlias {
+  handle    String   @id // chữ thường, như Koc.handle
+  kocId     String
+  koc       Koc      @relation(fields: [kocId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([kocId])
+}
+
 model ListingItem {
   jobs           Job[]
   id             String       @id @default(cuid())

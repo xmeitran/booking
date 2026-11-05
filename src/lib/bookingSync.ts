@@ -194,9 +194,12 @@ export async function syncBookings() {
     .map((b) => [b.id, b.syncVersion === SYNC_VERSION ? b.larkUpdatedAt.getTime() : -1]));
   const seen = new Set<string>();
   let created = 0, updated = 0, kocs = 0;
+  // ID kênh đã gộp ở Danh bạ → handle của KOC gộp vào.
+  const alias = new Map((await db.kocAlias.findMany({ select: { handle: true, koc: { select: { handle: true } } } })).map((a) => [a.handle, a.koc.handle]));
+  const canon = (r: Row): Row => (r.channel && alias.has(r.channel.toLowerCase()) ? { ...r, channel: alias.get(r.channel.toLowerCase())! } : r);
 
   for await (const page of searchPages(TABLE, used, token)) {
-    const rows = page.map((r) => toBooking(r, opts));
+    const rows = page.map((r) => canon(toBooking(r, opts)));
     rows.forEach((r) => seen.add(r.id));
 
     const fresh = rows.filter((r) => !known.has(r.id));

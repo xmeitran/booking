@@ -6,8 +6,9 @@ import { jobCode } from '@/lib/jobs';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { bookingsOf, collabSummary, gmvLabel, profileInsights, USD_VND } from '@/lib/kocInsights';
+import { dupKey } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
-import { addNote, closeFollowUp, refreshFromTikTok } from '../actions';
+import { addNote, closeFollowUp, mergeKoc, refreshFromTikTok } from '../actions';
 
 const TIKTOK_MSG: Record<string, string> = {
   updated: 'Đã cập nhật số liệu từ TikTok.',
@@ -16,20 +17,25 @@ const TIKTOK_MSG: Record<string, string> = {
   failed: 'Không lấy được số liệu từ TikTok. Thử lại sau.',
 };
 
-export default async function KocPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tiktok?: string }> }) {
+export default async function KocPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tiktok?: string; merge?: string }> }) {
   const me = await requireUser();
   const { id } = await params;
-  const { tiktok } = await searchParams;
-  const koc = await db.koc.findUnique({ where: { id }, include: { pic: true } });
+  const { tiktok, merge } = await searchParams;
+  const koc = await db.koc.findUnique({ where: { id }, include: { pic: true, aliases: { select: { handle: true } } } });
   if (!koc) notFound();
 
   const canEdit = me.role !== 'STAFF';
-  const [byHandle, sources, history, notes, jobs] = await Promise.all([
+  const [byHandle, sources, history, notes, jobs, twins] = await Promise.all([
     bookingsOf([koc.handle]),
     creatorSources(koc.handle),
     db.kocSnapshot.findMany({ where: { kocId: koc.id }, orderBy: { at: 'desc' }, take: 12 }),
     db.kocNote.findMany({ where: { kocId: koc.id }, include: { author: true }, orderBy: { createdAt: 'desc' }, take: 50 }),
     db.job.findMany({ where: { kocId: koc.id }, include: { brand: { select: { name: true } } }, orderBy: { number: 'desc' } }),
+    // Hồ sơ có thể là cùng KOC (Lark ghi ID kênh khác nhau): cùng 3 ký tự đầu rồi so khoá bỏ dấu / dấu cách / số cuối.
+    db.koc.findMany({
+      where: { id: { not: koc.id }, handle: { startsWith: dupKey(koc.handle).slice(0, 3) } },
+      select: { id: true, handle: true, name: true, bookingCount: true, kl: true, klAuto: true },
+    }).then((list) => list.filter((k) => dupKey(k.handle) === dupKey(koc.handle))),
   ]);
   // Tỷ lệ nghiệm thu đạt ngay lần đầu: lấy kết quả nghiệm thu đầu tiên của mỗi job trong lịch sử thay đổi.
   const reviews = jobs.length
@@ -94,6 +100,38 @@ export default async function KocPage({ params, searchParams }: { params: Promis
         <div className={`mb-4 flex flex-wrap items-center gap-2 rounded-md px-3 py-2 text-[13px] ${koc.blacklisted ? 'bg-critical-soft text-critical' : 'bg-sunken'}`}>
           {koc.blacklisted && <b>Blacklist: {koc.blacklistReason ?? 'không ghi lý do'}.</b>}
           {koc.tags.map((t) => <Link key={t} href={`/contacts?tag=${encodeURIComponent(t)}`} className="pill bg-surface text-ink-2">{t}</Link>)}
+        </div>
+      )}
+
+      {merge && (
+        <div role="status" className={`mb-4 rounded-md px-3 py-2.5 ${merge === 'ok' ? 'bg-positive-soft text-positive' : 'bg-critical-soft text-critical'}`}>
+          {merge === 'ok' ? 'Đã gộp KOC trùng vào hồ sơ này: listing, job, ghi chú, booking đã chuyển về đây.' : merge}
+        </div>
+      )}
+
+      {(twins.length > 0 || koc.aliases.length > 0) && (
+        <div className="mb-4 rounded-md bg-sunken px-3 py-2.5 text-[13px]">
+          {koc.aliases.length > 0 && <p className="text-ink-2">ID kênh khác đã gộp vào hồ sơ này: {koc.aliases.map((a) => `@${a.handle}`).join(', ')}</p>}
+          {twins.length > 0 && (
+            <>
+              <p className="font-medium">Có thể trùng KOC: Lark ghi ID kênh khác cho cùng người</p>
+              <ul className="mt-1 grid gap-1">
+                {twins.map((t) => (
+                  <li key={t.id} className="flex flex-wrap items-center gap-2">
+                    <Link href={`/contacts/${t.id}`} className="link">@{t.handle}</Link>
+                    <span className="text-xs text-ink-3">{t.name} · {t.kl ?? t.klAuto ?? 'chưa có tier'} · {t.bookingCount} booking</span>
+                    {canEdit && (
+                      <form action={mergeKoc}>
+                        <input type="hidden" name="id" value={t.id} />
+                        <input type="hidden" name="target" value={koc.handle} />
+                        <button className="link text-xs">Gộp @{t.handle} vào hồ sơ này</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 
@@ -307,6 +345,15 @@ export default async function KocPage({ params, searchParams }: { params: Promis
           </Section>
         )}
       </div>
+      {canEdit && (
+        <form action={mergeKoc} className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
+          <input type="hidden" name="id" value={koc.id} />
+          <span>Hồ sơ này trùng với KOC khác? Gộp vào ID kênh</span>
+          <input name="target" required placeholder="vd chengtom02" aria-label="ID kênh của KOC giữ lại" className="input h-8 w-48 text-[13px]" />
+          <button className="btn h-8">Gộp</button>
+          <span className="text-xs">Listing, job, ghi chú, booking chuyển sang KOC đó; hồ sơ này bị xoá.</span>
+        </form>
+      )}
     </>
   );
 }

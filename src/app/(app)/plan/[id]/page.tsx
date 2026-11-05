@@ -100,7 +100,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
                   </td>
                   <td>{l.pic?.name ?? <span className="text-warning">Chưa giao</span>}</td>
                   <td className="min-w-32">
-                    <div className="h-1.5 rounded bg-sunken"><div className="h-1.5 rounded bg-accent" style={{ width: `${Math.min(100, (done / l.quantity) * 100)}%` }} /></div>
+                    <div className="h-1.5 rounded bg-sunken"><div className="h-1.5 rounded bg-accent" style={{ width: `${l.quantity ? Math.min(100, (done / l.quantity) * 100) : 0}%` }} /></div>
                     <div className="mt-0.5 text-xs text-ink-3">
                       <Link href={`/jobs?line=${l.id}`} className="hover:underline">{done}/{l.quantity} job</Link>
                       {l.jobs.length > 0 && ` · ${fmtShort(l.jobs.reduce((s, j) => s + (j.price ?? 0), 0))} ₫`}
@@ -159,7 +159,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
             <F label="Loại content">
               <select name="contentType" defaultValue={editing?.contentType ?? 'Video'} className="input">{PRICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
             </F>
-            <F label="Số KOC cần book"><input name="quantity" inputMode="numeric" required defaultValue={editing?.quantity ?? 1} className="input" /></F>
+            <F label="Số KOC cần book (0 = chỉ giữ ngân sách)"><input name="quantity" inputMode="numeric" required defaultValue={editing?.quantity ?? 1} className="input" /></F>
             <F label="Ngân sách dòng (₫)"><input name="budget" inputMode="numeric" defaultValue={editing?.budget ?? ''} className="input" /></F>
             <F label="PIC (trống = Booking PIC của brand)">
               <select name="picId" defaultValue={editing?.picId ?? ''} className="input">

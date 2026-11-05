@@ -10,4 +10,5 @@ test('linePicker: cùng tier, lấp tuần sớm trước, đầy thì dòng cu�
   ]);
   assert.deepEqual(['KL2', 'KL2', 'KL2', 'KL7', 'KL6'].map((t) => pick(t)?.id ?? null), ['w2-KL2', 'w3-KL2', 'w3-KL2', 'w2-KL7', null]);
   assert.equal(linePicker([{ id: 'any', tier: null, quantity: 1, used: 0 }])('KL5')?.id, 'any');
+  assert.equal(linePicker([{ id: 'w1', tier: 'KL1', quantity: 2, used: 0 }, { id: 'budget', tier: 'KL1', quantity: 0, used: 0 }])('KL1')?.id, 'w1');
 });

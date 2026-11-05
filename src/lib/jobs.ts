@@ -51,7 +51,8 @@ export function briefTemplate(j: {
  * Chọn dòng plan cho từng job mới: cùng tier KOC (dòng tier "Bất kỳ" nếu không có), lấp dòng sớm nhất còn thiếu theo thứ tự
  * truyền vào (tuần tăng dần); đầy hết thì dòng cuối. Không có dòng phù hợp: null (job ngoài plan).
  */
-export function linePicker<L extends { id: string; tier: string | null; quantity: number; used: number }>(lines: L[]) {
+export function linePicker<L extends { id: string; tier: string | null; quantity: number; used: number }>(all: L[]) {
+  const lines = all.filter((l) => l.quantity > 0); // dòng chỉ giữ ngân sách (0 KOC) không nhận job
   const used = new Map(lines.map((l) => [l.id, l.used]));
   return (tier: string | null): L | null => {
     const same = lines.filter((l) => l.tier === tier);

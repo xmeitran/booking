@@ -71,3 +71,11 @@ test('gmvLabel quy USD ra ₫, giữ nguyên khoảng', async () => {
   assert.equal(gmvLabel(null), null);
   assert.match(gmvLabel('3.064 USD')!, /^~79,7\sTr ₫$/);
 });
+
+test('dupKey gom các ID kênh viết khác của cùng KOC, không gom KOC khác tên', async () => {
+  const { dupKey } = await import('./listing');
+  assert.equal(dupKey('chengtom02'), 'chengtom');
+  assert.equal(dupKey('chengtom2'), dupKey('Cheng Tôm'));
+  assert.equal(dupKey('kimchungphan20'), dupKey('kimchungphan'));
+  assert.notEqual(dupKey('cheng_review'), dupKey('chengtom02'));
+});
