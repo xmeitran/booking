@@ -5,5 +5,5 @@ import { refreshCreatorStats } from '@/lib/creatorStats';
 export const POST = () =>
   runOnce('creators', 30, async () => {
     const r = await refreshCreatorStats();
-    return `${r.calls} lượt gọi · ${r.updated} KOL cập nhật · ${r.missing} không có trên Marketplace · ${r.failed} lỗi${r.stop ? ` · ${r.stop}` : ''}`;
+    return `${r.prefilled ? `${r.prefilled} mã creator lấy sẵn từ Trạm · ` : ''}${r.calls} lượt gọi · ${r.updated} KOL cập nhật · ${r.missing} không có trên Marketplace · ${r.failed} lỗi${r.stop ? ` · ${r.stop}` : ''}`;
   });

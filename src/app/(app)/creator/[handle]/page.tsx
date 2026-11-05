@@ -7,9 +7,10 @@ import {
   type CreatorSource, type RawColumn, type ShopRow, type Source, type SourceStats,
 } from '@/lib/dataSources';
 import { fmtDate, fmtNum, fmtShort, fmtVnd } from '@/lib/format';
-import { USD_VND } from '@/lib/kocInsights';
+import { profileInsights, USD_VND } from '@/lib/kocInsights';
 import { requireUser } from '@/lib/session';
 import { TIKTOK_USERNAME } from '@/lib/validate';
+import { lookupTikTok } from '../actions';
 
 const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 const day = (s: string | null | undefined) => (s ? fmtDate(new Date(s)) : '—');
@@ -22,11 +23,18 @@ const GROUPS = [
 type Tile = { s: Source; m: number[] | null; shops: ShopRow[]; from: CreatorSource['from'] | 'local'; known: boolean };
 
 /** Hiệu quả của một creator ở mọi nguồn: có mặt ở đâu, số mỗi nguồn, theo shop / brand, và dữ liệu gốc để đối chiếu. */
-export default async function CreatorPage({ params, searchParams }: { params: Promise<{ handle: string }>; searchParams: Promise<{ raw?: string }> }) {
+const TIKTOK_MSG: Record<string, [string, boolean]> = {
+  updated: ['Đã lấy số mới từ TikTok Shop.', true],
+  missing: ['TikTok Shop không có creator này trên Creator Marketplace (chưa bật bán hàng hoặc đã khoá).', false],
+  limited: ['TikTok đang chặn tần suất gọi, thử lại sau vài phút; job mỗi giờ cũng sẽ tự tra.', false],
+  failed: ['Không lấy được số từ TikTok Shop, thử lại sau.', false],
+};
+
+export default async function CreatorPage({ params, searchParams }: { params: Promise<{ handle: string }>; searchParams: Promise<{ raw?: string; tiktok?: string }> }) {
   await requireUser();
   const handle = decodeURIComponent((await params).handle).replace(/^@/, '').toLowerCase();
   if (!TIKTOK_USERNAME.test(handle)) notFound();
-  const { raw } = await searchParams;
+  const { raw, tiktok } = await searchParams;
 
   const [koc, cachedStation, state, bookings, booksSync] = await Promise.all([
     db.koc.findFirst({ where: { platform: 'TikTok', handle }, include: { pic: { select: { name: true } } } }),
@@ -68,6 +76,30 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
   const rawData = rawSource ? await rawRows(rawSource, handle).catch((e: unknown) => (e instanceof Error ? e.message : String(e))) : null;
   const name = koc?.nickname ?? koc?.name ?? `@${handle}`;
 
+  // Chỉ số chính: lấy nguồn tốt nhất có số, ghi rõ nguồn. Marketplace là số 30 ngày TikTok trả cho cả sàn; thiếu thì dùng
+  // ảnh chụp hồ sơ MCN hoặc follower lúc nhận chiến dịch TAP.
+  const m = (key: string) => station.find((c) => c.s.key === key)?.m ?? null;
+  const ins = m('seller_creator_insights'), tapc = m('tap_campaign_creators'), so = m('seller_orders'), cap = m('cap_orders');
+  const mk = koc?.statsAt ? `Creator Marketplace · 30 ngày, tra ${fmtDate(koc.statsAt)}` : null;
+  const pick = (...c: [number | null | undefined, string | null][]) => c.find(([v, src]) => v != null && src) ?? [null, null];
+  const p = profileInsights(koc?.ttsProfile);
+  const covSo = coverage.seller_orders && !('error' in coverage.seller_orders) ? `${day(coverage.seller_orders.from)} – ${day(coverage.seller_orders.to)}` : '';
+  const covCap = coverage.cap_orders && !('error' in coverage.cap_orders) ? `${day(coverage.cap_orders.from)} – ${day(coverage.cap_orders.to)}` : '';
+  const summary: { label: string; v: [number | null | undefined, string | null]; money?: boolean; text?: string | null; sub?: string; anchor?: string }[] = [
+    { label: 'Follower', v: pick([koc?.followers, mk], [ins?.[0], 'Hồ sơ creator MCN (30 ngày)'], [tapc?.[0], 'Lúc nhận chiến dịch TAP']), anchor: 'marketplace' },
+    { label: 'View TB / video bán hàng', v: pick([koc?.avgViews, mk], [ins?.[1], 'Hồ sơ creator MCN (30 ngày)']) },
+    { label: 'Số món bán 30 ngày (toàn sàn)', v: pick([koc?.unitsSold, mk], [ins?.[2], 'Hồ sơ creator MCN (30 ngày)']) },
+    // TikTok chỉ trả GMV dạng khoảng ("1M₫+") cho đa số creator VN; creator cho phép chia sẻ thì có số chính xác.
+    { label: 'GMV 30 ngày (toàn sàn)', v: [p.gmvExactVnd, mk], money: true, text: p.gmvExactVnd == null && mk ? koc?.gmvRange ?? null : null },
+    { label: 'GMV bán cho 8 shop UpBase', v: [so?.[0], so ? `Seller Center · Đơn affiliate${covSo ? `, ${covSo}` : ''}` : null], money: true, sub: so ? `${fmtNum(so[2])} món · ${fmtNum(so[1])} đơn` : undefined, anchor: 'seller_orders' },
+    { label: 'GMV qua MCN UpBase (mọi shop)', v: [cap?.[0], cap ? `Partner Center · Đơn MCN${covCap ? `, ${covCap}` : ''}` : null], money: true, sub: cap ? `${fmtNum(cap[2])} món · ${fmtNum(cap[1])} đơn` : undefined, anchor: 'cap_orders' },
+    { label: 'Booking với UpBase', v: [bookings.length || null, bookings.length ? 'Lark Base' : null], sub: bookings.length ? `Chi phí ${fmtShort(larkM[1])} ₫` : undefined, anchor: 'lark' },
+  ];
+  const tiktokState = !koc ? 'Chưa có trong Danh bạ nên chưa tra TikTok Shop'
+    : koc.statsAt ? `Số TikTok Shop tra ${fmtDate(koc.statsAt)}`
+    : koc.ttsCheckedAt && !koc.ttsOpenId ? 'TikTok Shop báo không có creator này trên Creator Marketplace'
+    : 'Chưa tra TikTok Shop (job mỗi giờ tra dần ~200–400 KOL / ngày)';
+
   return (
     <>
       <Link href="/data" className="text-xs text-ink-3 hover:text-ink">← Dữ liệu</Link>
@@ -88,6 +120,40 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
         </div>
         {koc && <Link href={`/contacts/${koc.id}`} className="btn">Hồ sơ Danh bạ (liên hệ, chân dung follower)</Link>}
       </div>
+
+      {tiktok && TIKTOK_MSG[tiktok] && (
+        <p role="status" className={`mb-4 rounded-md px-3 py-2 ${TIKTOK_MSG[tiktok][1] ? 'bg-positive-soft text-positive' : 'bg-warning-soft text-warning'}`}>{TIKTOK_MSG[tiktok][0]}</p>
+      )}
+
+      <section className="mb-6">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">Chỉ số chính</h2>
+          <form action={lookupTikTok} className="flex items-center gap-2">
+            <span className="text-xs text-ink-3">{tiktokState}</span>
+            <input type="hidden" name="handle" value={handle} />
+            <button className="btn h-8 px-3 text-xs">{koc ? (koc.statsAt ? 'Tra lại TikTok Shop' : 'Tra TikTok Shop ngay') : 'Thêm vào Danh bạ & tra TikTok Shop'}</button>
+          </form>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+          {summary.map((x) => {
+            const [v, src] = x.v;
+            const has = v != null || x.text;
+            const body = (
+              <>
+                <div className="text-xs text-ink-3">{x.label}</div>
+                <div className={`mt-0.5 text-lg font-semibold tabular-nums ${has ? '' : 'text-ink-3'}`}>{x.text ?? (v != null ? (x.money ? `${fmtShort(v)} ₫` : fmtNum(v)) : 'Chưa có')}</div>
+                {x.sub && <div className="text-xs text-ink-2">{x.sub}</div>}
+                <div className="mt-1 text-[11px] leading-tight text-ink-3">{has ? `Nguồn: ${src ?? x.sub}` : 'Chưa có nguồn nào có số này'}</div>
+              </>
+            );
+            return has && x.anchor ? (
+              <a key={x.label} href={`#${x.anchor}`} className="block rounded-lg border border-line bg-surface px-3 py-2.5 hover:border-accent">{body}</a>
+            ) : (
+              <div key={x.label} className={`rounded-lg border px-3 py-2.5 ${has ? 'border-line bg-surface' : 'border-dashed border-line'}`}>{body}</div>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="mb-5">
         <h2 className="mb-1 text-base font-semibold">Creator này có mặt ở đâu</h2>

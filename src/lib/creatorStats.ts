@@ -118,8 +118,41 @@ export async function refreshKoc(id: string): Promise<Outcome> {
   return processKoc(k, callVia(await pickShop()));
 }
 
+/**
+ * Lấy sẵn creator_open_id từ Trạm (video gắn sản phẩm shop, chiến dịch TAP) cho KOL chưa tra: open_id ở đó trùng với
+ * Creator Marketplace (đối chiếu 7/7 KOL, 05/11/2026), nên bỏ được lượt "tìm kiếm" bị TikTok chặn tần suất nặng nhất.
+ * Chỉ KOL chưa từng tra, để KOL đã bị TikTok báo "không có" không bị gán lại.
+ */
+export async function prefillOpenIds() {
+  const todo = await db.koc.findMany({ where: { platform: 'TikTok', ttsOpenId: null, ttsCheckedAt: null }, select: { id: true, handle: true } });
+  const idOf = new Map(todo.map((k) => [k.handle, k.id]));
+  let n = 0;
+  for (const [dataset, user] of [['shop_videos', 'creator_username'], ['tap_campaign_creators', 'user_name']]) {
+    const left = [...idOf.keys()];
+    for (let i = 0; i < left.length; i += 500) {
+      const r = await station('/api/explore', {
+        method: 'POST',
+        body: JSON.stringify({
+          dataset, groupBy: [{ field: user }, { field: 'creator_open_id' }], metrics: [{ field: '*', agg: 'count' }], limit: 1000,
+          filters: [{ field: user, op: 'in', value: left.slice(i, i + 500) }, { field: 'creator_open_id', op: 'not_empty' }],
+        }),
+      });
+      for (const x of r.rows as Record<string, unknown>[]) {
+        const h = String(x[user]).toLowerCase();
+        const id = idOf.get(h);
+        if (!id) continue;
+        await db.koc.update({ where: { id }, data: { ttsOpenId: String(x.creator_open_id) } });
+        idOf.delete(h);
+        n++;
+      }
+    }
+  }
+  return n;
+}
+
 /** Một lượt: tra creator_open_id cho KOL mới, cập nhật chỉ số KOL cũ quá 7 ngày. Dừng khi TikTok chặn tần suất. */
 export async function refreshCreatorStats() {
+  const prefilled = await prefillOpenIds().catch(() => 0);
   const base = callVia(await pickShop());
   // KOL chưa tra trước, rồi KOL có booking gần đây. Không có trên Marketplace thì 30 ngày tra lại.
   const due = await db.$queryRaw<{ id: string; handle: string; ttsOpenId: string | null }[]>`
@@ -129,7 +162,7 @@ export async function refreshCreatorStats() {
       k."ttsCheckedAt" is null
       or (k."ttsOpenId" is null and k."ttsCheckedAt" < now() - interval '30 days')
       or (k."ttsOpenId" is not null and (k."statsAt" is null or k."statsAt" < now() - interval '7 days')))
-    order by (k."ttsCheckedAt" is null) desc, r.last desc nulls last
+    order by (k."ttsCheckedAt" is null) desc, (k."ttsOpenId" is not null) desc, r.last desc nulls last
     limit 40`;
 
   let calls = 0;
@@ -152,5 +185,5 @@ export async function refreshCreatorStats() {
     if (outcome === 'limited') { stop = LIMITED; break; }
     n[outcome]++;
   }
-  return { calls, ...n, stop };
+  return { calls, prefilled, ...n, stop };
 }

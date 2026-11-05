@@ -61,6 +61,10 @@ và người phụ trách. "Của bạn" = tên Lark của bạn là người ph
 - Gọi qua **Trạm dữ liệu TikTok** (`Data-tiktok`, https://mcn.mindtheoperation.com, `POST /api/console`) bằng token shop VN nó đang giữ. Booking Hub không giữ token TikTok: làm mới token ở 2 nơi sẽ làm token bên kia mất hiệu lực. Cần `DATA_TIKTOK_URL`, `DATA_TIKTOK_USER`, `DATA_TIKTOK_PASSWORD`.
 - `POST /api/cron/creator-stats` mỗi giờ (sau đồng bộ booking), tối đa ~10 phút: tra `creator_open_id` cho KOL chưa tra (ưu tiên KOL có booking gần đây), cập nhật chỉ số KOL cũ quá 7 ngày. KOL không có trên Marketplace thì 30 ngày tra lại.
 - Hạn mức tần suất tính chung với Trạm dữ liệu: gọi cách nhau 25s, bị chặn thì chờ 60s thử lại.
+- Đầu mỗi lượt, lấy sẵn `creator_open_id` từ Trạm (video gắn sản phẩm shop, chiến dịch TAP) cho KOL chưa tra: open_id ở đó
+  trùng với Creator Marketplace, nên KOL này chỉ cần 1 lượt gọi (bỏ lượt tìm kiếm). Lần đầu lấy được ~1.100 KOL.
+- Trang creator có "Chỉ số chính" (follower, view TB, số món bán và GMV 30 ngày toàn sàn, GMV bán cho 8 shop UpBase, GMV qua MCN,
+  booking) ghi rõ nguồn, và nút "Tra TikTok Shop ngay" (creator ngoài Danh bạ thì thêm vào Danh bạ rồi tra).
 - TikTok chỉ trả GMV dạng khoảng cho creator VN (vd "1M₫+"); GPM tính bằng USD.
 
 ## Hồ sơ KOC (KOC 360)
