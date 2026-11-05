@@ -172,7 +172,7 @@ model ListingBatch {
 
 // Một KOC trong đợt listing. Số liệu kênh (follower, GPM, chân dung...) đọc trực tiếp từ Koc, không chép vào đây.
 model ListingItem {
-  job          Job?
+  jobs           Job[]
   id             String       @id @default(cuid())
   batchId        String
   batch          ListingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
@@ -181,7 +181,8 @@ model ListingItem {
   createdById    String
   createdBy      User         @relation(fields: [createdById], references: [id])
   priceType      String       @default("Video")
-  price          Int?         // giá net đề xuất cho đợt này, VND
+  price          Int?         // giá net đề xuất cho đợt này, VND (1 video / 1 phiên)
+  videos         Int          @default(1) // số video / phiên KOC làm trong đợt: Tạo job sinh đủ số job này
   status         String?      // trạng thái liên hệ
   recommendation String?      // Must Have / Recommend / Optional
   contentNote    String?
@@ -406,7 +407,7 @@ model Job {
   product       Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
   planLineId    String?
   planLine      PlanLine?       @relation(fields: [planLineId], references: [id], onDelete: SetNull)
-  listingItemId String?         @unique
+  listingItemId String?
   listingItem   ListingItem?    @relation(fields: [listingItemId], references: [id], onDelete: SetNull)
   picId         String?
   pic           User?           @relation(fields: [picId], references: [id], onDelete: SetNull)
@@ -434,6 +435,7 @@ model Job {
   @@index([stage])
   @@index([brandId])
   @@index([picId])
+  @@index([listingItemId])
 }
 
 model PaymentRequest { // đề nghị thanh toán (ĐNTT) gom từ job đã nghiệm thu đạt

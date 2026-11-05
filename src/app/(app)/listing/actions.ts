@@ -94,12 +94,14 @@ export async function saveItem(_: string | null, fd: FormData): Promise<string |
   const price = optInt(fd, 'price');
   const viewTarget = optInt(fd, 'viewTarget');
   const planAirDate = str(fd, 'planAirDate');
+  const videos = optInt(fd, 'videos') ?? 1;
   if (Number.isNaN(price) || Number.isNaN(viewTarget)) return 'Giá và View Target phải là số nguyên ≥ 0.';
+  if (Number.isNaN(videos) || videos < 1 || videos > 50) return 'Số video từ 1 tới 50.';
   const item = await db.listingItem.update({
     where: { id },
     data: {
       priceType: oneOf(PRICE_TYPES, str(fd, 'priceType')) ?? 'Video',
-      price, viewTarget,
+      price, viewTarget, videos,
       status: oneOf(CONTACT_STATUS, str(fd, 'status')),
       recommendation: oneOf(RECOMMEND, str(fd, 'recommendation')),
       brandChoice: oneOf(BRAND_CHOICE, str(fd, 'brandChoice')),

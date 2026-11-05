@@ -32,7 +32,7 @@ const prevMonth = (m: string) => {
 export async function loadListing(batchId: string) {
   const batch = await db.listingBatch.findUnique({
     where: { id: batchId },
-    include: { createdBy: true, items: { include: { koc: true, createdBy: true, job: { select: { id: true, number: true, stage: true } } }, orderBy: { createdAt: 'asc' } } },
+    include: { createdBy: true, items: { include: { koc: true, createdBy: true, jobs: { select: { id: true, number: true, stage: true }, orderBy: { number: 'asc' } } }, orderBy: { createdAt: 'asc' } } },
   });
   if (!batch) return null;
   const [bookings, others] = await Promise.all([
@@ -94,6 +94,7 @@ export const COLS: Col[] = [
   { h: 'Tệp Booking', g: 'koc', v: (r) => r.kl },
   { h: 'Giá đã hợp tác trước đó (Giá dự kiến)', g: 'price', v: (r) => round(r.collab.lastPrice) },
   { h: 'Loại giá', g: 'price', v: (r) => r.item.priceType },
+  { h: 'Số video', g: 'price', v: (r) => r.item.videos },
   { h: 'Giá net video', g: 'price', v: (r) => round(r.price) },
   { h: 'Phí booking kèm thuế TNCN', g: 'price', v: (r) => round(r.f.fee) },
   { h: 'Trạng thái', g: 'price', v: (r) => r.item.status },

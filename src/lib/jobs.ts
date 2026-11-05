@@ -46,3 +46,18 @@ export function briefTemplate(j: {
     ...checklist.map((c) => `- ${c}`),
   ].join('\n');
 }
+
+/**
+ * Chọn dòng plan cho từng job mới: cùng tier KOC (dòng tier "Bất kỳ" nếu không có), lấp dòng sớm nhất còn thiếu theo thứ tự
+ * truyền vào (tuần tăng dần); đầy hết thì dòng cuối. Không có dòng phù hợp: null (job ngoài plan).
+ */
+export function linePicker<L extends { id: string; tier: string | null; quantity: number; used: number }>(lines: L[]) {
+  const used = new Map(lines.map((l) => [l.id, l.used]));
+  return (tier: string | null): L | null => {
+    const same = lines.filter((l) => l.tier === tier);
+    const pool = same.length ? same : lines.filter((l) => !l.tier);
+    const l = pool.find((x) => used.get(x.id)! < x.quantity) ?? pool.at(-1);
+    if (l) used.set(l.id, used.get(l.id)! + 1);
+    return l ?? null;
+  };
+}

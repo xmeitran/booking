@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { audit, checklistOf } from '@/lib/catalog';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
-import { CANCELLED, RESULTS, SAMPLE, STAGES, type ReviewItem } from '@/lib/jobs';
+import { CANCELLED, linePicker, RESULTS, SAMPLE, STAGES, type ReviewItem } from '@/lib/jobs';
 import { PRICE_TYPES, sameBrand } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
 
@@ -19,21 +19,37 @@ const done = (id: string) => {
 export async function createJobsFromListing(fd: FormData) {
   const me = await requireUser();
   // KOC blacklist không tạo job dù Brand đã chọn.
-  const batch = await db.listingBatch.findUniqueOrThrow({ where: { id: str(fd, 'batchId') }, include: { items: { where: { brandChoice: 'Yes', job: null, koc: { blacklisted: false } } } } });
+  const batch = await db.listingBatch.findUniqueOrThrow({
+    where: { id: str(fd, 'batchId') },
+    include: { items: { where: { brandChoice: 'Yes', koc: { blacklisted: false } }, include: { koc: { select: { kl: true, klAuto: true } }, _count: { select: { jobs: true } } } } },
+  });
   const brands = await db.brand.findMany({ include: { products: true, members: { where: { role: 'Booking PIC' } } } });
   const brand = brands.find((b) => sameBrand(b.name, batch.brand));
   const product = brand?.products.find((p) => sameBrand(p.name, batch.product));
   const line = batch.planLineId ? await db.planLine.findUnique({ where: { id: batch.planLineId } }) : null;
-  const picId = line?.picId ?? brand?.members[0]?.userId ?? me.id;
+  // Mỗi job gắn vào dòng plan cùng brand + cùng tier KOC, lấp dòng tuần sớm nhất còn thiếu (đầy hết thì dòng tuần cuối).
+  // Không có dòng nào khớp tier: job không gắn dòng (ngoài plan), tab Plan báo riêng.
+  const lines = line && brand
+    ? await db.planLine.findMany({
+        where: { planId: line.planId, brandId: brand.id },
+        orderBy: [{ week: 'asc' }, { id: 'asc' }],
+        include: { _count: { select: { jobs: { where: { stage: { not: CANCELLED } } } } } },
+      })
+    : [];
+  const pickLine = linePicker(lines.map((l) => ({ ...l, used: l._count.jobs })));
   for (const it of batch.items) {
-    const job = await db.job.create({
-      data: {
-        kocId: it.kocId, listingItemId: it.id, brandId: brand?.id ?? null, productId: product?.id ?? null, planLineId: line?.id ?? null,
-        picId, priceType: it.priceType, price: it.price, deadline: it.planAirDate, sample: 'Cần gửi', createdById: me.id,
-        note: it.contentNote,
-      },
-    });
-    await audit(me.id, 'Job', job.id, 'Tạo từ listing', { batchId: batch.id });
+    for (let n = it._count.jobs; n < it.videos; n++) {
+      const l = line ? pickLine(it.koc.kl ?? it.koc.klAuto) : null;
+      const job = await db.job.create({
+        data: {
+          kocId: it.kocId, listingItemId: it.id, brandId: brand?.id ?? null, productId: product?.id ?? null, planLineId: l?.id ?? null,
+          picId: l?.picId ?? brand?.members[0]?.userId ?? me.id, priceType: it.priceType, price: it.price,
+          deadline: n === 0 ? it.planAirDate : null, sample: 'Cần gửi', createdById: me.id,
+          note: [it.videos > 1 && `Video ${n + 1}/${it.videos}`, it.contentNote].filter(Boolean).join(' · ') || null,
+        },
+      });
+      await audit(me.id, 'Job', job.id, 'Tạo từ listing', { batchId: batch.id, planLineId: l?.id ?? null });
+    }
   }
   revalidatePath(`/listing/${batch.id}`);
   redirect(`/jobs?batch=${batch.id}`);

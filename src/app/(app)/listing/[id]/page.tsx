@@ -85,6 +85,10 @@ export default async function ListingBatchPage({ params, searchParams }: { param
 
   const chosen = rows.filter((r) => r.item.brandChoice === 'Yes');
   const sum = (list: ListingRow[], f: (r: ListingRow) => number | null) => list.reduce((s, r) => s + (f(r) ?? 0), 0);
+  // Phí / GMV của dòng = 1 video × số video KOC làm trong đợt.
+  const times = (v: number | null, r: ListingRow) => (v == null ? null : v * r.item.videos);
+  // Video Brand chọn Yes chưa có job (KOC blacklist không tạo job).
+  const jobsToCreate = sum(chosen.filter((r) => !r.koc.blacklisted), (r) => Math.max(0, r.item.videos - r.item.jobs.length));
 
   return (
     <>
@@ -101,10 +105,10 @@ export default async function ListingBatchPage({ params, searchParams }: { param
           <a href={`/listing/${batch.id}/export?mode=brand`} className="btn">Tải file cho Brand</a>
           <a href={`/listing/${batch.id}/export?mode=internal`} className="btn">Tải file nội bộ</a>
           <Link href="?edit=1" className="btn">Sửa đợt</Link>
-          {rows.some((r) => r.item.brandChoice === 'Yes' && !r.item.job && !r.koc.blacklisted) && (
+          {jobsToCreate > 0 && (
             <form action={createJobsFromListing}>
               <input type="hidden" name="batchId" value={batch.id} />
-              <button className="btn btn-primary">Tạo job cho {rows.filter((r) => r.item.brandChoice === 'Yes' && !r.item.job && !r.koc.blacklisted).length} KOC Brand chọn Yes</button>
+              <button className="btn btn-primary">Tạo {jobsToCreate} job cho KOC Brand chọn Yes</button>
             </form>
           )}
         </div>
@@ -113,8 +117,8 @@ export default async function ListingBatchPage({ params, searchParams }: { param
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label="KOC trong đợt" value={String(rows.length)} sub={`${rows.filter((r) => r.item.recommendation === 'Must Have').length} Must Have`} />
         <Kpi label="Brand chọn" value={String(chosen.length)} sub={`${rows.filter((r) => r.item.brandChoice).length}/${rows.length} đã phản hồi`} />
-        <Kpi label="Phí kèm TNCN (Brand chọn)" value={fmtShort(sum(chosen, (r) => r.f.fee))} sub={`Toàn đợt ${fmtShort(sum(rows, (r) => r.f.fee))}`} />
-        <Kpi label="GMV Target (Brand chọn)" value={fmtShort(sum(chosen, (r) => r.f.gmvTarget))} sub={`Toàn đợt ${fmtShort(sum(rows, (r) => r.f.gmvTarget))}`} />
+        <Kpi label="Phí kèm TNCN (Brand chọn)" value={fmtShort(sum(chosen, (r) => times(r.f.fee, r)))} sub={`Toàn đợt ${fmtShort(sum(rows, (r) => times(r.f.fee, r)))}`} />
+        <Kpi label="GMV Target (Brand chọn)" value={fmtShort(sum(chosen, (r) => times(r.f.gmvTarget, r)))} sub={`Toàn đợt ${fmtShort(sum(rows, (r) => times(r.f.gmvTarget, r)))}`} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]">
@@ -336,7 +340,7 @@ function Row({ r }: { r: ListingRow }) {
       </td>
       <td className="text-right text-xs whitespace-nowrap">
         <div>{fmtNum(r.price)}{item.price == null && r.price != null && <span className="text-ink-3"> (giá cũ)</span>}</div>
-        <div className="text-ink-3">{item.priceType} · kèm TNCN {fmtShort(r.f.fee)}</div>
+        <div className="text-ink-3">{item.priceType}{item.videos > 1 && <b className="text-ink"> × {item.videos}</b>} · kèm TNCN {fmtShort(r.f.fee)}</div>
       </td>
       <td className="text-right text-xs whitespace-nowrap">
         <div>GMV {fmtShort(r.f.gmvTarget)}</div>
@@ -348,7 +352,7 @@ function Row({ r }: { r: ListingRow }) {
           {item.brandChoice && <span className={`pill ${CHOICE_TONE[item.brandChoice]}`}>Brand: {item.brandChoice}</span>}
         </div>
         {item.status && <div className="mt-0.5 text-ink-3">{item.status}</div>}
-        {item.job && <Link href={`/jobs/${item.job.id}`} className="mt-0.5 block text-accent hover:underline">{jobCode(item.job.number)} · {item.job.stage}</Link>}
+        {item.jobs.map((j) => <Link key={j.id} href={`/jobs/${j.id}`} className="mt-0.5 block text-accent hover:underline">{jobCode(j.number)} · {j.stage}</Link>)}
         {item.rejectReason && <div className="max-w-40 truncate text-critical" title={item.rejectReason}>{item.rejectReason}</div>}
       </td>
       <td className="text-right"><Link href={`?item=${item.id}`} className="link">Sửa</Link></td>
@@ -375,8 +379,9 @@ function ItemDialog({ r }: { r: ListingRow }) {
         <F label={`Giá net đề xuất (₫)${r.collab.lastPrice ? ` · giá cũ ${fmtNum(r.collab.lastPrice)}` : ''}`}>
           <input name="price" type="number" min={0} step={1000} defaultValue={item.price ?? ''} placeholder={r.collab.lastPrice ? String(r.collab.lastPrice) : ''} className="input" />
         </F>
+        <F label="Số video / phiên trong đợt"><input name="videos" type="number" min={1} max={50} required defaultValue={item.videos} className="input" /></F>
         <F label="Trạng thái liên hệ">{select('status', item.status, CONTACT_STATUS)}</F>
-        <F label="Ngày air plan"><input name="planAirDate" type="date" defaultValue={isoDate(item.planAirDate)} className="input" /></F>
+        <F label="Ngày air plan (video đầu)"><input name="planAirDate" type="date" defaultValue={isoDate(item.planAirDate)} className="input" /></F>
         <F label="Đề xuất từ UpBase">{select('recommendation', item.recommendation, RECOMMEND)}</F>
         <F label="Brand chọn">{select('brandChoice', item.brandChoice, BRAND_CHOICE)}</F>
         <F label="Lý do từ chối" wide><input name="rejectReason" list="reasons" defaultValue={item.rejectReason ?? ''} className="input" /></F>

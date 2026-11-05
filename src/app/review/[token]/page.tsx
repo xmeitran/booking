@@ -60,7 +60,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
                         </td>
                         <td className="text-right text-xs whitespace-nowrap">
                           <div>{fmtNum(r.f.fee)}</div>
-                          <div className="text-ink-3">{r.item.priceType}</div>
+                          <div className="text-ink-3">{r.item.priceType}{r.item.videos > 1 && ` × ${r.item.videos}`}</div>
                         </td>
                         <td className="text-right text-xs whitespace-nowrap">
                           <div>GMV {fmtShort(r.f.gmvTarget)}</div>

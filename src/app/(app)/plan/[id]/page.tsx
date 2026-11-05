@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
-import { CANCELLED } from '@/lib/jobs';
+import { CANCELLED, jobCode } from '@/lib/jobs';
 import { PRICE_TYPES } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
 import { KL_LEVELS } from '../../contacts/platforms';
@@ -29,17 +29,23 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
     },
   });
   if (!plan) notFound();
-  const [brands, users, prices] = await Promise.all([
+  const [brands, users, prices, outside] = await Promise.all([
     canEdit ? db.brand.findMany({ orderBy: { name: 'asc' }, include: { products: { select: { id: true, name: true }, orderBy: { name: 'asc' } } } }) : [],
     canEdit ? db.user.findMany({ where: { active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, jobRole: true } }) : [],
     db.tierPrice.findMany(),
+    // Job từ listing của plan này nhưng không khớp tier nào của brand trong plan (book ngoài plan).
+    db.job.findMany({
+      where: { planLineId: null, stage: { not: CANCELLED }, listingItem: { batch: { planLineId: { in: plan.lines.map((l) => l.id) } } } },
+      select: { id: true, number: true, price: true, stage: true, brand: { select: { name: true } }, koc: { select: { handle: true, kl: true, klAuto: true } } },
+      orderBy: { number: 'asc' },
+    }),
   ]);
   const editing = sp.line === 'new' ? null : plan.lines.find((l) => l.id === sp.line);
   const lineOpen = canEdit && (sp.line === 'new' || editing);
   const qty = plan.lines.reduce((s, l) => s + l.quantity, 0);
   const jobs = plan.lines.flatMap((l) => l.jobs);
   const budget = plan.budget ?? plan.lines.reduce((s, l) => s + (l.budget ?? 0), 0);
-  const spent = jobs.reduce((s, j) => s + (j.price ?? 0), 0);
+  const spent = [...jobs, ...outside].reduce((s, j) => s + (j.price ?? 0), 0);
   const priceHint = (tier: string | null, type: string) => {
     const p = prices.find((x) => x.tier === tier && x.priceType === (/live/i.test(type) ? 'Phiên livestream' : 'Video'));
     return p ? `${fmtShort(p.minPrice)}–${fmtShort(p.maxPrice)} / KOC` : null;
@@ -64,7 +70,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label="KOC cần book" value={fmtNum(qty)} sub={`${plan.lines.length} dòng chi tiết`} />
-        <Kpi label="Đã có job" value={fmtNum(jobs.length)} sub={qty ? `${fmtPct(jobs.length / qty, 0)} plan` : undefined} />
+        <Kpi label="Đã có job" value={fmtNum(jobs.length)} sub={[qty ? `${fmtPct(jobs.length / qty, 0)} plan` : '', outside.length ? `+${outside.length} job ngoài plan` : ''].filter(Boolean).join(' · ') || undefined} />
         <Kpi label="Ngân sách" value={budget ? `${fmtShort(budget)} ₫` : 'Chưa nhập'} sub={plan.budget ? 'Ngân sách tổng' : 'Cộng từ các dòng'} />
         <Kpi label="Đã chốt (giá job)" value={spent ? `${fmtShort(spent)} ₫` : '0 ₫'} sub={budget ? (spent > budget ? `Vượt ngân sách ${fmtShort(spent - budget)} ₫` : `Còn ${fmtShort(budget - spent)} ₫`) : undefined} />
       </div>
@@ -114,6 +120,20 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
           </tbody>
         </table>
       </div>
+
+      {outside.length > 0 && (
+        <section className="mt-4 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]">
+          <h2 className="font-medium">Job ngoài plan · {outside.length} · {fmtShort(outside.reduce((s, j) => s + (j.price ?? 0), 0))} ₫</h2>
+          <p className="mb-2 text-xs text-ink-3">Tạo từ listing của plan này nhưng tier KOC không có dòng nào cùng brand trong plan. Thêm dòng plan đúng tier nếu cần theo dõi.</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {outside.map((j) => (
+              <Link key={j.id} href={`/jobs/${j.id}`} className="hover:underline">
+                <span className="font-mono text-xs text-accent">{jobCode(j.number)}</span> {j.brand?.name} · @{j.koc.handle} · {j.koc.kl ?? j.koc.klAuto ?? 'chưa có tier'} · {fmtShort(j.price)}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {lineOpen && (
         <Dialog title={editing ? 'Sửa dòng plan' : 'Thêm dòng plan'} closeHref={close}>

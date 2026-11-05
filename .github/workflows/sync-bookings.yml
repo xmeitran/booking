@@ -3,7 +3,7 @@
 # (3) tổng hợp tab Dữ liệu từ Trạm (6 giờ một lần, gọi trong giờ khác trả 429 là bình thường).
 # Gọi cũng đánh thức Render free nếu đang ngủ. Chạy tay: tab Actions > Sync bookings > Run workflow.
 # Lịch 15 phút / lần: GitHub hay hoãn hoặc bỏ lịch của repo ít hoạt động (lịch "mỗi giờ" thực tế 5–8 giờ mới chạy,
-# đo 05/11/2026). Mỗi job tự giới hạn trong app (bookings 1 giờ, chính là Lark automation gọi /api/hooks/lark-booking, creators 30 phút, data-sources 6 giờ), gọi dư trả 429.
+# đo 05/11/2026). Mỗi job tự giới hạn trong app (bookings 1 giờ, creators 30 phút, data-sources 6 giờ), gọi dư trả 429.
 name: Sync bookings
 on:
   schedule:
