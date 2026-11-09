@@ -25,6 +25,14 @@
   --color-critical: #A3241B;
   --color-critical-soft: #F8E4E2;
   --color-focus: #3D6BC4;
+
+  /* Cỡ chữ thành phần của b2c (chỉ thêm token mới, không đổi thang text-sm / text-xs đang dùng ở các trang khác). */
+  --text-2xs: 0.6875rem;     --text-2xs--line-height: 1rem;        /* 11/16 nhãn, chip nhỏ, chú thích */
+  --text-ctl-sm: 0.75rem;    --text-ctl-sm--line-height: 1rem;     /* 12 chip, nút chọn */
+  --text-ctl: 0.75rem;       --text-ctl--line-height: 1.125rem;    /* 12 tab, nút nhỏ */
+  --text-ctl-md: 0.78125rem; --text-ctl-md--line-height: 1.125rem; /* 12.5 tab */
+  --text-stat: 1.25rem;      --text-stat--line-height: 1.75rem;    /* 20/28 số chỉ số */
+  --text-stat-sm: 1.125rem;  --text-stat-sm--line-height: 1.5rem;  /* 18/24 số chỉ số gọn */
 }
 
 body {
@@ -49,6 +57,22 @@ body {
   }
   .label {
     @apply mb-1 block text-xs font-medium text-ink-3;
+  }
+  /* Bảng dữ liệu kiểu DataTable của b2c: tiêu đề cột nhạt nền sunken, chữ 12px, hàng đổi nền khi rê chuột. */
+  .dt {
+    @apply w-full border-collapse text-xs tabular-nums;
+  }
+  .dt th {
+    @apply border-b border-line bg-sunken/40 px-3 py-2 text-left text-2xs font-semibold whitespace-nowrap text-ink-3;
+  }
+  .dt td {
+    @apply border-b border-line px-3 py-2 align-top text-ink;
+  }
+  .dt tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .dt tbody tr:hover {
+    @apply bg-canvas;
   }
   .tbl {
     @apply w-full border-collapse text-[13px] tabular-nums;
