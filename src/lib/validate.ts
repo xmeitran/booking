@@ -10,11 +10,11 @@ export function phoneVN(s: string): string | null | undefined {
   return /^0\d{9}$/.test(d) ? d : undefined;
 }
 
-/** CCCD 12 số, CMND 9 số, MST 10 số hoặc 10-3 số. */
+/** CCCD 12 số, CMND 9 số, MST 10 số hoặc 13 số (có / không gạch: 0101234567-001). */
 export function idNumber(s: string): string | null | undefined {
   if (!s.trim()) return null;
   const d = s.replace(/\s/g, '');
-  return /^(\d{9}|\d{12}|\d{10}(-\d{3})?)$/.test(d) ? d : undefined;
+  return /^(\d{9}|\d{12}|\d{10}(-?\d{3})?)$/.test(d) ? d : undefined;
 }
 
 /** Số tài khoản ngân hàng: 6–19 chữ số (bỏ dấu cách, chấm, gạch). */

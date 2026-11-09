@@ -32,7 +32,8 @@ export default async function KocPage({ params, searchParams }: { params: Promis
     db.kocNote.findMany({ where: { kocId: koc.id }, include: { author: true }, orderBy: { createdAt: 'desc' }, take: 50 }),
     db.job.findMany({ where: { kocId: koc.id }, include: { brand: { select: { name: true } } }, orderBy: { number: 'desc' } }),
     // Hồ sơ có thể là cùng KOC (Lark ghi ID kênh khác nhau): cùng 3 ký tự đầu rồi so khoá bỏ dấu / dấu cách / số cuối.
-    db.koc.findMany({
+    // ID chỉ có số / ký tự đặc biệt: khoá rỗng sẽ khớp mọi KOC, bỏ qua.
+    dupKey(koc.handle).length < 3 ? Promise.resolve([]) : db.koc.findMany({
       where: { id: { not: koc.id }, handle: { startsWith: dupKey(koc.handle).slice(0, 3) } },
       select: { id: true, handle: true, name: true, bookingCount: true, kl: true, klAuto: true },
     }).then((list) => list.filter((k) => dupKey(k.handle) === dupKey(koc.handle))),

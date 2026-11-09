@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { audit, BRAND_ROLES } from '@/lib/catalog';
 import { db } from '@/lib/db';
 import { isUniqueError, optInt, str } from '@/lib/form';
+import { brandKey } from '@/lib/listing';
 import { requireUser } from '@/lib/session';
 
 // Danh mục: Admin / Leader sửa, mọi người xem.
@@ -38,10 +39,12 @@ export async function saveBrand(_: string | null, fd: FormData): Promise<string 
 export async function importFromBookings() {
   const me = await editor();
   const pairs = await db.booking.findMany({ where: { brand: { not: null } }, distinct: ['brand', 'store'], select: { brand: true, store: true } });
-  const brands = [...new Set(pairs.map((p) => p.brand!.trim()).filter(Boolean))];
+  // Khớp brand theo khoá chuẩn hoá như đồng bộ Lark ("PH CARE" = "pH Care"), không tạo brand trùng.
+  const have = new Set((await db.brand.findMany({ select: { name: true } })).map((b) => brandKey(b.name)));
+  const brands = [...new Map(pairs.map((p) => [brandKey(p.brand), p.brand!.trim()] as const).filter(([k]) => k && !have.has(k))).values()];
   await db.brand.createMany({ data: brands.map((name) => ({ name })), skipDuplicates: true });
-  const idOf = new Map((await db.brand.findMany({ select: { id: true, name: true } })).map((b) => [b.name, b.id]));
-  const stores = pairs.filter((p) => p.store?.trim()).flatMap((p) => p.store!.split(', ').map((s) => ({ brandId: idOf.get(p.brand!.trim())!, name: s.trim() })));
+  const idOf = new Map((await db.brand.findMany({ select: { id: true, name: true } })).map((b) => [brandKey(b.name), b.id]));
+  const stores = pairs.filter((p) => p.store?.trim()).flatMap((p) => p.store!.split(', ').map((s) => ({ brandId: idOf.get(brandKey(p.brand))!, name: s.trim() })));
   await db.store.createMany({ data: stores.filter((s) => s.brandId && s.name), skipDuplicates: true });
   await audit(me.id, 'Brand', '*', 'Nhập từ booking Lark', { brands: brands.length });
   revalidatePath('/catalog');
@@ -51,6 +54,9 @@ export async function importFromBookings() {
 export async function deleteBrand(fd: FormData) {
   const me = await requireUser('ADMIN');
   const id = str(fd, 'id');
+  // Xoá brand xoá luôn gian hàng / sản phẩm / nhân sự và bỏ trống brand ở dòng plan, brief: chỉ cho xoá brand chưa dùng ở đâu.
+  const used = await db.brand.findUniqueOrThrow({ where: { id }, select: { _count: { select: { jobs: true, planLines: true, briefs: true } } } });
+  if (used._count.jobs || used._count.planLines || used._count.briefs) redirect(`/catalog/${id}`);
   await db.brand.delete({ where: { id } });
   await audit(me.id, 'Brand', id, 'Xoá');
   revalidatePath('/catalog');
@@ -92,7 +98,9 @@ export async function saveProduct(_: string | null, fd: FormData): Promise<strin
   if (!name) return 'Nhập tên sản phẩm.';
   if (imageUrl === undefined || link === undefined) return 'Link ảnh / link sản phẩm phải bắt đầu bằng http(s)://';
   if (Number.isNaN(price)) return 'Giá là số nguyên ≥ 0.';
-  const data = { brandId, name, storeId: str(fd, 'storeId') || null, imageUrl, link, price, usp: opt(fd, 'usp') };
+  const storeId = str(fd, 'storeId') || null;
+  if (storeId && !(await db.store.count({ where: { id: storeId, brandId } }))) return 'Gian hàng không thuộc brand này.';
+  const data = { brandId, name, storeId, imageUrl, link, price, usp: opt(fd, 'usp') };
   if (id) await db.product.update({ where: { id }, data });
   else await db.product.create({ data });
   revalidatePath(`/catalog/${brandId}`);

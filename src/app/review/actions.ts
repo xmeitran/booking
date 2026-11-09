@@ -10,6 +10,8 @@ export async function submitReview(fd: FormData) {
   const batch = token ? await db.listingBatch.findFirst({ where: { shareToken: token }, include: { items: true } }) : null;
   if (!batch) redirect('/review/het-han');
   const changes = batch.items.flatMap((it) => {
+    // Dòng không có trong form Brand đã mở (KOC blacklist bị ẩn, KOC thêm sau khi Brand mở link): giữ nguyên.
+    if (!fd.has(`c_${it.id}`) && !fd.has(`r_${it.id}`)) return [];
     const c = str(fd, `c_${it.id}`);
     const brandChoice = BRAND_CHOICE.includes(c) ? c : null;
     const rejectReason = str(fd, `r_${it.id}`).slice(0, 500) || null;

@@ -24,9 +24,10 @@ export async function createJobsFromListing(fd: FormData) {
     include: { items: { where: { brandChoice: 'Yes', koc: { blacklisted: false } }, include: { koc: { select: { kl: true, klAuto: true } }, _count: { select: { jobs: true } } } } },
   });
   const brands = await db.brand.findMany({ include: { products: true, members: { where: { role: 'Booking PIC' } } } });
-  const brand = brands.find((b) => sameBrand(b.name, batch.brand));
-  const product = brand?.products.find((p) => sameBrand(p.name, batch.product));
   const line = batch.planLineId ? await db.planLine.findUnique({ where: { id: batch.planLineId } }) : null;
+  // Đợt mở từ dòng plan: brand theo dòng plan (đợt có thể không ghi tên brand); không thì khớp theo tên brand của đợt.
+  const brand = brands.find((b) => b.id === line?.brandId) ?? brands.find((b) => sameBrand(b.name, batch.brand));
+  const product = brand?.products.find((p) => p.id === line?.productId) ?? brand?.products.find((p) => sameBrand(p.name, batch.product));
   // Mỗi job gắn vào dòng plan cùng brand + cùng loại content + cùng tier KOC, lấp dòng tuần sớm nhất còn thiếu (đầy hết thì dòng tuần cuối);
   // cùng tuần thì ưu tiên dòng mở matching (plan Lark: nhiều gian hàng một brand, không chia tuần).
   // Không có dòng nào khớp tier: job không gắn dòng (ngoài plan), tab Plan báo riêng.
@@ -38,20 +39,30 @@ export async function createJobsFromListing(fd: FormData) {
       })).sort((a, b) => (a.week ?? 99) - (b.week ?? 99) || Number(b.id === line.id) - Number(a.id === line.id))
     : [];
   const pickLine = linePicker(lines.map((l) => ({ ...l, used: l._count.jobs })));
-  for (const it of batch.items) {
-    for (let n = it._count.jobs; n < it.videos; n++) {
-      const l = line ? pickLine(it.koc.kl ?? it.koc.klAuto) : null;
-      const job = await db.job.create({
-        data: {
-          kocId: it.kocId, listingItemId: it.id, brandId: brand?.id ?? null, productId: product?.id ?? null, planLineId: l?.id ?? null,
-          picId: l?.picId ?? brand?.members[0]?.userId ?? me.id, priceType: it.priceType, price: it.price,
-          deadline: n === 0 ? it.planAirDate : null, sample: 'Cần gửi', createdById: me.id,
-          note: [it.videos > 1 && `Video ${n + 1}/${it.videos}`, it.contentNote].filter(Boolean).join(' · ') || null,
-        },
-      });
-      await audit(me.id, 'Job', job.id, 'Tạo từ listing', { batchId: batch.id, planLineId: l?.id ?? null });
+  // Khoá đợt rồi đếm lại job trong transaction: hai người bấm "Tạo job" cùng lúc (hai tab, bấm đúp trước khi trang tải xong)
+  // không tạo job gấp đôi.
+  const created = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`select id from "ListingBatch" where id = ${batch.id} for update`;
+    const has = new Map((await tx.job.groupBy({ by: ['listingItemId'], where: { listingItemId: { in: batch.items.map((i) => i.id) } }, _count: true }))
+      .map((g) => [g.listingItemId, g._count]));
+    const out: { id: string; planLineId: string | null }[] = [];
+    for (const it of batch.items) {
+      for (let n = has.get(it.id) ?? 0; n < it.videos; n++) {
+        const l = line ? pickLine(it.koc.kl ?? it.koc.klAuto) : null;
+        out.push(await tx.job.create({
+          data: {
+            kocId: it.kocId, listingItemId: it.id, brandId: brand?.id ?? null, productId: product?.id ?? null, planLineId: l?.id ?? null,
+            picId: l?.picId ?? brand?.members[0]?.userId ?? me.id, priceType: it.priceType, price: it.price,
+            deadline: n === 0 ? it.planAirDate : null, sample: 'Cần gửi', createdById: me.id,
+            note: [it.videos > 1 && `Video ${n + 1}/${it.videos}`, it.contentNote].filter(Boolean).join(' · ') || null,
+          },
+          select: { id: true, planLineId: true },
+        }));
+      }
     }
-  }
+    return out;
+  }, { timeout: 60_000 });
+  for (const j of created) await audit(me.id, 'Job', j.id, 'Tạo từ listing', { batchId: batch.id, planLineId: j.planLineId });
   revalidatePath(`/listing/${batch.id}`);
   redirect(`/jobs?batch=${batch.id}`);
 }
@@ -63,19 +74,27 @@ export async function updateJob(_: string | null, fd: FormData): Promise<string 
   const submittedUrl = str(fd, 'submittedUrl');
   if (Number.isNaN(price)) return 'Giá là số nguyên ≥ 0.';
   if (submittedUrl && !/^https?:\/\//i.test(submittedUrl)) return 'Link video phải bắt đầu bằng http(s)://';
-  const before = await db.job.findUniqueOrThrow({ where: { id } });
+  const before = await db.job.findUniqueOrThrow({ where: { id }, include: { payment: { select: { number: true, status: true } } } });
+  const priceType = PRICE_TYPES.includes(str(fd, 'priceType')) ? str(fd, 'priceType') : before.priceType;
+  const newLink = Boolean(submittedUrl) && submittedUrl !== before.submittedUrl;
+  // Job đã vào ĐNTT: link đã nghiệm thu không đổi; giá chỉ sửa khi ĐNTT còn Nháp (đã gửi duyệt / đã duyệt thì số tiền phải giữ nguyên).
+  if (before.payment && (newLink || (!submittedUrl && before.submittedUrl))) return `Job đã nằm trong ĐNTT #${before.payment.number}, không đổi link video được.`;
+  if (before.payment && before.payment.status !== 'Nháp' && (price !== before.price || priceType !== before.priceType)) {
+    return `ĐNTT #${before.payment.number} đang "${before.payment.status}", không sửa giá được.`;
+  }
   const data = {
     price,
-    priceType: PRICE_TYPES.includes(str(fd, 'priceType')) ? str(fd, 'priceType') : before.priceType,
+    priceType,
     deadline: vnDate(str(fd, 'deadline')),
     sample: SAMPLE.includes(str(fd, 'sample')) ? str(fd, 'sample') : null,
     picId: str(fd, 'picId') || null,
     productId: str(fd, 'productId') || null,
     note: str(fd, 'note') || null,
     submittedUrl: submittedUrl || null,
-    // Nộp link lần đầu / link mới: ghi giờ nộp, chuyển "Đã nộp" nếu đang ở các bước trước.
-    ...(submittedUrl && submittedUrl !== before.submittedUrl
-      ? { submittedAt: new Date(), ...(STAGES.indexOf(before.stage as never) < STAGES.indexOf('Đã nộp') ? { stage: 'Đã nộp' } : {}) }
+    // Nộp link lần đầu / link mới: ghi giờ nộp, chuyển "Đã nộp" (link mới sau khi đã nghiệm thu Đạt thì phải nghiệm thu lại).
+    // Job đã huỷ giữ nguyên chặng.
+    ...(newLink
+      ? { submittedAt: new Date(), ...(before.stage !== CANCELLED && { stage: 'Đã nộp', ...(before.stage === 'Nghiệm thu' && { reviewResult: null }) }) }
       : {}),
   };
   await db.job.update({ where: { id }, data });
@@ -101,6 +120,7 @@ export async function moveStage(fd: FormData) {
   const job = await db.job.findUniqueOrThrow({ where: { id } });
   const ok = (STAGES as readonly string[]).includes(stage) || stage === CANCELLED;
   const why = !ok ? 'Chặng không hợp lệ'
+    : job.paymentId ? 'Job đã nằm trong ĐNTT, bỏ khỏi ĐNTT (khi còn Nháp) trước khi đổi chặng'
     : stage === 'Đã nộp' && !job.submittedUrl ? 'Nhập link video KOC nộp trước'
     : stage === 'Nghiệm thu' && job.reviewResult !== 'Đạt' ? 'Nghiệm thu chưa Đạt'
     : stage === 'Thanh toán' && !job.paymentId ? 'Tạo đề nghị thanh toán để chuyển sang Thanh toán'
@@ -116,6 +136,8 @@ export async function reviewJob(fd: FormData) {
   const me = await requireUser();
   const id = str(fd, 'id');
   const job = await db.job.findUniqueOrThrow({ where: { id }, include: { brand: true } });
+  const blocked = job.paymentId ? 'Job đã nằm trong ĐNTT, không nghiệm thu lại được' : job.stage === CANCELLED ? 'Job đã huỷ' : !job.submittedUrl ? 'KOC chưa nộp video' : null;
+  if (blocked) redirect(`/jobs/${id}?err=${encodeURIComponent(blocked)}`);
   const items: ReviewItem[] = checklistOf(job.brand?.checklist).map((item, i) => ({
     item,
     result: (RESULTS as readonly string[]).includes(str(fd, `r${i}`)) ? (str(fd, `r${i}`) as ReviewItem['result']) : '',

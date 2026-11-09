@@ -18,6 +18,7 @@ export const NUM_FIELDS = [
   ['femaleMin', 'Follower nữ từ (%)'], ['age18_34Min', 'Follower 18–34 tuổi từ (%)'], ['categoryMin', 'GMV ngành hàng từ (%)'],
 ] as const satisfies readonly (readonly [keyof Criteria, string])[];
 export const TIKTOK_CATEGORIES = Object.values(CATEGORY);
+const PERCENT_FIELDS = new Set<string>(['femaleMin', 'age18_34Min', 'categoryMin']);
 
 /** Đọc bộ tiêu chí từ form. Trả về chuỗi lỗi nếu ô số sai. */
 export function parseCriteria(fd: FormData): Criteria | string {
@@ -26,7 +27,9 @@ export function parseCriteria(fd: FormData): Criteria | string {
   if (list('niches').length) c.niches = list('niches');
   if (list('kl').length) c.kl = list('kl');
   for (const [k, label] of NUM_FIELDS) {
-    const s = String(fd.get(k) ?? '').replace(/[.,\s]/g, '');
+    const raw = String(fd.get(k) ?? '').trim();
+    // Ô % có thể có phần thập phân ("55,5"); các ô còn lại bỏ dấu phân cách hàng nghìn ("10.000").
+    const s = PERCENT_FIELDS.has(k) ? raw.replace(',', '.') : raw.replace(/[.,\s]/g, '');
     if (!s) continue;
     const n = Number(s);
     if (!Number.isFinite(n) || n < 0) return `${label}: nhập số ≥ 0.`;

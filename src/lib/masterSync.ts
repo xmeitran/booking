@@ -29,6 +29,18 @@ export const people = (v: unknown): LarkPerson[] => {
   return Array.isArray(a) ? a.filter((u) => u?.id) : [];
 };
 
+type AppUser = { id: string; larkUserId: string; name: string | null };
+/**
+ * Người Lark (open_id + tên) → user app. Khớp open_id trước. Theo tên chỉ khi đúng một user mang tên đó và user ấy được thêm bằng
+ * User ID (không phải open_id): open_id khác nhau là hai người khác nhau dù trùng tên.
+ */
+export function matchUser<U extends AppUser>(users: U[], p: LarkPerson): U | undefined {
+  const byId = users.find((u) => u.larkUserId === p.id);
+  if (byId) return byId;
+  const same = users.filter((u) => lower(u.name) && lower(u.name) === lower(p.name));
+  return same.length === 1 && !same[0].larkUserId.startsWith('ou_') ? same[0] : undefined;
+}
+
 const PLATFORM: Record<string, string> = { tiktok: 'TikTok Shop', shopee: 'Shopee', lazada: 'Lazada' };
 /** Sàn theo cột Platform; trống thì đoán từ tên gian ("Brand_TikTok_E2E-C"). */
 export function platformOf(platform: string | null, storeName: string): string | null {
@@ -119,19 +131,18 @@ export async function syncMaster() {
   // Đã có (thêm tay bằng User ID, không phải open_id) thì nhận theo email / tên Lark, không tạo trùng.
   const newUsers = [...team.keys()].flatMap((id) => {
     const p = profiles.get(id);
-    if (!p || users.some((u) => u.larkUserId === id || (p.email && lower(u.email) === lower(p.email)) || (p.name && lower(u.name) === lower(p.name)))) return [];
+    if (!p || matchUser(users, { id, name: p.name ?? '' }) || (p.email && users.some((u) => lower(u.email) === lower(p.email)))) return [];
     return [{ larkUserId: id, role: 'STAFF' as const, ...p, jobTitle: team.get(id) ?? p.jobTitle }];
   });
   const usersAdded = newUsers.length ? (await db.user.createMany({ data: newUsers, skipDuplicates: true })).count : 0;
 
   // Phân công: người phụ trách gian hàng (thuộc team Booking) → nhân sự phụ trách brand.
   const all = usersAdded ? await db.user.findMany({ select: { id: true, larkUserId: true, name: true, email: true } }) : users;
-  const userOf = (p: LarkPerson) => all.find((u) => u.larkUserId === p.id) ?? all.find((u) => lower(u.name) === lower(p.name));
   const members = new Map<string, Prisma.BrandMemberCreateManyInput>();
   for (const s of stores) {
     const b = brands.get(brandKey(s.brand))!;
     s.pics.filter((p) => team.has(p.id)).forEach((p, i) => {
-      const u = userOf(p);
+      const u = matchUser(all, p);
       const role = i ? 'Booking Support' : 'Booking PIC';
       if (u) members.set(`${b.id}|${u.id}|${role}`, { brandId: b.id, userId: u.id, role });
     });

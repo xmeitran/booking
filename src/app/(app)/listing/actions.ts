@@ -54,6 +54,8 @@ export async function deleteBatch(fd: FormData) {
   const me = await requireUser();
   const batch = await db.listingBatch.findUniqueOrThrow({ where: { id: str(fd, 'id') } });
   if (me.role === 'STAFF' && batch.createdById !== me.id) throw new Error('Chỉ người tạo, Leader hoặc Admin được xoá đợt listing.');
+  // Đợt đã có job: xoá đợt làm job mất nguồn listing (và plan không tính được chi phí ngoài plan).
+  if (await db.job.count({ where: { listingItem: { batchId: batch.id } } })) throw new Error('Đợt listing đã có job, không xoá được. Huỷ / xoá các job trước.');
   await db.listingBatch.delete({ where: { id: batch.id } });
   revalidatePath('/listing');
   redirect('/listing');
@@ -71,7 +73,7 @@ export async function addKocs(_: string | null, fd: FormData): Promise<string | 
   const keys = [...new Set(lines.map((l) => parseHandle(l) ?? l.replace(/^@/, '').toLowerCase()))];
   const aliases = await db.kocAlias.findMany({ where: { handle: { in: keys } }, select: { handle: true, koc: { select: { handle: true } } } });
   const handles = [...new Set(keys.map((k) => aliases.find((a) => a.handle === k)?.koc.handle ?? k))];
-  const existing = await db.koc.findMany({ where: { handle: { in: handles } } });
+  const existing = await db.koc.findMany({ where: { platform: 'TikTok', handle: { in: handles } } });
   const known = new Set(existing.map((k) => k.handle));
   const bad = handles.filter((h) => !known.has(h) && !parseHandle(h));
   if (bad.length) return `ID kênh không hợp lệ và chưa có trong Danh bạ: ${bad.slice(0, 5).join(', ')}`;
@@ -79,7 +81,7 @@ export async function addKocs(_: string | null, fd: FormData): Promise<string | 
     data: handles.filter((h) => !known.has(h)).map((h) => ({ platform: 'TikTok', handle: h, name: h, channelUrl: `https://www.tiktok.com/@${h}` })),
     skipDuplicates: true,
   });
-  const kocs = await db.koc.findMany({ where: { handle: { in: handles } } });
+  const kocs = await db.koc.findMany({ where: { platform: 'TikTok', handle: { in: handles } } });
   await db.listingItem.createMany({
     data: kocs.map((k) => ({ batchId, kocId: k.id, createdById: me.id, priceType })),
     skipDuplicates: true,
@@ -119,6 +121,8 @@ export async function saveItem(_: string | null, fd: FormData): Promise<string |
 
 export async function removeItem(fd: FormData) {
   await requireUser();
+  // KOC đã có job: bỏ khỏi đợt làm job mất liên kết, thêm lại thì "Tạo job" tạo job lần nữa.
+  if (await db.job.count({ where: { listingItemId: str(fd, 'id') } })) throw new Error('KOC đã có job trong đợt này, không bỏ khỏi đợt được. Huỷ job nếu không book nữa.');
   const item = await db.listingItem.delete({ where: { id: str(fd, 'id') } });
   revalidatePath(`/listing/${item.batchId}`);
   redirect(`/listing/${item.batchId}`);

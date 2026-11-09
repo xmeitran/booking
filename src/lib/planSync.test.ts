@@ -40,5 +40,6 @@ test('toLines chia theo KL khi Lark có số tier; bỏ dòng trống và dòng 
   ]);
   assert.equal(lines[0].note, 'EUPC _TikTok_E2E-C · B2C không phụ trách');
   assert.deepEqual(toLines(rec({ ...base, 'Số video affiliate': 0 })), []);
+  assert.equal(toLines(rec({ ...base, 'Số video affiliate': 2.6 }))[0].quantity, 3); // cột Int: làm tròn số lẻ từ Lark
   assert.deepEqual(toLines(rec({ ...base, 'Tháng': null, 'Số video affiliate': 5 })), []);
 });

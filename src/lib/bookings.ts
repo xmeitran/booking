@@ -39,7 +39,7 @@ export function bookingWhere(f: BookingFilters): Prisma.BookingWhereInput {
       // Việc của một người: phụ trách, hoặc có tên trong Booking PIC / Account PIC / Leader (Lark ghi nhiều tên cách dấu phẩy).
       f.person ? { OR: [{ owner: f.person }, { bookingPic: { contains: f.person } }, { accountPic: { contains: f.person } }, { leader: { contains: f.person } }] } : {},
       q ? { OR: [{ code: contains }, { channel: contains }, { store: contains }, { brand: contains }] } : {},
-      f.flag && FLAGS[f.flag] ? FLAGS[f.flag].where() : {},
+      f.flag && Object.hasOwn(FLAGS, f.flag) ? FLAGS[f.flag].where() : {},
     ],
   };
 }

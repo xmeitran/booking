@@ -150,6 +150,10 @@ export default async function JobPage({ params, searchParams }: { params: Promis
         </div>
         {!j.submittedUrl ? (
           <p className="text-[13px] text-ink-3">KOC chưa nộp video. Nhập link video ở &quot;Thông tin job&quot;, job tự chuyển sang &quot;Đã nộp&quot;.</p>
+        ) : j.paymentId || j.stage === CANCELLED ? (
+          <p className="text-[13px] text-ink-3">
+            {j.paymentId ? 'Job đã nằm trong ĐNTT, không nghiệm thu lại.' : 'Job đã huỷ.'} Video: <a href={j.submittedUrl} target="_blank" rel="noreferrer" className="link break-all">{j.submittedUrl}</a>
+          </p>
         ) : (
           <form action={reviewJob} className="grid gap-3">
             <input type="hidden" name="id" value={j.id} />

@@ -59,11 +59,13 @@ export async function saveLine(_: string | null, fd: FormData): Promise<string |
   if (quantity == null || Number.isNaN(quantity)) return 'Nhập số KOC cần book (0 nếu dòng chỉ giữ ngân sách).';
   if (Number.isNaN(budget)) return 'Ngân sách là số nguyên ≥ 0.';
   if (!quantity && !budget) return 'Dòng plan cần số KOC hoặc ngân sách.';
+  const productId = str(fd, 'productId') || null;
+  if (productId && !(await db.product.count({ where: { id: productId, brandId } }))) return 'Sản phẩm không thuộc brand đã chọn.';
   // PIC trống: lấy Booking PIC của brand (Danh mục → brand → Nhân sự phụ trách).
   const picId = str(fd, 'picId') || (await db.brandMember.findFirst({ where: { brandId, role: 'Booking PIC' } }))?.userId || null;
   const data = {
     planId, brandId, week, quantity, budget, picId,
-    productId: str(fd, 'productId') || null,
+    productId,
     tier: KL_LEVELS.includes(tier) ? tier : null,
     contentType: str(fd, 'contentType') || 'Video',
     note: str(fd, 'note') || null,

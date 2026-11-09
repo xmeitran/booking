@@ -7,7 +7,7 @@ import { type LarkRecord, searchPages, toText } from './bookingSync';
 import { db } from './db';
 import { tenantToken } from './lark';
 import { brandKey } from './listing';
-import { people, syncMasterJob } from './masterSync';
+import { matchUser, people, syncMasterJob } from './masterSync';
 
 const TABLE = 'tblvgyOkneDKOVsB';
 const KL = ['KL1', 'KL2', 'KL3', 'KL4', 'KL5', 'KL6', 'KL7'];
@@ -38,7 +38,11 @@ export const fromLark = (id: string) => id.startsWith('lark-');
 
 const num = (v: unknown) => (typeof v === 'number' ? v : 0);
 // Chi phí trên Lark là gross; Lark quy net = gross / 1.08 / 1.1 (cột "(Net) Chi phí ..."). Ngân sách dòng dùng net để so với giá job (net).
-const net = (v: unknown) => Math.round(num(v) / 1.08 / 1.1) || null;
+const INT_MAX = 2_147_483_647; // cột Int của Postgres
+const net = (v: unknown) => {
+  const n = Math.round(num(v) / 1.08 / 1.1);
+  return n > 0 && n <= INT_MAX ? n : null;
+};
 
 export interface LineDraft {
   id: string;
@@ -66,7 +70,8 @@ export function toLines(r: LarkRecord): LineDraft[] {
 
   const out: LineDraft[] = [];
   const add = (key: string, tier: string | null, contentType: string, quantity: number, budget: number | null, n = note()) => {
-    if (quantity > 0 || budget) out.push({ ...base, id: `lark-${r.record_id}-${key}`, tier, contentType, quantity: Math.max(0, quantity), budget, note: n });
+    const q = Math.min(INT_MAX, Math.max(0, Math.round(quantity))); // Lark có thể ghi số lẻ
+    if (q > 0 || budget) out.push({ ...base, id: `lark-${r.record_id}-${key}`, tier, contentType, quantity: q, budget, note: n });
   };
   let cast = qty('videoAdj', 'video') - foc; // video affiliate trả phí = tổng − freecast
   for (const k of KL) {
@@ -87,7 +92,8 @@ export async function syncPlans() {
     rows += page.length;
     for (const r of page) drafts.push(...toLines(r));
   }
-  if (!rows) throw new Error('Bảng plan trên Lark trả về 0 dòng, không đồng bộ để tránh xoá nhầm.');
+  // Đếm dòng plan đọc được, không phải dòng Lark: đổi định dạng cột "Tháng" trên Lark thì mọi dòng ra rỗng, không được xoá hết.
+  if (!drafts.length) throw new Error(`Đọc ${rows} dòng Lark nhưng không ra dòng plan nào (đổi tên / định dạng cột?), không đồng bộ để tránh xoá nhầm.`);
 
   // Brand khớp Danh mục theo tên (bỏ khoảng trắng, ký tự đặc biệt); chưa có thì thêm để "Tìm KOC" và gắn job theo brand chạy được.
   const loadBrands = async () => new Map((await db.brand.findMany({ select: { id: true, name: true, members: { where: { role: 'Booking PIC' }, select: { userId: true } } } })).map((b) => [brandKey(b.name), b]));
@@ -98,10 +104,9 @@ export async function syncPlans() {
 
   // PIC: user Lark (open_id) → user app; chưa đăng nhập app thì khớp theo tên; không có thì Booking PIC của brand.
   const users = await db.user.findMany({ select: { id: true, larkUserId: true, name: true } });
-  const lower = (s?: string | null) => s?.trim().toLowerCase();
   const lines = drafts.map((d) => {
     const b = brands.get(brandKey(d.brand));
-    const u = d.pic && (users.find((x) => x.larkUserId === d.pic!.id) ?? users.find((x) => lower(x.name) === lower(d.pic!.name)));
+    const u = d.pic && matchUser(users, d.pic);
     return {
       id: d.id, planId: `lark-${d.month}`, brandId: b?.id ?? null, productId: null, week: null,
       tier: d.tier, contentType: d.contentType, quantity: d.quantity, budget: d.budget,
@@ -128,7 +133,11 @@ export async function syncPlans() {
   // ponytail: cập nhật từng dòng; plan ít đổi nên mỗi lượt chỉ vài chục dòng. Gom batch nếu chậm.
   for (const l of changed) await db.planLine.update({ where: { id: l.id }, data: l });
   const keep = new Set(lines.map((l) => l.id));
-  const removed = (await db.planLine.deleteMany({ where: { id: { in: [...old.keys()].filter((id) => !keep.has(id)) } } })).count;
+  const gone = [...old.keys()].filter((id) => !keep.has(id));
+  // Dòng mất trên Lark (sửa ô số tạm trống, xoá dòng): dòng đã có job / brief thì chỉ về 0 KOC, không xoá, để job không mất liên kết
+  // (linePicker bỏ qua dòng 0 KOC). Dòng chưa dùng thì xoá.
+  await db.planLine.updateMany({ where: { id: { in: gone }, OR: [{ jobs: { some: {} } }, { briefs: { some: {} } }] }, data: { quantity: 0, budget: null } });
+  const removed = (await db.planLine.deleteMany({ where: { id: { in: gone }, jobs: { none: {} }, briefs: { none: {} } } })).count;
   // Tháng không còn trên Lark: xoá plan nếu không còn dòng nào (kể cả dòng thêm tay).
   await db.plan.deleteMany({ where: { id: { startsWith: 'lark-', notIn: months.map((m) => `lark-${m}`) }, lines: { none: {} } } });
 

@@ -121,7 +121,7 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
               <div className="space-y-2">
                 {col.cards.map((b) => <Card key={b.id} b={b} />)}
                 {col.count > col.cards.length && (
-                  <Link href={withParam('view', '') + `${params.size ? '&' : '?'}pipeline=${encodeURIComponent(col.stage)}`} className="block px-1 text-xs text-accent hover:underline">
+                  <Link href={`/booking?${new URLSearchParams([...[...params].filter(([k]) => k !== 'view' && k !== 'pipeline'), ['pipeline', col.stage]])}`} className="block px-1 text-xs text-accent hover:underline">
                     Xem cả {fmtNum(col.count)} booking →
                   </Link>
                 )}

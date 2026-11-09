@@ -8,6 +8,7 @@ import { db } from './db';
 export async function runOnce(id: string, gapMin: number, job: () => Promise<string>) {
   await db.syncState.createMany({ data: [{ id }], skipDuplicates: true });
   const ago = (min: number) => new Date(Date.now() - min * 60_000);
+  const started = new Date();
   // Chạy khi: chưa từng chạy; hoặc đã quá gapMin VÀ lượt trước đã xong (không chạy chồng khi Lark automation gọi dồn);
   // hoặc lượt trước bắt đầu quá 30 phút mà chưa xong (bị ngắt giữa chừng do deploy / Render khởi động lại).
   const { count } = await db.syncState.updateMany({
@@ -19,7 +20,7 @@ export async function runOnce(id: string, gapMin: number, job: () => Promise<str
         { startedAt: { lt: ago(Math.max(gapMin, 30)) } },
       ],
     },
-    data: { startedAt: new Date(), finishedAt: null },
+    data: { startedAt: started, finishedAt: null },
   });
   if (!count) return NextResponse.json({ skipped: `Vừa chạy hoặc đang chạy, thử lại sau ${gapMin} phút.` }, { status: 429 });
 
@@ -30,6 +31,7 @@ export async function runOnce(id: string, gapMin: number, job: () => Promise<str
     console.error(`[${id}]`, e);
     message = `Lỗi: ${e instanceof Error ? e.message : String(e)}`;
   }
-  await db.syncState.update({ where: { id }, data: { finishedAt: new Date(), message } });
-  return NextResponse.json({ message }, { status: message.startsWith('Lỗi') ? 500 : 200 });
+  await db.syncState.updateMany({ where: { id, startedAt: started }, data: { finishedAt: new Date(), message } });
+  const failed = message.startsWith('Lỗi');
+  return NextResponse.json({ message: failed ? 'Lỗi, xem trạng thái đồng bộ trong app' : message }, { status: failed ? 500 : 200 });
 }

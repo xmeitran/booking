@@ -23,8 +23,11 @@ export async function saveKoc(_: string | null, fd: FormData): Promise<string | 
   const id = str(fd, 'id');
   const platform = str(fd, 'platform');
   const rawHandle = str(fd, 'handle');
+  const current = id ? await db.koc.findUnique({ where: { id }, select: { handle: true, platform: true } }) : null;
   // TikTok: nhận cả link kênh, chỉ chấp nhận username hợp lệ để khớp booking và tra được TikTok Shop.
-  const handle = platform === 'TikTok' ? parseHandle(rawHandle) ?? '' : rawHandle.replace(/^@/, '').toLowerCase();
+  // Giữ nguyên ID cũ thì không kiểm lại (KOC từ Lark có ID không đúng chuẩn vẫn sửa được SĐT, địa chỉ...).
+  const keep = current && rawHandle.replace(/^@/, '').toLowerCase() === current.handle;
+  const handle = keep ? current.handle : platform === 'TikTok' ? parseHandle(rawHandle) ?? '' : rawHandle.replace(/^@/, '').toLowerCase();
   const name = str(fd, 'name');
   const channelUrl = str(fd, 'channelUrl') || null;
   const followers = optInt(fd, 'followers');
@@ -67,9 +70,20 @@ export async function saveKoc(_: string | null, fd: FormData): Promise<string | 
     bankName: str(fd, 'bankName') || null,
     idNumber: idNo,
   };
+  // Đổi ID kênh TikTok: giữ ID cũ làm alias và đổi kênh ở booking (như gộp KOC), để booking không mất liên kết
+  // và đồng bộ Lark sau không tạo lại KOC theo ID cũ.
+  const renamed = current && current.platform === 'TikTok' && current.handle !== handle;
   try {
-    if (id) await db.koc.update({ where: { id }, data });
-    else await db.koc.create({ data });
+    if (id) {
+      await db.$transaction([
+        db.koc.update({ where: { id }, data }),
+        ...(renamed ? [
+          db.kocAlias.upsert({ where: { handle: current.handle }, create: { handle: current.handle, kocId: id }, update: { kocId: id } }),
+          db.booking.updateMany({ where: { channel: { equals: current.handle, mode: 'insensitive' } }, data: { channel: handle } }),
+        ] : []),
+      ]);
+      if (renamed) await refreshKocAggregates();
+    } else await db.koc.create({ data });
   } catch (e) {
     if (isUniqueError(e)) return `Kênh @${handle} trên ${platform} đã có trong danh bạ.`;
     throw e;
@@ -80,7 +94,11 @@ export async function saveKoc(_: string | null, fd: FormData): Promise<string | 
 
 export async function deleteKoc(fd: FormData) {
   await requireUser('ADMIN', 'LEADER');
-  await db.koc.delete({ where: { id: str(fd, 'id') } });
+  const id = str(fd, 'id');
+  // KOC đã có job (xoá sẽ lỗi khoá ngoại) hoặc nằm trong listing (xoá mất lựa chọn của Brand): gộp thay vì xoá.
+  const used = await db.koc.findUniqueOrThrow({ where: { id }, select: { _count: { select: { jobs: true, listingItems: true } } } });
+  if (used._count.jobs || used._count.listingItems) redirect(`/contacts/${id}?merge=${encodeURIComponent('KOC đã có job hoặc nằm trong listing, không xoá được. Nếu là hồ sơ trùng, gộp vào KOC kia.')}`);
+  await db.koc.delete({ where: { id } });
   back(fd);
 }
 
@@ -96,7 +114,7 @@ export async function mergeKoc(fd: FormData) {
   const src = await db.koc.findUniqueOrThrow({ where: { id: str(fd, 'id') } });
   const raw = str(fd, 'target').trim();
   const key = parseHandle(raw) ?? raw.replace(/^@/, '').toLowerCase();
-  const dst = key ? await db.koc.findFirst({ where: { handle: key } }) : null;
+  const dst = key ? await db.koc.findFirst({ where: { platform: src.platform, handle: key } }) : null;
   const fail = (m: string) => redirect(`/contacts/${src.id}?merge=${encodeURIComponent(m)}`);
   if (!dst) fail(`Không có KOC "${raw}" trong Danh bạ.`);
   if (dst!.id === src.id) fail('Chọn một KOC khác để gộp vào.');

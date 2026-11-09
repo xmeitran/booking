@@ -27,4 +27,4 @@ export function kocBase({ q = '', platform, niche, kl, tag }: KocFilters): Prism
   ];
 }
 
-export const kocWhere = (f: KocFilters): Prisma.KocWhereInput => ({ AND: [...kocBase(f), f.flag && FLAGS[f.flag] ? FLAGS[f.flag].where() : {}] });
+export const kocWhere = (f: KocFilters): Prisma.KocWhereInput => ({ AND: [...kocBase(f), f.flag && Object.hasOwn(FLAGS, f.flag) ? FLAGS[f.flag].where() : {}] });

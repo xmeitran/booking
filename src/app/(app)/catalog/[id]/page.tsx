@@ -141,7 +141,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
             <F label="Ghi chú"><textarea name="note" rows={2} defaultValue={b.note ?? ''} className="input" /></F>
             <div className="flex justify-end gap-2"><Link href={close} className="btn">Hủy</Link><button className="btn btn-primary">Lưu</button></div>
           </ActionForm>
-          {me.role === 'ADMIN' && !b._count.jobs && (
+          {me.role === 'ADMIN' && !b._count.jobs && !b._count.planLines && !b._count.briefs && (
             <form action={deleteBrand} className="mt-4 border-t border-line pt-4">
               <input type="hidden" name="id" value={b.id} />
               <button className="btn btn-danger">Xoá brand</button>

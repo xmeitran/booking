@@ -15,6 +15,7 @@ test('idNumber nhận CCCD, CMND, MST', () => {
   assert.equal(idNumber('001 203 004 567'), '001203004567');
   assert.equal(idNumber('123456789'), '123456789');
   assert.equal(idNumber('0101234567-001'), '0101234567-001');
+  assert.equal(idNumber('0101234567001'), '0101234567001');
   assert.equal(idNumber('12345'), undefined);
 });
 

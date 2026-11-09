@@ -32,7 +32,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const canEdit = me.role !== 'STAFF';
   const sp = await searchParams;
   const { q = '', platform = '', niche = '', kl = '', tag = '', edit } = sp;
-  const flag = sp.flag && FLAGS[sp.flag] ? sp.flag : '';
+  const flag = sp.flag && Object.hasOwn(FLAGS, sp.flag) ? sp.flag : '';
   const sort = sp.sort && SORTS[sp.sort] ? sp.sort : '';
   const page = pageOf(sp.page);
 

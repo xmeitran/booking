@@ -19,4 +19,7 @@ test('parseCriteria đọc form và báo ô số sai', () => {
   assert.deepEqual(parseCriteria(fd), { niches: ['Beauty', 'Review Nữ'], followersMin: 10000, collab: 'no' });
   fd.set('gpmMin', 'abc');
   assert.equal(typeof parseCriteria(fd), 'string');
+  const pct = new FormData();
+  pct.set('femaleMin', '55,5'); pct.set('categoryMin', '0.5');
+  assert.deepEqual(parseCriteria(pct), { femaleMin: 55.5, categoryMin: 0.5 }); // ô % giữ phần thập phân
 });

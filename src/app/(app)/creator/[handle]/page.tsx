@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { Avatar } from '@/components/ui';
 import { db } from '@/lib/db';
 import {
@@ -35,6 +35,8 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
   const handle = decodeURIComponent((await params).handle).replace(/^@/, '').toLowerCase();
   if (!TIKTOK_USERNAME.test(handle)) notFound();
   const { raw, tiktok } = await searchParams;
+  const alias = await db.kocAlias.findUnique({ where: { handle }, select: { koc: { select: { handle: true } } } });
+  if (alias && alias.koc.handle !== handle) redirect(`/creator/${encodeURIComponent(alias.koc.handle)}`);
 
   const [koc, cachedStation, state, bookings, booksSync] = await Promise.all([
     db.koc.findFirst({ where: { platform: 'TikTok', handle }, include: { pic: { select: { name: true } } } }),

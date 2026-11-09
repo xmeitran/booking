@@ -149,6 +149,9 @@ async function addKocs(rows: Row[]) {
     // "id kênh" là kênh TikTok (Link kênh = tiktok.com/@...). Cột "Nền tảng" bên Lark tính từ link air của booking, không phải của kênh.
     byKey.set(handle, { platform: 'TikTok', handle, name: r.channel.trim(), channelUrl: r.channelUrl, niche: r.extra.niche });
   }
+  // ID đã gộp vào KOC khác (có thể vừa gộp trong lúc lượt này đang chạy): không tạo lại hồ sơ trùng.
+  const merged = await db.kocAlias.findMany({ where: { handle: { in: [...byKey.keys()] } }, select: { handle: true } });
+  for (const a of merged) byKey.delete(a.handle);
   return (await db.koc.createMany({ data: [...byKey.values()], skipDuplicates: true })).count;
 }
 
@@ -251,7 +254,9 @@ async function fillBankInfo(banks: Map<string, { holder: string | null; account:
       "bankName" = coalesce(k."bankName", v.bank), "idNumber" = coalesce(k."idNumber", v.idn)
     from unnest(${list.map(([h]) => h)}::text[], ${list.map(([, b]) => b.account)}::text[], ${list.map(([, b]) => b.holder)}::text[],
                 ${list.map(([, b]) => b.bank)}::text[], ${list.map(([, b]) => b.id)}::text[]) as v(h, account, holder, bank, idn)
-    where k.handle = v.h and (k."bankAccount" is null or k."bankHolder" is null or k."bankName" is null or k."idNumber" is null)`;
+    where k.handle = v.h and k.platform = 'TikTok'
+      and (k."bankAccount" is null or k."bankAccount" = v.account) -- Danh bạ đã có số TK khác: không lấy tên / ngân hàng / CCCD của TK khác
+      and (k."bankAccount" is null or k."bankHolder" is null or k."bankName" is null or k."idNumber" is null)`;
 }
 
 /** Đồng bộ tự động (Lark automation, GitHub cron) chạy tối đa 1 lần / giờ; 55 để lịch gọi mỗi giờ lệch vài phút vẫn chạy. */
@@ -265,6 +270,10 @@ export async function syncBookingsJob() {
 
 /** Số booking, booking gần nhất, cấp KL gần nhất của từng KOC: để Danh bạ lọc / sắp xếp không phải gộp lại mỗi lần xem. */
 export async function refreshKocAggregates() {
+  await db.$executeRaw`
+    update "Koc" set "bookingCount" = 0, "lastBookingAt" = null, "klAuto" = null
+    where platform = 'TikTok' and "bookingCount" > 0
+      and handle not in (select lower(channel) from "Booking" where channel is not null)`;
   await db.$executeRaw`
     update "Koc" k set "bookingCount" = a.n, "lastBookingAt" = a.last, "klAuto" = a.kl
     from (

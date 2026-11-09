@@ -1,6 +1,8 @@
 // CSV UTF-8 có BOM: Excel mở thẳng, đúng tiếng Việt; đủ dùng, không cần thư viện xlsx.
 const cell = (v: unknown) => {
-  const s = v == null ? '' : String(v);
+  let s = v == null ? '' : String(v);
+  // Chữ bắt đầu bằng = + - @ (tên kênh TikTok, lý do Brand nhập...) Excel coi là công thức: thêm ' để hiện như chữ.
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
