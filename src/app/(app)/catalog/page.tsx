@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtNum } from '@/lib/format';
-import { requireUser } from '@/lib/session';
+import { can, requireUser } from '@/lib/session';
 import { KL_LEVELS } from '../contacts/platforms';
 import { importFromBookings, saveBrand, saveTierPrices } from './actions';
 
@@ -12,7 +12,7 @@ const PRICE_COLS = ['Video', 'Phiên livestream'];
 export default async function CatalogPage({ searchParams }: { searchParams: Promise<{ tab?: string; new?: string; q?: string }> }) {
   const me = await requireUser();
   const sp = await searchParams;
-  const canEdit = me.role !== 'STAFF';
+  const canEdit = can(me, 'catalog.edit');
   const tab = sp.tab === 'prices' ? 'prices' : 'brands';
   const q = sp.q?.trim() ?? '';
   const [brands, prices, bookingBrands] = await Promise.all([

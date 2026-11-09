@@ -5,6 +5,7 @@ import { isPayIssue, PIPELINE, PIPELINE_TONE } from '@/lib/bookings';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort, fmtVnd } from '@/lib/format';
 import { FEE_DIVISOR } from '@/lib/kocInsights';
+import { guard } from '@/lib/scope';
 import { requireUser } from '@/lib/session';
 
 const LARK_BASE = 'https://upbasevn.sg.larksuite.com/base/W6vRbbuOVar3qtsV18dlan1xgXb?table=tbluWrjJd9Pt9uzb';
@@ -14,8 +15,9 @@ const num = (v: unknown) => (v == null || v === '' || !Number.isFinite(Number(v)
 type Extra = Record<string, string | null | undefined>;
 
 export default async function BookingDetail({ params }: { params: Promise<{ id: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const { id } = await params;
+  await guard(me, 'booking', id);
   const b = await db.booking.findUnique({ where: { id } });
   if (!b) notFound();
   const x = b.extra as Extra;

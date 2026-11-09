@@ -3,16 +3,20 @@ import { CatalogPick } from '@/components/CatalogPick';
 import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate } from '@/lib/format';
+import { listingScope, scopeOf } from '@/lib/scope';
 import { requireUser } from '@/lib/session';
+import { ScopeNote } from '@/components/ScopeNote';
 import { saveBatch } from './actions';
 
 const thisMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).slice(0, 7);
 
 export default async function ListingPage({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
-  await requireUser();
+  const me = await requireUser();
   const { new: isNew } = await searchParams;
+  const scope = await scopeOf(me);
   const [batches, brands] = await Promise.all([
     db.listingBatch.findMany({
+      where: listingScope(scope),
       orderBy: { createdAt: 'desc' },
       include: { createdBy: true, items: { select: { brandChoice: true, recommendation: true } } },
     }),
@@ -25,6 +29,7 @@ export default async function ListingPage({ searchParams }: { searchParams: Prom
         <h1 className="text-xl font-semibold">Listing</h1>
         <Link href="?new=1" className="btn btn-primary">Tạo đợt listing</Link>
       </div>
+      <ScopeNote scope={scope} className="-mt-2 mb-3" />
 
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">

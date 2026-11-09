@@ -96,14 +96,15 @@ export async function syncPlans() {
   if (!drafts.length) throw new Error(`Đọc ${rows} dòng Lark nhưng không ra dòng plan nào (đổi tên / định dạng cột?), không đồng bộ để tránh xoá nhầm.`);
 
   // Brand khớp Danh mục theo tên (bỏ khoảng trắng, ký tự đặc biệt); chưa có thì thêm để "Tìm KOC" và gắn job theo brand chạy được.
-  const loadBrands = async () => new Map((await db.brand.findMany({ select: { id: true, name: true, members: { where: { role: 'Booking PIC' }, select: { userId: true } } } })).map((b) => [brandKey(b.name), b]));
+  const loadBrands = async () => new Map((await db.brand.findMany({ select: { id: true, name: true, members: { where: { role: 'Booking PIC', user: { active: true } }, select: { userId: true } } } })).map((b) => [brandKey(b.name), b]));
   let brands = await loadBrands();
   const missing = new Map(drafts.filter((d) => brandKey(d.brand) && !brands.has(brandKey(d.brand))).map((d) => [brandKey(d.brand), d.brand!]));
   const newBrands = missing.size ? (await db.brand.createMany({ data: [...missing.values()].map((name) => ({ name })), skipDuplicates: true })).count : 0;
   if (newBrands) brands = await loadBrands();
 
   // PIC: user Lark (open_id) → user app; chưa đăng nhập app thì khớp theo tên; không có thì Booking PIC của brand.
-  const users = await db.user.findMany({ select: { id: true, larkUserId: true, name: true } });
+  // Chỉ user còn hoạt động: người đã nghỉ (bị khoá, đã bàn giao) thì dòng về Booking PIC hiện tại của brand.
+  const users = await db.user.findMany({ where: { active: true }, select: { id: true, larkUserId: true, name: true } });
   const lines = drafts.map((d) => {
     const b = brands.get(brandKey(d.brand));
     const u = d.pic && matchUser(users, d.pic);

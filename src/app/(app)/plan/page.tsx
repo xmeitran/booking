@@ -4,7 +4,9 @@ import { CANCELLED } from '@/lib/jobs';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
 import { fromLark } from '@/lib/planSync';
-import { requireUser } from '@/lib/session';
+import { jobScope, lineScope, planScope, scopeOf } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
+import { ScopeNote } from '@/components/ScopeNote';
 import { savePlan, syncPlansNow } from './actions';
 
 const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
@@ -14,16 +16,18 @@ const thisMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia
 export default async function PlanList({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
   const me = await requireUser();
   const sp = await searchParams;
+  const scope = await scopeOf(me);
   const plans = await db.plan.findMany({
-    include: { lines: { select: { id: true, quantity: true, budget: true, jobs: { where: { stage: { not: CANCELLED } }, select: { price: true } } } } },
+    where: planScope(scope),
+    include: { lines: { where: lineScope(scope), select: { id: true, quantity: true, budget: true, jobs: { where: { stage: { not: CANCELLED } }, select: { price: true } } } } },
     orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
   });
-  const canEdit = me.role !== 'STAFF';
+  const canEdit = can(me, 'plan.edit');
   const sync = await db.syncState.findUnique({ where: { id: 'plans' } });
   const syncing = Boolean(sync?.startedAt && !sync.finishedAt);
   // Job ngoài plan (tier không có dòng nào): tính vào "Đã chốt" như trang chi tiết plan.
   const outside = await db.job.findMany({
-    where: { planLineId: null, stage: { not: CANCELLED }, listingItem: { batch: { planLineId: { not: null } } } },
+    where: { planLineId: null, stage: { not: CANCELLED }, listingItem: { batch: { planLineId: { not: null } } }, AND: [jobScope(scope)] },
     select: { price: true, listingItem: { select: { batch: { select: { planLineId: true } } } } },
   });
 
@@ -37,6 +41,7 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
             {syncing ? 'Đang đồng bộ danh mục và plan từ Lark Base, tải lại trang sau 1 phút'
               : sync?.finishedAt ? `Lark Base · đồng bộ ${fmtTime(sync.finishedAt)} · ${sync.message}` : 'Chưa đồng bộ plan từ Lark Base'}
           </p>
+          <ScopeNote scope={scope} />
         </div>
         <div className="flex gap-2">
           <form action={syncPlansNow}><button className="btn" disabled={syncing}>{syncing ? 'Đang đồng bộ…' : 'Đồng bộ ngay từ Lark'}</button></form>
@@ -50,7 +55,7 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
             {plans.map((p) => {
               const qty = p.lines.reduce((s, l) => s + l.quantity, 0);
               const jobs = p.lines.flatMap((l) => l.jobs);
-              const budget = p.budget ?? p.lines.reduce((s, l) => s + (l.budget ?? 0), 0);
+              const budget = (!scope && p.budget) || p.lines.reduce((s, l) => s + (l.budget ?? 0), 0);
               const ids = new Set(p.lines.map((l) => l.id));
               const spent = [...jobs, ...outside.filter((j) => ids.has(j.listingItem!.batch.planLineId!))].reduce((s, j) => s + (j.price ?? 0), 0);
               return (

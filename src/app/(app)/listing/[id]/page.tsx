@@ -8,7 +8,8 @@ import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, loadListing, PRICE_TYPES, RECOMMEND, type Col, type ListingRow } from '@/lib/listing';
 import { gmvLabel } from '@/lib/kocInsights';
-import { requireUser } from '@/lib/session';
+import { guard } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
 import { addKocs, createShare, deleteBatch, removeItem, revokeShare, saveBatch, saveItem, setItemField } from '../actions';
 import { createJobsFromListing } from '../../jobs/actions';
 import { jobCode } from '@/lib/jobs';
@@ -48,6 +49,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   const { edit, item: itemId, choice = '', rec = '', dup = '' } = sp;
   const grid = sp.view === 'grid';
   const sort = sp.sort && SORTS[sp.sort] ? sp.sort : '';
+  await guard(me, 'listing', id);
   const data = await loadListing(id);
   if (!data) notFound();
   const catalog = edit ? await db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, stores: { select: { id: true, name: true }, orderBy: { name: 'asc' } }, products: { select: { id: true, name: true }, orderBy: { name: 'asc' } } } }) : [];
@@ -76,7 +78,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   };
   const hidden = new Set(sp.hide === undefined ? DEFAULT_HIDE : sp.hide.split(',').filter(Boolean));
   const toggleGroup = (g: string) => withParam('hide', [...(hidden.has(g) ? [...hidden].filter((x) => x !== g) : [...hidden, g])].join(','));
-  const groups = (Object.keys(COL_GROUPS) as Col['g'][]).filter((g) => g !== 'batch' && !(g === 'bank' && me.role === 'STAFF'));
+  const groups = (Object.keys(COL_GROUPS) as Col['g'][]).filter((g) => g !== 'batch' && !(g === 'bank' && !can(me, 'koc.bank')));
   const cols = COLS.filter((c) => groups.includes(c.g) && !hidden.has(c.g) && c.h !== 'ID kênh' && c.h !== 'Tên người ảnh hưởng (Tên kênh)');
 
   const h = await headers();
@@ -102,8 +104,12 @@ export default async function ListingBatchPage({ params, searchParams }: { param
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href={`/listing/${batch.id}/export?mode=brand`} className="btn">Tải file cho Brand</a>
-          <a href={`/listing/${batch.id}/export?mode=internal`} className="btn">Tải file nội bộ</a>
+          {can(me, 'data.export') && (
+            <>
+              <a href={`/listing/${batch.id}/export?mode=brand`} className="btn">Tải file cho Brand</a>
+              <a href={`/listing/${batch.id}/export?mode=internal`} className="btn">Tải file nội bộ</a>
+            </>
+          )}
           <Link href="?edit=1" className="btn">Sửa đợt</Link>
           {jobsToCreate > 0 && (
             <form action={createJobsFromListing}>

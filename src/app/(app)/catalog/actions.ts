@@ -5,10 +5,10 @@ import { audit, BRAND_ROLES } from '@/lib/catalog';
 import { db } from '@/lib/db';
 import { isUniqueError, optInt, str } from '@/lib/form';
 import { brandKey } from '@/lib/listing';
-import { requireUser } from '@/lib/session';
+import { requirePerm, requireUser } from '@/lib/session';
 
-// Danh mục: Admin / Leader sửa, mọi người xem.
-const editor = () => requireUser('ADMIN', 'LEADER');
+// Danh mục: người có quyền "Sửa danh mục" (Phân quyền) sửa, mọi người xem.
+const editor = () => requirePerm('catalog.edit');
 const opt = (fd: FormData, k: string) => str(fd, k) || null;
 const url = (fd: FormData, k: string) => {
   const v = str(fd, k);

@@ -7,6 +7,7 @@ import { refreshKoc } from '@/lib/creatorStats';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
 import { BRAND_CHOICE, CONTACT_STATUS, parseHandle, PRICE_TYPES, RECOMMEND } from '@/lib/listing';
+import { guard } from '@/lib/scope';
 import { requireUser } from '@/lib/session';
 
 const oneOf = (list: string[], v: string) => (list.includes(v) ? v : null);
@@ -22,6 +23,7 @@ function optPercent(fd: FormData, key: string): number | null {
 export async function saveBatch(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
   const id = str(fd, 'id');
+  if (id) await guard(me, 'listing', id);
   const name = str(fd, 'name');
   const month = str(fd, 'month');
   const cr = optPercent(fd, 'cr');
@@ -52,6 +54,7 @@ export async function saveBatch(_: string | null, fd: FormData): Promise<string 
 
 export async function deleteBatch(fd: FormData) {
   const me = await requireUser();
+  await guard(me, 'listing', str(fd, 'id'));
   const batch = await db.listingBatch.findUniqueOrThrow({ where: { id: str(fd, 'id') } });
   if (me.role === 'STAFF' && batch.createdById !== me.id) throw new Error('Chỉ người tạo, Leader hoặc Admin được xoá đợt listing.');
   // Đợt đã có job: xoá đợt làm job mất nguồn listing (và plan không tính được chi phí ngoài plan).
@@ -65,6 +68,7 @@ export async function deleteBatch(fd: FormData) {
 export async function addKocs(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
   const batchId = str(fd, 'batchId');
+  await guard(me, 'listing', batchId);
   const priceType = oneOf(PRICE_TYPES, str(fd, 'priceType')) ?? 'Video';
   const lines = str(fd, 'ids').split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
   if (!lines.length) return 'Nhập ID kênh hoặc link TikTok.';
@@ -94,8 +98,9 @@ export async function addKocs(_: string | null, fd: FormData): Promise<string | 
 }
 
 export async function saveItem(_: string | null, fd: FormData): Promise<string | null> {
-  await requireUser();
+  const me = await requireUser();
   const id = str(fd, 'id');
+  await guard(me, 'item', id);
   const price = optInt(fd, 'price');
   const viewTarget = optInt(fd, 'viewTarget');
   const planAirDate = str(fd, 'planAirDate');
@@ -120,7 +125,7 @@ export async function saveItem(_: string | null, fd: FormData): Promise<string |
 }
 
 export async function removeItem(fd: FormData) {
-  await requireUser();
+  await guard(await requireUser(), 'item', str(fd, 'id'));
   // KOC đã có job: bỏ khỏi đợt làm job mất liên kết, thêm lại thì "Tạo job" tạo job lần nữa.
   if (await db.job.count({ where: { listingItemId: str(fd, 'id') } })) throw new Error('KOC đã có job trong đợt này, không bỏ khỏi đợt được. Huỷ job nếu không book nữa.');
   const item = await db.listingItem.delete({ where: { id: str(fd, 'id') } });
@@ -131,7 +136,7 @@ export async function removeItem(fd: FormData) {
 // Sửa nhanh một ô trong bảng listing. Chỉ các trường dưới đây; giá trị kiểm như form đầy đủ.
 const LIST_FIELDS: Record<string, string[]> = { status: CONTACT_STATUS, recommendation: RECOMMEND, brandChoice: BRAND_CHOICE };
 export async function setItemField(fd: FormData) {
-  await requireUser();
+  await guard(await requireUser(), 'item', str(fd, 'id'));
   const field = str(fd, 'field');
   const v = str(fd, 'value');
   let value: string | number | Date | null;
@@ -149,13 +154,13 @@ export async function setItemField(fd: FormData) {
 
 // Link cho Brand tự chọn Yes / No / Cân nhắc mà không cần tài khoản. Ai có link đều xem được → thu hồi khi xong.
 export async function createShare(fd: FormData) {
-  await requireUser();
+  await guard(await requireUser(), 'listing', str(fd, 'id'));
   const b = await db.listingBatch.update({ where: { id: str(fd, 'id') }, data: { shareToken: randomBytes(18).toString('base64url') } });
   revalidatePath(`/listing/${b.id}`);
 }
 
 export async function revokeShare(fd: FormData) {
-  await requireUser();
+  await guard(await requireUser(), 'listing', str(fd, 'id'));
   const b = await db.listingBatch.update({ where: { id: str(fd, 'id') }, data: { shareToken: null } });
   revalidatePath(`/listing/${b.id}`);
 }

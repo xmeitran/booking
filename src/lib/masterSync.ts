@@ -136,8 +136,9 @@ export async function syncMaster() {
   });
   const usersAdded = newUsers.length ? (await db.user.createMany({ data: newUsers, skipDuplicates: true })).count : 0;
 
-  // Phân công: người phụ trách gian hàng (thuộc team Booking) → nhân sự phụ trách brand.
-  const all = usersAdded ? await db.user.findMany({ select: { id: true, larkUserId: true, name: true, email: true } }) : users;
+  // Phân công: người phụ trách gian hàng (thuộc team Booking) → nhân sự phụ trách brand. Bỏ qua user đã khoá để bàn giao
+  // (Phân quyền → Phân công) không bị lượt sau gán lại người cũ.
+  const all = await db.user.findMany({ where: { active: true }, select: { id: true, larkUserId: true, name: true, email: true } });
   const members = new Map<string, Prisma.BrandMemberCreateManyInput>();
   for (const s of stores) {
     const b = brands.get(brandKey(s.brand))!;

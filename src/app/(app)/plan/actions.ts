@@ -7,7 +7,8 @@ import { runOnce } from '@/lib/cronJob';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
 import { fromLark, syncPlansJob } from '@/lib/planSync';
-import { requireUser } from '@/lib/session';
+import { guard } from '@/lib/scope';
+import { requirePerm, requireUser } from '@/lib/session';
 import { KL_LEVELS } from '../contacts/platforms';
 
 // Đồng bộ plan từ Lark Base ngay (chạy nền sau khi trả trang); cùng khoá với cron nên không chạy chồng.
@@ -18,7 +19,7 @@ export async function syncPlansNow() {
 }
 
 export async function savePlan(_: string | null, fd: FormData): Promise<string | null> {
-  const me = await requireUser('ADMIN', 'LEADER');
+  const me = await requirePerm('plan.edit');
   const id = str(fd, 'id');
   const name = str(fd, 'name');
   const month = str(fd, 'month');
@@ -35,7 +36,7 @@ export async function savePlan(_: string | null, fd: FormData): Promise<string |
 }
 
 export async function deletePlan(fd: FormData) {
-  const me = await requireUser('ADMIN', 'LEADER');
+  const me = await requirePerm('plan.edit');
   const id = str(fd, 'id');
   if (fromLark(id)) return; // đồng bộ lại sẽ tạo lại, xoá chỉ làm job mất liên kết
   await db.plan.delete({ where: { id } });
@@ -45,7 +46,7 @@ export async function deletePlan(fd: FormData) {
 }
 
 export async function saveLine(_: string | null, fd: FormData): Promise<string | null> {
-  const me = await requireUser('ADMIN', 'LEADER');
+  const me = await requirePerm('plan.edit');
   const id = str(fd, 'id');
   const planId = str(fd, 'planId');
   const brandId = str(fd, 'brandId') || null;
@@ -77,7 +78,7 @@ export async function saveLine(_: string | null, fd: FormData): Promise<string |
 }
 
 export async function removeLine(fd: FormData) {
-  const me = await requireUser('ADMIN', 'LEADER');
+  const me = await requirePerm('plan.edit');
   if (fromLark(str(fd, 'id'))) return;
   const line = await db.planLine.delete({ where: { id: str(fd, 'id') } });
   await audit(me.id, 'PlanLine', line.id, 'Xoá');
@@ -88,6 +89,7 @@ export async function removeLine(fd: FormData) {
 /** Tạo yêu cầu matching từ dòng plan: brief theo brand, tiêu chí cấp KOL = tier của dòng. Đã có thì mở brief đó. */
 export async function matchFromLine(fd: FormData) {
   const me = await requireUser();
+  await guard(me, 'line', str(fd, 'id'));
   const line = await db.planLine.findUniqueOrThrow({ where: { id: str(fd, 'id') }, include: { plan: true, brand: true, product: true, briefs: { take: 1 } } });
   if (line.briefs[0]) redirect(`/matching/${line.briefs[0].id}`);
   const name = [line.brand?.name, line.product?.name, line.plan.name, line.week ? `Tuần ${line.week}` : null, line.tier, line.contentType].filter(Boolean).join(' · ');

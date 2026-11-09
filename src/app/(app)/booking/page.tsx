@@ -1,9 +1,12 @@
 import Link from 'next/link';
+import type { Prisma } from '@prisma/client';
 import { pageOf, Pager } from '@/components/Pager';
 import { bookingWhere, FLAGS, isPayIssue, PIPELINE, PIPELINE_TONE, type BookingFilters } from '@/lib/bookings';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort } from '@/lib/format';
+import { bookingScope, scopeOf } from '@/lib/scope';
 import { requireUser } from '@/lib/session';
+import { ScopeNote } from '@/components/ScopeNote';
 import { syncNow } from './actions';
 
 const PER_PAGE = 50;
@@ -15,30 +18,32 @@ type Row = Awaited<ReturnType<typeof db.booking.findMany>>[number];
 
 // Dữ liệu gốc ở Lark Base, đồng bộ mỗi giờ (src/lib/bookingSync.ts); sửa trên Lark.
 export default async function BookingPage({ searchParams }: { searchParams: Promise<Search> }) {
-  await requireUser();
+  const scope = await scopeOf(await requireUser());
+  const sw = bookingScope(scope);
+  const bw = (f: BookingFilters): Prisma.BookingWhereInput => ({ AND: [sw, bookingWhere(f)] });
   const sp = await searchParams;
   const { q = '', month = '', brand = '', pipeline = '', owner = '', person = '', flag = '' } = sp;
   const kanban = sp.view === 'kanban';
   const page = pageOf(sp.page);
   const base = { q, month, brand, pipeline, owner, person };
-  const where = bookingWhere({ ...base, flag });
+  const where = bw({ ...base, flag });
 
   const distinct = async (field: 'planMonth' | 'brand' | 'owner') =>
-    (await db.booking.findMany({ where: { [field]: { not: null } }, distinct: [field], select: { [field]: true }, orderBy: { [field]: field === 'planMonth' ? 'desc' : 'asc' } }))
+    (await db.booking.findMany({ where: { [field]: { not: null }, AND: [sw] }, distinct: [field], select: { [field]: true }, orderBy: { [field]: field === 'planMonth' ? 'desc' : 'asc' } }))
       .map((r) => r[field] as string);
 
   const [rows, total, allCount, months, brands, owners, sync, flagCounts, byStage] = await Promise.all([
     kanban ? Promise.resolve([] as Row[]) : db.booking.findMany({ where, orderBy: { larkUpdatedAt: 'desc' }, skip: (page - 1) * PER_PAGE, take: PER_PAGE }),
     db.booking.count({ where }),
-    db.booking.count({ where: bookingWhere(base) }),
+    db.booking.count({ where: bw(base) }),
     distinct('planMonth'),
     distinct('brand'),
     distinct('owner'),
     db.syncState.findUnique({ where: { id: 'bookings' } }),
-    Promise.all(Object.keys(FLAGS).map(async (k) => [k, await db.booking.count({ where: bookingWhere({ ...base, flag: k }) })] as const)),
+    Promise.all(Object.keys(FLAGS).map(async (k) => [k, await db.booking.count({ where: bw({ ...base, flag: k }) })] as const)),
     kanban
       ? Promise.all(PIPELINE.map(async (st) => {
-          const w = bookingWhere({ ...base, flag, pipeline: st });
+          const w = bw({ ...base, flag, pipeline: st });
           return { stage: st, count: await db.booking.count({ where: w }), cards: await db.booking.findMany({ where: w, orderBy: { larkUpdatedAt: 'desc' }, take: KANBAN_CARDS }) };
         }))
       : Promise.resolve([]),
@@ -72,6 +77,7 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
             {sync?.startedAt && !sync.finishedAt ? 'Đang đồng bộ từ Lark Base, tải lại trang sau 2–3 phút'
               : sync?.finishedAt ? `Lark Base · đồng bộ ${fmtTime(sync.finishedAt)} · ${sync.message}` : 'Chưa đồng bộ từ Lark Base'}
           </p>
+          <ScopeNote scope={scope} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">

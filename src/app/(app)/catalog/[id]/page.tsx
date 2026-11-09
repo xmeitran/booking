@@ -4,7 +4,7 @@ import { ActionForm, Avatar, Dialog } from '@/components/ui';
 import { BRAND_ROLES, checklistOf } from '@/lib/catalog';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtVnd } from '@/lib/format';
-import { requireUser } from '@/lib/session';
+import { can, requireUser } from '@/lib/session';
 import { addMember, deleteBrand, removeItem, saveBrand, saveProduct, saveStore } from '../actions';
 
 type Search = { edit?: string; store?: string; product?: string };
@@ -13,7 +13,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
   const me = await requireUser();
   const { id } = await params;
   const sp = await searchParams;
-  const canEdit = me.role !== 'STAFF';
+  const canEdit = can(me, 'catalog.edit');
   const b = await db.brand.findUnique({
     where: { id },
     include: {

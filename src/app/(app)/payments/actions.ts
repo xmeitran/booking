@@ -5,14 +5,15 @@ import { audit } from '@/lib/catalog';
 import { db } from '@/lib/db';
 import { str } from '@/lib/form';
 import { PAY_STATUS } from '@/lib/payments';
-import { requireUser } from '@/lib/session';
+import { guard, jobScope, scopeOf } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
 
 /** Gom job nghiệm thu Đạt (chưa vào ĐNTT nào) thành một đề nghị thanh toán; job chuyển sang "Thanh toán". */
 export async function createPayment(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
   const ids = [...new Set(fd.getAll('jobId').map(String))];
   if (!ids.length) return 'Tick chọn ít nhất một job.';
-  const ready = { id: { in: ids }, stage: 'Nghiệm thu', reviewResult: 'Đạt', paymentId: null };
+  const ready = { id: { in: ids }, stage: 'Nghiệm thu', reviewResult: 'Đạt', paymentId: null, AND: [jobScope(await scopeOf(me))] };
   const jobs = await db.job.findMany({ where: ready });
   const stale = 'Có job chưa nghiệm thu Đạt hoặc đã nằm trong ĐNTT khác. Tải lại trang.';
   if (jobs.length !== ids.length) return stale;
@@ -39,13 +40,14 @@ export async function createPayment(_: string | null, fd: FormData): Promise<str
 export async function setPaymentStatus(fd: FormData) {
   const me = await requireUser();
   const id = str(fd, 'id');
+  await guard(me, 'payment', id);
   const status = str(fd, 'status');
   if (!PAY_STATUS.includes(status)) redirect(`/payments/${id}`);
   // Chỉ đi tiếp đúng một bước: không cho kéo ĐNTT đã duyệt / đã trả về Nháp (rồi xoá, gom lại → trả tiền hai lần).
   const p = await db.paymentRequest.findUniqueOrThrow({ where: { id } });
   if (PAY_STATUS.indexOf(status) !== PAY_STATUS.indexOf(p.status) + 1) redirect(`/payments/${id}?err=${encodeURIComponent(`ĐNTT đang "${p.status}", không chuyển sang "${status}" được`)}`);
   // Duyệt / xác nhận đã trả: chỉ Admin, Leader.
-  if ((status === 'Đã duyệt' || status === 'Đã thanh toán') && me.role === 'STAFF') redirect(`/payments/${id}?err=${encodeURIComponent('Chỉ Admin, Leader được duyệt / xác nhận đã thanh toán')}`);
+  if ((status === 'Đã duyệt' || status === 'Đã thanh toán') && !can(me, 'payment.approve')) redirect(`/payments/${id}?err=${encodeURIComponent('Bạn chưa có quyền duyệt / xác nhận đã thanh toán (Phân quyền)')}`);
   await db.paymentRequest.update({ where: { id }, data: { status } });
   await audit(me.id, 'PaymentRequest', id, `Trạng thái: ${status}`);
   revalidatePath(`/payments/${id}`);
@@ -55,6 +57,7 @@ export async function setPaymentStatus(fd: FormData) {
 /** Bỏ một job khỏi ĐNTT còn Nháp: job về "Nghiệm thu" để gom lại sau. */
 export async function removeFromPayment(fd: FormData) {
   const me = await requireUser();
+  await guard(me, 'job', str(fd, 'jobId'));
   const job = await db.job.findUniqueOrThrow({ where: { id: str(fd, 'jobId') }, include: { payment: true } });
   if (job.payment?.status === 'Nháp') {
     await db.job.update({ where: { id: job.id }, data: { paymentId: null, stage: 'Nghiệm thu' } });
@@ -67,6 +70,7 @@ export async function removeFromPayment(fd: FormData) {
 /** Xoá ĐNTT còn Nháp: các job về "Nghiệm thu" để gom lại. */
 export async function deletePayment(fd: FormData) {
   const me = await requireUser();
+  await guard(me, 'payment', str(fd, 'id'));
   const p = await db.paymentRequest.findUniqueOrThrow({ where: { id: str(fd, 'id') } });
   if (p.status !== 'Nháp') redirect(`/payments/${p.id}?err=${encodeURIComponent('Chỉ xoá được ĐNTT còn Nháp')}`);
   await db.job.updateMany({ where: { paymentId: p.id }, data: { paymentId: null, stage: 'Nghiệm thu' } });

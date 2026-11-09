@@ -7,7 +7,8 @@ import { db } from '@/lib/db';
 import { str } from '@/lib/form';
 import { audit } from '@/lib/catalog';
 import { parseCriteria } from '@/lib/matching';
-import { requireUser } from '@/lib/session';
+import { guard } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
 
 export async function saveBrief(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
@@ -33,7 +34,7 @@ export async function saveBrief(_: string | null, fd: FormData): Promise<string 
 export async function deleteBrief(fd: FormData) {
   const me = await requireUser();
   const b = await db.matchBrief.findUniqueOrThrow({ where: { id: str(fd, 'id') } });
-  if (me.role === 'STAFF' && b.createdById !== me.id) throw new Error('Chỉ người tạo, Leader hoặc Admin được xoá.');
+  if (!can(me, 'brief.deleteAny') && b.createdById !== me.id) throw new Error('Chỉ người tạo hoặc người có quyền xoá brief của người khác được xoá.');
   await db.matchBrief.delete({ where: { id: b.id } });
   revalidatePath('/matching');
   redirect('/matching');
@@ -54,6 +55,7 @@ export async function addMatchesToListing(_: string | null, fd: FormData): Promi
     batchId = (await db.listingBatch.create({ data: { name, month, brand: brief?.brand ?? null, planLineId: brief?.planLineId ?? null, createdById: me.id } })).id;
   } else if (!batchId) return 'Chọn đợt listing.';
   else {
+    await guard(me, 'listing', batchId);
     // Đợt có sẵn chưa gắn plan: gắn theo dòng plan của brief để job tạo ra tính vào tiến độ plan.
     const brief = await db.matchBrief.findUnique({ where: { id: str(fd, 'briefId') }, select: { planLineId: true } });
     if (brief?.planLineId) await db.listingBatch.updateMany({ where: { id: batchId, planLineId: null }, data: { planLineId: brief.planLineId } });

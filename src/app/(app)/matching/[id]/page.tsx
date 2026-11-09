@@ -6,7 +6,8 @@ import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
 import { profileInsights, USD_VND } from '@/lib/kocInsights';
 import { describe, matchKocs, TIKTOK_CATEGORIES, type Criteria } from '@/lib/matching';
-import { requireUser } from '@/lib/session';
+import { listingScope, scopeOf } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
 import { addMatchesToListing, decideKoc, deleteBrief } from '../actions';
 import { BriefForm } from '../BriefForm';
 
@@ -33,7 +34,7 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
   const c = b.criteria as Criteria;
   const [matches, allBatches, niches, cats, brands] = await Promise.all([
     matchKocs(c, b.brand),
-    db.listingBatch.findMany({ orderBy: { updatedAt: 'desc' }, take: 200, select: { id: true, name: true, brand: true, month: true } }),
+    db.listingBatch.findMany({ where: listingScope(await scopeOf(me)), orderBy: { updatedAt: 'desc' }, take: 200, select: { id: true, name: true, brand: true, month: true } }),
     edit ? db.koc.findMany({ where: { niche: { not: null } }, distinct: ['niche'], select: { niche: true }, orderBy: { niche: 'asc' } }) : [],
     edit ? db.matchBrief.findMany({ where: { category: { not: null } }, distinct: ['category'], select: { category: true } }) : [],
     edit && !b.template ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }) : [],
@@ -54,7 +55,7 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
   const docs = ([['Brand guideline', b.guideline], ['Content strategy', b.strategy], ['Content plan', b.plan], [b.template ? 'Best practice' : 'Ghi chú', b.note]] as const).filter(([, v]) => v);
   const chips = describe(c);
   const withStats = matches.filter((m) => m.koc.statsAt).length;
-  const canDelete = me.role !== 'STAFF' || b.createdById === me.id;
+  const canDelete = can(me, 'brief.deleteAny') || b.createdById === me.id;
 
   return (
     <>
@@ -72,7 +73,7 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
         </div>
         <div className="flex flex-wrap gap-2">
           {b.template && <Link href={`/matching?new=brief&from=${b.id}`} className="btn">Tạo brief từ best practice này</Link>}
-          <a href={`/matching/${b.id}/export`} className="btn">Tải Excel KOC khớp</a>
+          {can(me, 'data.export') && <a href={`/matching/${b.id}/export`} className="btn">Tải Excel KOC khớp</a>}
           <Link href="?edit=1" className="btn">Sửa</Link>
         </div>
       </div>

@@ -6,7 +6,8 @@ import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
 import { CANCELLED, linePicker, RESULTS, SAMPLE, STAGES, type ReviewItem } from '@/lib/jobs';
 import { PRICE_TYPES, sameBrand } from '@/lib/listing';
-import { requireUser } from '@/lib/session';
+import { guard } from '@/lib/scope';
+import { requirePerm, requireUser } from '@/lib/session';
 
 const vnDate = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00+07:00`) : null);
 const done = (id: string) => {
@@ -18,6 +19,7 @@ const done = (id: string) => {
 /** Tạo job cho mọi KOC Brand chọn "Yes" trong một đợt listing (chưa có job). Brand, sản phẩm khớp Danh mục theo tên. */
 export async function createJobsFromListing(fd: FormData) {
   const me = await requireUser();
+  await guard(me, 'listing', str(fd, 'batchId'));
   // KOC blacklist không tạo job dù Brand đã chọn.
   const batch = await db.listingBatch.findUniqueOrThrow({
     where: { id: str(fd, 'batchId') },
@@ -70,6 +72,7 @@ export async function createJobsFromListing(fd: FormData) {
 export async function updateJob(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
   const id = str(fd, 'id');
+  await guard(me, 'job', id);
   const price = optInt(fd, 'price');
   const submittedUrl = str(fd, 'submittedUrl');
   if (Number.isNaN(price)) return 'Giá là số nguyên ≥ 0.';
@@ -106,6 +109,7 @@ export async function updateJob(_: string | null, fd: FormData): Promise<string 
 export async function saveBrief(fd: FormData) {
   const me = await requireUser();
   const id = str(fd, 'id');
+  await guard(me, 'job', id);
   const approve = str(fd, 'approve') === '1';
   await db.job.update({ where: { id }, data: { brief: str(fd, 'brief') || null, briefApproved: approve } });
   await audit(me.id, 'Job', id, approve ? 'Duyệt brief' : 'Sửa brief');
@@ -116,6 +120,7 @@ export async function saveBrief(fd: FormData) {
 export async function moveStage(fd: FormData) {
   const me = await requireUser();
   const id = str(fd, 'id');
+  await guard(me, 'job', id);
   const stage = str(fd, 'stage');
   const job = await db.job.findUniqueOrThrow({ where: { id } });
   const ok = (STAGES as readonly string[]).includes(stage) || stage === CANCELLED;
@@ -135,6 +140,7 @@ export async function moveStage(fd: FormData) {
 export async function reviewJob(fd: FormData) {
   const me = await requireUser();
   const id = str(fd, 'id');
+  await guard(me, 'job', id);
   const job = await db.job.findUniqueOrThrow({ where: { id }, include: { brand: true } });
   const blocked = job.paymentId ? 'Job đã nằm trong ĐNTT, không nghiệm thu lại được' : job.stage === CANCELLED ? 'Job đã huỷ' : !job.submittedUrl ? 'KOC chưa nộp video' : null;
   if (blocked) redirect(`/jobs/${id}?err=${encodeURIComponent(blocked)}`);
@@ -161,6 +167,7 @@ export async function reviewJob(fd: FormData) {
 export async function draftBrief(fd: FormData) {
   const me = await requireUser();
   const id = str(fd, 'id');
+  await guard(me, 'job', id);
   const j = await db.job.findUniqueOrThrow({ where: { id }, include: { koc: true, brand: true, product: true } });
   const { briefTemplate } = await import('@/lib/jobs');
   await db.job.update({ where: { id }, data: { brief: briefTemplate(j, checklistOf(j.brand?.checklist)), briefApproved: false } });
@@ -172,6 +179,7 @@ export async function draftBrief(fd: FormData) {
 export async function aiDraftBrief(fd: FormData) {
   const me = await requireUser();
   const id = str(fd, 'id');
+  await guard(me, 'job', id);
   const { aiBrief, aiEnabled } = await import('@/lib/ai');
   if (!aiEnabled()) redirect(`/jobs/${id}?err=${encodeURIComponent('Chưa cấu hình AI (biến ANTHROPIC_API_KEY trên Render).')}`);
   const j = await db.job.findUniqueOrThrow({ where: { id }, include: { koc: true, brand: true, product: true } });
@@ -194,8 +202,9 @@ export async function aiDraftBrief(fd: FormData) {
 
 /** Xoá job tạo nhầm: chỉ Admin, chỉ khi job chưa nằm trong đề nghị thanh toán. KOC ở listing có thể tạo job lại. */
 export async function deleteJob(fd: FormData) {
-  const me = await requireUser('ADMIN');
+  const me = await requirePerm('job.delete');
   const id = str(fd, 'id');
+  await guard(me, 'job', id);
   const job = await db.job.findUniqueOrThrow({ where: { id } });
   if (job.paymentId) redirect(`/jobs/${id}?err=${encodeURIComponent('Job đã nằm trong ĐNTT, bỏ khỏi ĐNTT trước khi xoá')}`);
   await db.job.delete({ where: { id } });

@@ -2,15 +2,16 @@ import { csvResponse } from '@/lib/csv';
 import { db } from '@/lib/db';
 import { jobCode } from '@/lib/jobs';
 import { FEE_DIVISOR } from '@/lib/kocInsights';
-import { requireUser } from '@/lib/session';
+import { paymentScope, scopeOf } from '@/lib/scope';
+import { can, requirePerm } from '@/lib/session';
 
 // File ĐNTT gửi kế toán. Cột tài khoản / CCCD chỉ có khi Admin, Leader tải.
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
-  const me = await requireUser();
+  const me = await requirePerm('data.export');
   const { id } = await params;
-  const p = await db.paymentRequest.findUnique({ where: { id }, include: { jobs: { include: { koc: true, brand: { select: { name: true } } }, orderBy: { number: 'asc' } } } });
+  const p = await db.paymentRequest.findFirst({ where: { id, AND: [paymentScope(await scopeOf(me))] }, include: { jobs: { include: { koc: true, brand: { select: { name: true } } }, orderBy: { number: 'asc' } } } });
   if (!p) return new Response('Không có ĐNTT này', { status: 404 });
-  const bank = me.role !== 'STAFF';
+  const bank = can(me, 'koc.bank');
   const header = ['Job', 'KOC', 'ID kênh', 'Brand', 'Loại', 'Link video', 'Ngày nghiệm thu', 'Giá net', 'Kèm thuế TNCN', ...(bank ? ['Chủ tài khoản', 'Số tài khoản', 'Ngân hàng', 'CCCD / MST'] : [])];
   const rows = p.jobs.map((j) => [
     jobCode(j.number), j.koc.nickname ?? j.koc.name, j.koc.handle, j.brand?.name, j.priceType, j.submittedUrl,

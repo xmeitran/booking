@@ -7,7 +7,8 @@ import { fmtDate, fmtNum, fmtShort, fmtVnd } from '@/lib/format';
 import { CANCELLED, jobCode, RESULT_TONE, RESULTS, SAMPLE, STAGE_HINT, STAGE_TONE, STAGES, type ReviewItem } from '@/lib/jobs';
 import { FEE_DIVISOR } from '@/lib/kocInsights';
 import { PRICE_TYPES } from '@/lib/listing';
-import { requireUser } from '@/lib/session';
+import { jobScope, scopeOf } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
 import { aiDraftBrief, deleteJob, draftBrief, moveStage, reviewJob, saveBrief, updateJob } from '../actions';
 import { aiEnabled } from '@/lib/ai';
 
@@ -18,8 +19,8 @@ export default async function JobPage({ params, searchParams }: { params: Promis
   const me = await requireUser();
   const { id } = await params;
   const { err } = await searchParams;
-  const j = await db.job.findUnique({
-    where: { id },
+  const j = await db.job.findFirst({
+    where: { id, AND: [jobScope(await scopeOf(me))] },
     include: {
       koc: true, brand: { include: { products: { select: { id: true, name: true } } } }, product: true, pic: { select: { name: true } },
       planLine: { include: { plan: { select: { id: true, name: true } } } }, listingItem: { include: { batch: { select: { id: true, name: true } } } },
@@ -68,7 +69,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
               <button className="btn btn-primary">Chuyển sang &quot;{next}&quot;</button>
             </form>
           )}
-          {me.role === 'ADMIN' && !j.paymentId && (
+          {can(me, 'job.delete') && !j.paymentId && (
             <form action={deleteJob}>
               <input type="hidden" name="id" value={j.id} />
               <button className="btn btn-danger" title="Xoá job tạo nhầm (chỉ Admin)">Xoá job</button>

@@ -5,19 +5,21 @@ import { fmtDate, fmtNum } from '@/lib/format';
 import { jobCode } from '@/lib/jobs';
 import { FEE_DIVISOR } from '@/lib/kocInsights';
 import { PAY_TONE } from '@/lib/payments';
+import { jobScope, paymentScope, scopeOf } from '@/lib/scope';
 import { requireUser } from '@/lib/session';
+import { ScopeNote } from '@/components/ScopeNote';
 import { createPayment } from './actions';
 
 // Nghiệm thu đạt → đề nghị thanh toán (ĐNTT). Đẩy sang Lark Approval làm khi có mã quy trình duyệt của kế toán.
 export default async function PaymentsPage() {
-  await requireUser();
+  const scope = await scopeOf(await requireUser());
   const [ready, payments] = await Promise.all([
     db.job.findMany({
-      where: { stage: 'Nghiệm thu', reviewResult: 'Đạt', paymentId: null },
+      where: { stage: 'Nghiệm thu', reviewResult: 'Đạt', paymentId: null, AND: [jobScope(scope)] },
       include: { koc: { select: { handle: true, name: true, nickname: true, bankAccount: true } }, brand: { select: { name: true } } },
       orderBy: [{ brand: { name: 'asc' } }, { reviewedAt: 'asc' }],
     }),
-    db.paymentRequest.findMany({ include: { jobs: { select: { price: true } } }, orderBy: { number: 'desc' } }),
+    db.paymentRequest.findMany({ where: paymentScope(scope), include: { jobs: { select: { price: true } } }, orderBy: { number: 'desc' } }),
   ]);
   const users = new Map((await db.user.findMany({ where: { id: { in: payments.map((p) => p.createdById) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
 
@@ -26,6 +28,7 @@ export default async function PaymentsPage() {
       <div className="mb-4">
         <h1 className="text-xl font-semibold">Thanh toán</h1>
         <p className="mt-1 text-[13px] text-ink-2">Job nghiệm thu Đạt được gom thành đề nghị thanh toán (ĐNTT), tải file gửi kế toán và theo dõi trạng thái.</p>
+        <ScopeNote scope={scope} />
       </div>
 
       <section className="mb-6 rounded-lg border border-line bg-surface px-5 py-4">

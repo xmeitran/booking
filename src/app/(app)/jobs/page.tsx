@@ -4,7 +4,9 @@ import { Avatar } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort } from '@/lib/format';
 import { CANCELLED, jobCode, STAGE_HINT, STAGE_TONE, STAGES } from '@/lib/jobs';
+import { jobScope, scopeOf } from '@/lib/scope';
 import { requireUser } from '@/lib/session';
+import { ScopeNote } from '@/components/ScopeNote';
 
 type Search = { view?: string; brand?: string; pic?: string; mine?: string; line?: string; batch?: string; late?: string };
 const today = () => new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) + 'T00:00:00+07:00');
@@ -15,8 +17,11 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const me = await requireUser();
   const sp = await searchParams;
   const list = sp.view === 'list';
+  const scope = await scopeOf(me);
+  const mine = jobScope(scope);
   const where: Prisma.JobWhereInput = {
     AND: [
+      mine,
       sp.brand ? { brandId: sp.brand } : {},
       sp.mine ? { picId: me.id } : sp.pic ? { picId: sp.pic } : {},
       sp.line ? { planLineId: sp.line } : {},
@@ -30,10 +35,10 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       where, orderBy: [{ deadline: { sort: 'asc', nulls: 'last' } }, { number: 'desc' }], take: 500,
       include: { koc: { select: { handle: true, name: true, nickname: true, avatarUrl: true } }, brand: { select: { name: true } }, pic: { select: { name: true, avatarUrl: true } } },
     }),
-    db.brand.findMany({ where: { jobs: { some: {} } }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
-    db.user.findMany({ where: { jobs: { some: {} } }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
-    db.job.count({ where: { deadline: { lt: today() }, stage: { in: BEFORE_SUBMIT } } }),
-    db.job.count({ where: { stage: 'Đã nộp' } }),
+    db.brand.findMany({ where: { jobs: { some: mine } }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    db.user.findMany({ where: { jobs: { some: mine } }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    db.job.count({ where: { deadline: { lt: today() }, stage: { in: BEFORE_SUBMIT }, AND: [mine] } }),
+    db.job.count({ where: { stage: 'Đã nộp', AND: [mine] } }),
   ]);
   const params = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]);
   const withParam = (k: string, v: string) => {
@@ -50,6 +55,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         <div>
           <h1 className="text-xl font-semibold">Job</h1>
           <p className="mt-1 text-[13px] text-ink-2">Mỗi KOC Brand chọn &quot;Yes&quot; ở Listing thành một job: chốt giá, gửi hàng, brief, KOC nộp video, nghiệm thu, đề nghị thanh toán.</p>
+          <ScopeNote scope={scope} />
         </div>
         <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
           <Link href={withParam('view', '')} className={tab(!list)}>Kanban</Link>

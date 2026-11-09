@@ -1,5 +1,5 @@
 import { Avatar, BrandLogo, NavLink } from '@/components/ui';
-import { requireUser, ROLE_LABEL } from '@/lib/session';
+import { can, requireUser, ROLE_LABEL } from '@/lib/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -15,10 +15,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/jobs">Job</NavLink>
           <NavLink href="/payments">Thanh toán</NavLink>
           <NavLink href="/booking">Booking (Lark)</NavLink>
-          <NavLink href="/contacts">Danh bạ KOC</NavLink>
+          <NavLink href="/contacts">Danh bạ KOC / KOL</NavLink>
           <NavLink href="/data">Dữ liệu</NavLink>
           <NavLink href="/catalog">Danh mục</NavLink>
-          {user.role === 'ADMIN' && <NavLink href="/users">User</NavLink>}
+          {user.role === 'ADMIN' ? <NavLink href="/users">Phân quyền</NavLink> : can(user, 'catalog.edit') && <NavLink href="/users/assign">Phân công</NavLink>}
         </nav>
         <div className="flex items-center gap-3 border-t border-line px-4 py-3 md:mt-auto">
           <Avatar src={user.avatarUrl} name={user.name} />

@@ -6,7 +6,8 @@ import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
 import { CANCELLED, jobCode } from '@/lib/jobs';
 import { PRICE_TYPES } from '@/lib/listing';
 import { fromLark } from '@/lib/planSync';
-import { requireUser } from '@/lib/session';
+import { jobScope, lineScope, planScope, scopeOf } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
 import { KL_LEVELS } from '../../contacts/platforms';
 import { deletePlan, matchFromLine, removeLine, savePlan, saveLine } from '../actions';
 
@@ -16,11 +17,13 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
   const me = await requireUser();
   const { id } = await params;
   const sp = await searchParams;
-  const canEdit = me.role !== 'STAFF';
-  const plan = await db.plan.findUnique({
-    where: { id },
+  const canEdit = can(me, 'plan.edit');
+  const scope = await scopeOf(me);
+  const plan = await db.plan.findFirst({
+    where: { id, AND: [planScope(scope)] },
     include: {
       lines: {
+        where: lineScope(scope),
         include: {
           brand: true, product: true, pic: { select: { name: true } }, briefs: { select: { id: true }, take: 1 },
           jobs: { where: { stage: { not: CANCELLED } }, select: { id: true, price: true, stage: true } },
@@ -36,7 +39,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
     db.tierPrice.findMany(),
     // Job từ listing của plan này nhưng không khớp tier nào của brand trong plan (book ngoài plan).
     db.job.findMany({
-      where: { planLineId: null, stage: { not: CANCELLED }, listingItem: { batch: { planLineId: { in: plan.lines.map((l) => l.id) } } } },
+      where: { planLineId: null, stage: { not: CANCELLED }, listingItem: { batch: { planLineId: { in: plan.lines.map((l) => l.id) } } }, AND: [jobScope(scope)] },
       select: { id: true, number: true, price: true, stage: true, brand: { select: { name: true } }, koc: { select: { handle: true, kl: true, klAuto: true } } },
       orderBy: { number: 'asc' },
     }),
@@ -46,7 +49,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
   const lineOpen = canEdit && (sp.line === 'new' || editing);
   const qty = plan.lines.reduce((s, l) => s + l.quantity, 0);
   const jobs = plan.lines.flatMap((l) => l.jobs);
-  const budget = plan.budget ?? plan.lines.reduce((s, l) => s + (l.budget ?? 0), 0);
+  const budget = (!scope && plan.budget) || plan.lines.reduce((s, l) => s + (l.budget ?? 0), 0);
   const spent = [...jobs, ...outside].reduce((s, j) => s + (j.price ?? 0), 0);
   const priceHint = (tier: string | null, type: string) => {
     const p = prices.find((x) => x.tier === tier && x.priceType === (/live/i.test(type) ? 'Phiên livestream' : 'Video'));
@@ -73,7 +76,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label="KOC cần book" value={fmtNum(qty)} sub={`${plan.lines.length} dòng chi tiết`} />
         <Kpi label="Đã có job" value={fmtNum(jobs.length)} sub={[qty ? `${fmtPct(jobs.length / qty, 0)} plan` : '', outside.length ? `+${outside.length} job ngoài plan` : ''].filter(Boolean).join(' · ') || undefined} />
-        <Kpi label="Ngân sách" value={budget ? `${fmtShort(budget)} ₫` : 'Chưa nhập'} sub={plan.budget ? 'Ngân sách tổng' : 'Cộng từ các dòng'} />
+        <Kpi label="Ngân sách" value={budget ? `${fmtShort(budget)} ₫` : 'Chưa nhập'} sub={!scope && plan.budget ? 'Ngân sách tổng' : 'Cộng từ các dòng'} />
         <Kpi label="Đã chốt (giá job)" value={spent ? `${fmtShort(spent)} ₫` : '0 ₫'} sub={budget ? (spent > budget ? `Vượt ngân sách ${fmtShort(spent - budget)} ₫` : `Còn ${fmtShort(budget - spent)} ₫`) : undefined} />
       </div>
 

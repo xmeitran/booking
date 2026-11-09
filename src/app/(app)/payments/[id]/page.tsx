@@ -5,19 +5,20 @@ import { fmtDate, fmtNum } from '@/lib/format';
 import { jobCode } from '@/lib/jobs';
 import { FEE_DIVISOR } from '@/lib/kocInsights';
 import { PAY_STATUS, PAY_TONE } from '@/lib/payments';
-import { requireUser } from '@/lib/session';
+import { paymentScope, scopeOf } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
 import { deletePayment, removeFromPayment, setPaymentStatus } from '../actions';
 
 export default async function PaymentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ err?: string }> }) {
   const me = await requireUser();
   const { id } = await params;
   const { err } = await searchParams;
-  const p = await db.paymentRequest.findUnique({
-    where: { id },
+  const p = await db.paymentRequest.findFirst({
+    where: { id, AND: [paymentScope(await scopeOf(me))] },
     include: { jobs: { include: { koc: true, brand: { select: { name: true } } }, orderBy: { number: 'asc' } } },
   });
   if (!p) notFound();
-  const bank = me.role !== 'STAFF'; // số tài khoản, CCCD: chỉ Admin / Leader
+  const bank = can(me, 'koc.bank'); // số tài khoản, CCCD theo Phân quyền
   const net = p.jobs.reduce((s, j) => s + (j.price ?? 0), 0);
   const step = PAY_STATUS.indexOf(p.status);
 
@@ -30,7 +31,7 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
           <p className="text-xs text-ink-3">{p.jobs.length} job · tổng giá net {fmtNum(net)} ₫ · kèm thuế TNCN {fmtNum(Math.round(net / FEE_DIVISOR))} ₫ · tạo {fmtDate(p.createdAt)}{p.note ? ` · ${p.note}` : ''}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <a href={`/payments/${p.id}/export`} className="btn">Tải file ĐNTT</a>
+          {can(me, 'data.export') && <a href={`/payments/${p.id}/export`} className="btn">Tải file ĐNTT</a>}
           {p.status === 'Nháp' && (
             <form action={deletePayment}>
               <input type="hidden" name="id" value={p.id} />
