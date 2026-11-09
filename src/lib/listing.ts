@@ -23,11 +23,10 @@ export function parseHandle(s: string): string | null {
 export const dupKey = (handle: string) =>
   handle.normalize('NFD').replace(/\p{M}/gu, '').replace(/đ/gi, 'd').toLowerCase().replace(/[\s._-]+/g, '').replace(/\d+$/, '');
 
+/** Khoá so tên: "pH Care", "pHCare", "PH CARE" cùng khoá "phcare". */
+export const brandKey = (s?: string | null) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 /** "pH Care", "pHCare", "PH CARE" là một brand. */
-export const sameBrand = (a?: string | null, b?: string | null) => {
-  const n = (s?: string | null) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-  return Boolean(n(a)) && n(a) === n(b);
-};
+export const sameBrand = (a?: string | null, b?: string | null) => Boolean(brandKey(a)) && brandKey(a) === brandKey(b);
 const prevMonth = (m: string) => {
   const [y, mo] = m.split('-').map(Number);
   return mo === 1 ? `${y - 1}/12` : `${y}/${String(mo - 1).padStart(2, '0')}`;

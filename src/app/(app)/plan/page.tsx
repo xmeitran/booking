@@ -34,7 +34,7 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
           <h1 className="text-xl font-semibold">Plan</h1>
           <p className="mt-1 text-[13px] text-ink-2">Plan tổng theo tháng, tách chi tiết theo brand, tuần, tier KOC, loại content, ngân sách và PIC. Mỗi dòng plan bấm &quot;Tìm KOC&quot; để sang Creator matching; tiến độ tính theo job đã tạo.</p>
           <p className="mt-1 text-xs text-ink-3">
-            {syncing ? 'Đang đồng bộ "4.1 Plan order tổng" từ Lark Base, tải lại trang sau 1 phút'
+            {syncing ? 'Đang đồng bộ danh mục và plan từ Lark Base, tải lại trang sau 1 phút'
               : sync?.finishedAt ? `Lark Base · đồng bộ ${fmtTime(sync.finishedAt)} · ${sync.message}` : 'Chưa đồng bộ plan từ Lark Base'}
           </p>
         </div>

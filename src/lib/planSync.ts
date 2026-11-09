@@ -6,7 +6,8 @@
 import { type LarkRecord, searchPages, toText } from './bookingSync';
 import { db } from './db';
 import { tenantToken } from './lark';
-import { sameBrand } from './listing';
+import { brandKey } from './listing';
+import { people, syncMasterJob } from './masterSync';
 
 const TABLE = 'tblvgyOkneDKOVsB';
 const KL = ['KL1', 'KL2', 'KL3', 'KL4', 'KL5', 'KL6', 'KL7'];
@@ -38,10 +39,6 @@ export const fromLark = (id: string) => id.startsWith('lark-');
 const num = (v: unknown) => (typeof v === 'number' ? v : 0);
 // Chi phí trên Lark là gross; Lark quy net = gross / 1.08 / 1.1 (cột "(Net) Chi phí ..."). Ngân sách dòng dùng net để so với giá job (net).
 const net = (v: unknown) => Math.round(num(v) / 1.08 / 1.1) || null;
-const people = (v: unknown): { id: string; name: string }[] => {
-  const a = (v as { value?: unknown } | null)?.value ?? v; // cột Lookup bọc trong { value }
-  return Array.isArray(a) ? a.filter((u) => u?.id) : [];
-};
 
 export interface LineDraft {
   id: string;
@@ -93,20 +90,17 @@ export async function syncPlans() {
   if (!rows) throw new Error('Bảng plan trên Lark trả về 0 dòng, không đồng bộ để tránh xoá nhầm.');
 
   // Brand khớp Danh mục theo tên (bỏ khoảng trắng, ký tự đặc biệt); chưa có thì thêm để "Tìm KOC" và gắn job theo brand chạy được.
-  const loadBrands = () => db.brand.findMany({ select: { id: true, name: true, members: { where: { role: 'Booking PIC' }, select: { userId: true } } } });
+  const loadBrands = async () => new Map((await db.brand.findMany({ select: { id: true, name: true, members: { where: { role: 'Booking PIC' }, select: { userId: true } } } })).map((b) => [brandKey(b.name), b]));
   let brands = await loadBrands();
-  const missing: string[] = [];
-  for (const d of drafts) {
-    if (d.brand && !brands.some((b) => sameBrand(b.name, d.brand)) && !missing.some((n) => sameBrand(n, d.brand))) missing.push(d.brand);
-  }
-  const newBrands = missing.length ? (await db.brand.createMany({ data: missing.map((name) => ({ name })), skipDuplicates: true })).count : 0;
+  const missing = new Map(drafts.filter((d) => brandKey(d.brand) && !brands.has(brandKey(d.brand))).map((d) => [brandKey(d.brand), d.brand!]));
+  const newBrands = missing.size ? (await db.brand.createMany({ data: [...missing.values()].map((name) => ({ name })), skipDuplicates: true })).count : 0;
   if (newBrands) brands = await loadBrands();
 
   // PIC: user Lark (open_id) → user app; chưa đăng nhập app thì khớp theo tên; không có thì Booking PIC của brand.
   const users = await db.user.findMany({ select: { id: true, larkUserId: true, name: true } });
   const lower = (s?: string | null) => s?.trim().toLowerCase();
   const lines = drafts.map((d) => {
-    const b = brands.find((x) => sameBrand(x.name, d.brand));
+    const b = brands.get(brandKey(d.brand));
     const u = d.pic && (users.find((x) => x.larkUserId === d.pic!.id) ?? users.find((x) => lower(x.name) === lower(d.pic!.name)));
     return {
       id: d.id, planId: `lark-${d.month}`, brandId: b?.id ?? null, productId: null, week: null,
@@ -141,8 +135,9 @@ export async function syncPlans() {
   return { rows, plans: months.length, lines: lines.length, created, updated: changed.length, removed, newBrands };
 }
 
-/** Một lượt đồng bộ, trả câu tóm tắt lưu ở SyncState (cron và nút "Đồng bộ ngay" ở tab Plan). */
+/** Một lượt đồng bộ master data rồi plan, trả câu tóm tắt lưu ở SyncState (cron và nút "Đồng bộ ngay" ở tab Plan). */
 export async function syncPlansJob() {
+  const master = await syncMasterJob(); // brand, gian hàng, user, phân công phải có trước để dòng plan gắn được brand / PIC
   const r = await syncPlans();
-  return `${r.plans} tháng · ${r.lines} dòng plan · ${r.created} mới · ${r.updated} cập nhật · ${r.removed} xoá${r.newBrands ? ` · ${r.newBrands} brand mới` : ''}`;
+  return `${master} · Plan: ${r.plans} tháng · ${r.lines} dòng plan · ${r.created} mới · ${r.updated} cập nhật · ${r.removed} xoá${r.newBrands ? ` · ${r.newBrands} brand mới` : ''}`;
 }
