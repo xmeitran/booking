@@ -49,16 +49,31 @@ export function ActionForm({
 }
 
 /** Hộp thoại mở bằng query (?edit=...), đóng bằng link về closeHref. Không cần state phía client. */
-export function Dialog({ title, closeHref, children }: { title: string; closeHref: string; children: React.ReactNode }) {
+export function Dialog({ title, closeHref, wide, children }: { title: string; closeHref: string; wide?: boolean; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/30 px-4 py-10">
-      <div role="dialog" aria-modal="true" aria-labelledby="dlg-title" className="w-full max-w-xl rounded-lg bg-surface shadow-lg">
+      <div role="dialog" aria-modal="true" aria-labelledby="dlg-title" className={`w-full ${wide ? 'max-w-4xl' : 'max-w-xl'} rounded-lg bg-surface shadow-lg`}>
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <h2 id="dlg-title" className="text-base font-semibold">{title}</h2>
           <Link href={closeHref} className="text-ink-3 hover:text-ink" aria-label="Đóng">✕</Link>
         </div>
         <div className="px-5 py-4">{children}</div>
       </div>
+    </div>
+  );
+}
+
+/** Menu thao tác "⋯" của một dòng: mục là Link / form; bấm một mục hoặc ra ngoài thì đóng. */
+export function Menu({ label = 'Thao tác', children }: { label?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative inline-block text-left" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+      <button type="button" aria-label={label} aria-expanded={open} onClick={() => setOpen((v) => !v)} className="btn h-8 w-8 justify-center px-0">⋯</button>
+      {open && (
+        <div role="menu" onClick={() => setTimeout(() => setOpen(false))} className="absolute right-0 z-30 mt-1 grid w-72 gap-0.5 rounded-lg border border-line bg-surface p-1 text-[13px] shadow-lg [&_a]:block [&_a]:rounded-md [&_a]:px-3 [&_a]:py-2 [&_a:hover]:bg-canvas [&_button.item]:w-full [&_button.item]:rounded-md [&_button.item]:px-3 [&_button.item]:py-2 [&_button.item]:text-left [&_button.item:hover]:bg-canvas">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

@@ -95,7 +95,7 @@ export function forecast(o: { viewTarget: number | null; gpmUsd: number | null; 
 export type BookingRow = {
   code: string; brand: string | null; store: string | null; pipeline: string | null; planMonth: string | null;
   airDate: Date | null; cost: number | null; linkAir: string | null; channel: string | null;
-  extra: { product?: string | null; format?: string | null; kl?: string | null; views30?: string | null; gmv30?: string | null };
+  extra: { product?: string | null; format?: string | null; kl?: string | null; views30?: string | null; gmv30?: string | null; accountType?: string | null };
 };
 
 /** Booking trên Lark của các kênh (so khớp không phân biệt hoa thường), mới nhất trước. */

@@ -13,6 +13,7 @@ const COLS: { h: string; v: (k: K, p: ReturnType<typeof profileInsights>) => unk
   { h: 'Link kênh', v: (k) => k.channelUrl ?? `https://www.tiktok.com/@${k.handle}` },
   { h: 'Nền tảng', v: (k) => k.platform },
   { h: 'Tệp kênh', v: (k) => k.niche },
+  { h: 'Ngành hàng', v: (k) => k.category },
   { h: 'Cấp KOL', v: (k) => k.kl ?? k.klAuto },
   { h: 'Follower', v: (k) => k.followers },
   { h: 'View TB / video bán hàng', v: (k) => k.avgViews },

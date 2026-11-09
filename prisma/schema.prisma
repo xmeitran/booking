@@ -32,6 +32,8 @@ model User {
   listingBatches ListingBatch[]
   listingItems   ListingItem[]
   kocNotes       KocNote[]
+  kocRatings     KocRating[]
+  kocReviews     KocReview[]
   matchBriefs    MatchBrief[]
   brandMembers   BrandMember[]
   planLines      PlanLine[]
@@ -93,6 +95,16 @@ model Koc {
   tags            String[] @default([]) // nhãn nội bộ, vd "Giao hàng chậm", "Hợp brand mẹ bé"
   blacklisted     Boolean  @default(false) // không book nữa: ẩn khỏi Creator matching
   blacklistReason String?
+
+  // Tab Danh bạ KOC / KOL theo bản chốt trên app b2c (src/lib/kocDirectory.ts)
+  category      String?  // Ngành hàng (9 nhóm KOC_CATEGORIES); null = Chưa phân loại
+  readiness     String?  // KOC mới: SẴN_SÀNG_BOOKING / TIẾP_CẬN_BỔ_SUNG_PHÁP_LÝ / CẦN_XIN_LIÊN_HỆ / CHỜ_TIẾP_CẬN (null)
+  contactStatus String?  // KOC mới: CHƯA_LIÊN_HỆ / ĐÃ_LIÊN_HỆ / ĐANG_THƯƠNG_LƯỢNG / TỪ_CHỐI
+  coopConfirmed Boolean  @default(false) // "Chốt hợp tác": vào tab KOC đã hợp tác dù chưa có booking
+  channels      KocChannel[]
+  legalProfiles KocLegalProfile[]
+  ratings       KocRating[]
+  reviews       KocReview[]
 
   @@unique([platform, handle])
   @@index([niche])
@@ -245,6 +257,7 @@ model KocNote {
   authorId   String?
   author     User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
   body       String
+  channel    String?   // kênh liên hệ (Zalo / TikTok DM / Email / Điện thoại / Lark), ghi từ "Ghi lịch sử liên hệ"
   followUpAt DateTime?
   doneAt     DateTime?
   createdAt  DateTime  @default(now())
@@ -471,4 +484,95 @@ model AuditLog { // lịch sử thay đổi
   detail   Json?
 
   @@index([entity, entityId])
+}
+
+// Kênh khác của KOC: TikTok phụ và Shopee / Facebook / Instagram / Threads. Kênh TikTok chính là Koc.handle (khớp booking Lark).
+model KocChannel {
+  id        String   @id @default(cuid())
+  kocId     String
+  koc       Koc      @relation(fields: [kocId], references: [id], onDelete: Cascade)
+  platform  String   // TikTok / Shopee / Facebook / Instagram / Threads
+  handle    String   // chữ thường, không @
+  role      String?  // TikTok phụ: TIKTOK_ROLES
+  createdAt DateTime @default(now())
+
+  @@unique([kocId, platform, handle])
+  @@index([platform, handle])
+}
+
+// Hồ sơ pháp lý (1 KOC → N pháp nhân thụ hưởng). Hồ sơ mặc định được chép ngược vào Koc.bankHolder / bankAccount /
+// bankName / idNumber để ĐNTT, listing, job dùng như cũ. KOC chưa có hồ sơ: hiển thị HSPL-01 dựng từ các cột đó.
+model KocLegalProfile {
+  id                  String    @id @default(cuid())
+  kocId               String
+  koc                 Koc       @relation(fields: [kocId], references: [id], onDelete: Cascade)
+  code                String    // HSPL-01, HSPL-02...
+  legalType           String    // INDIVIDUAL / HOUSEHOLD / COMPANY
+  isDefault           Boolean   @default(false)
+  status              String    @default("PENDING_VERIFY") // ACTIVE / PENDING_VERIFY / ARCHIVED
+  taxAccountType      String?   // chế độ khấu trừ thuế
+  signRole            String?   // vai trò ký kết
+  holderName          String
+  cccd                String?
+  cccdIssueDate       String?   // DD/MM/YYYY
+  cccdIssuePlace      String?
+  taxCode             String?
+  businessLicenseNo   String?
+  representativeName  String?
+  representativeTitle String?
+  authorizationNumber String?
+  authorizationDate   String?
+  vatRatePercent      Float?
+  contactPhone        String?
+  contactEmail        String?
+  address             String?   // thường trú (cá nhân) / trụ sở đăng ký (HKD, công ty)
+  bankName            String?
+  bankAccount         String?
+  bankHolderName      String?   // IN HOA KHÔNG DẤU
+  notes               String?
+  contractStatus      String?   // HĐNT: CHƯA_KÝ / ĐANG_TRÌNH_KÝ / ĐÃ_KÝ / HẾT_HẠN
+  contractCode        String?
+  contractSignedAt    DateTime?
+  contractUrl         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([kocId, code])
+  @@index([cccd])
+  @@index([taxCode])
+}
+
+// Đánh giá sao sau deal: mỗi deal một lượt (mã BO trên Lark hoặc mã job trong app), người chấm hoặc người có quyền sửa KOC được sửa.
+model KocRating {
+  id          String   @id @default(cuid())
+  dealId      String   @unique
+  kocId       String
+  koc         Koc      @relation(fields: [kocId], references: [id], onDelete: Cascade)
+  brand       String?
+  stars       Int      // 1–5
+  tags        String[] @default([]) // mã nhận định RATING_TAGS
+  note        String?
+  evaluatorId String?
+  evaluator   User?    @relation(fields: [evaluatorId], references: [id], onDelete: SetNull)
+  evaluatedAt DateTime @default(now())
+
+  @@index([kocId])
+}
+
+// Đánh giá kênh theo brand: Phù hợp / Cân nhắc / Không phù hợp. Nhật ký chỉ thêm, nhiều lượt cho mỗi brand.
+model KocReview {
+  id         String   @id @default(cuid())
+  kocId      String
+  koc        Koc      @relation(fields: [kocId], references: [id], onDelete: Cascade)
+  verdict    String   // SUITABLE / CAUTION / NOT_SUITABLE
+  reasons    String[] @default([])
+  note       String
+  brand      String   // tên brand hoặc "Toàn hệ thống B2C"
+  source     String   @default("Danh bạ KOC")
+  reviewerId String?
+  reviewer   User?    @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+
+  @@index([kocId, createdAt])
+  @@index([verdict])
 }

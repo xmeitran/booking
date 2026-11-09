@@ -7,8 +7,11 @@ import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { bookingsOf, collabSummary, gmvLabel, profileInsights, USD_VND } from '@/lib/kocInsights';
 import { dupKey } from '@/lib/listing';
-import { requireUser } from '@/lib/session';
+import { jobScope, scopeOf } from '@/lib/scope';
+import { can, requireUser } from '@/lib/session';
 import { addNote, closeFollowUp, mergeKoc, refreshFromTikTok } from '../actions';
+import { ALL_BRANDS_SCOPE, isCoop, legalProfilesOf, reviewSummary, VERDICTS, type LegalType } from '@/lib/kocDirectory';
+import { LegalDialog, LegalSection } from './legal';
 
 const TIKTOK_MSG: Record<string, string> = {
   updated: 'Đã cập nhật số liệu từ TikTok.',
@@ -17,20 +20,27 @@ const TIKTOK_MSG: Record<string, string> = {
   failed: 'Không lấy được số liệu từ TikTok. Thử lại sau.',
 };
 
-export default async function KocPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tiktok?: string; merge?: string }> }) {
+export default async function KocPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tiktok?: string; merge?: string; lp?: string; type?: string; reveal?: string }> }) {
   const me = await requireUser();
   const { id } = await params;
-  const { tiktok, merge } = await searchParams;
-  const koc = await db.koc.findUnique({ where: { id }, include: { pic: true, aliases: { select: { handle: true } } } });
+  const { tiktok, merge, lp, type, reveal } = await searchParams;
+  const koc = await db.koc.findUnique({ where: { id }, include: { pic: true, aliases: { select: { handle: true } }, legalProfiles: true, reviews: { select: { verdict: true, brand: true, createdAt: true } }, _count: { select: { jobs: true } } } });
   if (!koc) notFound();
 
-  const canEdit = me.role !== 'STAFF';
+  const canEdit = can(me, 'koc.edit');
+  const canSee = can(me, 'koc.bank');
+  // Chung chủ / MCN: KOC khác trùng SĐT, email hoặc CCCD / MST (như chip ở Danh bạ).
+  const owners = [koc.phone && { phone: koc.phone }, koc.email && { email: { equals: koc.email, mode: 'insensitive' as const } }, koc.idNumber && { idNumber: koc.idNumber }].filter((x) => !!x);
+  const [sharedCount, bankRows] = await Promise.all([
+    owners.length ? db.koc.count({ where: { id: { not: koc.id }, OR: owners } }) : 0,
+    canEdit && canSee && lp ? db.koc.findMany({ where: { bankName: { not: null } }, distinct: ['bankName'], select: { bankName: true }, orderBy: { bankName: 'asc' } }) : [],
+  ]);
   const [byHandle, sources, history, notes, jobs, twins] = await Promise.all([
     bookingsOf([koc.handle]),
     creatorSources(koc.handle),
     db.kocSnapshot.findMany({ where: { kocId: koc.id }, orderBy: { at: 'desc' }, take: 12 }),
     db.kocNote.findMany({ where: { kocId: koc.id }, include: { author: true }, orderBy: { createdAt: 'desc' }, take: 50 }),
-    db.job.findMany({ where: { kocId: koc.id }, include: { brand: { select: { name: true } } }, orderBy: { number: 'desc' } }),
+    db.job.findMany({ where: { kocId: koc.id, AND: [jobScope(await scopeOf(me))] }, include: { brand: { select: { name: true } } }, orderBy: { number: 'desc' } }),
     // Hồ sơ có thể là cùng KOC (Lark ghi ID kênh khác nhau): cùng 3 ký tự đầu rồi so khoá bỏ dấu / dấu cách / số cuối.
     // ID chỉ có số / ký tự đặc biệt: khoá rỗng sẽ khớp mọi KOC, bỏ qua.
     dupKey(koc.handle).length < 3 ? Promise.resolve([]) : db.koc.findMany({
@@ -52,6 +62,13 @@ export default async function KocPage({ params, searchParams }: { params: Promis
   const collab = collabSummary(bookings);
   const p = profileInsights(koc.ttsProfile);
   const kl = koc.kl ?? collab.kl;
+  const accountType = bookings.find((b) => b.extra?.accountType && b.extra.accountType !== 'null')?.extra.accountType ?? null;
+  const saved = koc.legalProfiles.map((x) => ({ ...x, legalType: x.legalType as LegalType }));
+  const profiles = legalProfilesOf(saved, koc, accountType);
+  const nextNo = koc.legalProfiles.length ? Math.max(...koc.legalProfiles.map((x) => Number(x.code.replace(/\D/g, '')) || 0)) + 1 : profiles.length ? 2 : 1;
+  const lpProfile = lp === 'legacy' ? profiles.find((x) => !x.id) ?? null : lp && lp !== 'new' ? saved.find((x) => x.id === lp) ?? null : null;
+  const rs = reviewSummary(koc.reviews);
+  const coop = isCoop({ bookingCount: koc.bookingCount, jobs: koc._count.jobs, coopConfirmed: koc.coopConfirmed });
 
   // Độ đầy đủ hồ sơ: 5 nhóm thông tin theo yêu cầu chuẩn hoá KOC.
   const groups = [
@@ -84,6 +101,14 @@ export default async function KocPage({ params, searchParams }: { params: Promis
               <span className={`pill ${missing.length ? 'bg-warning-soft text-warning' : 'bg-positive-soft text-positive'}`} title={missing.length ? `Thiếu: ${missing.join(', ')}` : undefined}>
                 Hồ sơ {groups.length - missing.length}/{groups.length}
               </span>
+              {koc.category && <span className="pill bg-sunken text-ink-2">{koc.category}</span>}
+              {rs?.byBrand.slice(0, 3).map((b) => (
+                <Link key={b.brand} href={`/contacts?${coop ? '' : 'tab=new&'}review=${koc.id}`} className={`pill ${VERDICTS[b.latest.verdict]?.tone}`}>
+                  {b.brand === ALL_BRANDS_SCOPE ? 'Toàn B2C' : b.brand}: {VERDICTS[b.latest.verdict]?.label}
+                </Link>
+              ))}
+              {rs && rs.byBrand.length > 3 && <span className="text-ink-3">+{rs.byBrand.length - 3} Brand</span>}
+              {sharedCount > 0 && <Link href={`/contacts?${coop ? '' : 'tab=new&'}owner=${koc.id}`} className="link">Chung chủ / MCN với {sharedCount} kênh</Link>}
             </div>
           </div>
         </div>
@@ -311,7 +336,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
                 <Avatar src={n.author?.avatarUrl} name={n.author?.name} size={28} />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs text-ink-3">
-                    {n.author?.name ?? 'Đã xoá'} · {n.createdAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}
+                    {n.author?.name ?? 'Đã xoá'}{n.channel && ` · ${n.channel}`} · {n.createdAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}
                   </div>
                   <p className="text-[13px] whitespace-pre-line">{n.body}</p>
                   {n.followUpAt && (
@@ -336,16 +361,13 @@ export default async function KocPage({ params, searchParams }: { params: Promis
         ) : <Empty text="Chưa có ghi chú nào." />}
       </Section>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="Liên hệ & nhận hàng">
-          <Info rows={[['SĐT', koc.phone], ['Zalo', koc.zalo], ['Email', koc.email], ['Người nhận hàng', koc.receiverName], ['SĐT nhận hàng', koc.receiverPhone], ['Địa chỉ', koc.address]]} />
-        </Section>
-        {canEdit && (
-          <Section title="Thanh toán" meta="Chỉ Admin, Leader xem · không xuất cho Brand">
-            <Info rows={[['Chủ tài khoản', koc.bankHolder], ['Số tài khoản', koc.bankAccount], ['Ngân hàng', koc.bankName], ['CCCD / MST', koc.idNumber]]} />
-          </Section>
-        )}
-      </div>
+      <Section title="Liên hệ & nhận hàng">
+        <Info rows={[['SĐT', koc.phone], ['Zalo', koc.zalo], ['Email', koc.email], ['Người nhận hàng', koc.receiverName], ['SĐT nhận hàng', koc.receiverPhone], ['Địa chỉ', koc.address]]} />
+      </Section>
+      <LegalSection koc={koc} profiles={profiles} reveal={reveal === '1'} canSee={canSee} canEdit={canEdit && canSee} base={`/contacts/${koc.id}`} />
+      {canEdit && canSee && lp && (lp === 'new' || lpProfile) && (
+        <LegalDialog koc={koc} profile={lpProfile} type={type} nextNo={nextNo} banks={bankRows.map((b) => b.bankName!)} base={`/contacts/${koc.id}`} />
+      )}
       {canEdit && (
         <form action={mergeKoc} className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
           <input type="hidden" name="id" value={koc.id} />
