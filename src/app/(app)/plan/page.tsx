@@ -3,9 +3,11 @@ import { ActionForm, Dialog } from '@/components/ui';
 import { CANCELLED } from '@/lib/jobs';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
+import { fromLark } from '@/lib/planSync';
 import { requireUser } from '@/lib/session';
-import { savePlan } from './actions';
+import { savePlan, syncPlansNow } from './actions';
 
+const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 const thisMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).slice(0, 7);
 
 // Plan: plan tổng theo tháng → plan chi tiết theo brand, tuần, tier, loại content, ngân sách, PIC; theo dõi đã book bao nhiêu.
@@ -17,6 +19,8 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
     orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
   });
   const canEdit = me.role !== 'STAFF';
+  const sync = await db.syncState.findUnique({ where: { id: 'plans' } });
+  const syncing = Boolean(sync?.startedAt && !sync.finishedAt);
   // Job ngoài plan (tier không có dòng nào): tính vào "Đã chốt" như trang chi tiết plan.
   const outside = await db.job.findMany({
     where: { planLineId: null, stage: { not: CANCELLED }, listingItem: { batch: { planLineId: { not: null } } } },
@@ -29,8 +33,15 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
         <div>
           <h1 className="text-xl font-semibold">Plan</h1>
           <p className="mt-1 text-[13px] text-ink-2">Plan tổng theo tháng, tách chi tiết theo brand, tuần, tier KOC, loại content, ngân sách và PIC. Mỗi dòng plan bấm &quot;Tìm KOC&quot; để sang Creator matching; tiến độ tính theo job đã tạo.</p>
+          <p className="mt-1 text-xs text-ink-3">
+            {syncing ? 'Đang đồng bộ "4.1 Plan order tổng" từ Lark Base, tải lại trang sau 1 phút'
+              : sync?.finishedAt ? `Lark Base · đồng bộ ${fmtTime(sync.finishedAt)} · ${sync.message}` : 'Chưa đồng bộ plan từ Lark Base'}
+          </p>
         </div>
-        {canEdit && <Link href="?new=1" className="btn btn-primary">Tạo plan</Link>}
+        <div className="flex gap-2">
+          <form action={syncPlansNow}><button className="btn" disabled={syncing}>{syncing ? 'Đang đồng bộ…' : 'Đồng bộ ngay từ Lark'}</button></form>
+          {canEdit && <Link href="?new=1" className="btn btn-primary">Tạo plan</Link>}
+        </div>
       </div>
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">
@@ -44,7 +55,7 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
               const spent = [...jobs, ...outside.filter((j) => ids.has(j.listingItem!.batch.planLineId!))].reduce((s, j) => s + (j.price ?? 0), 0);
               return (
                 <tr key={p.id}>
-                  <td><Link href={`/plan/${p.id}`} className="font-medium text-accent hover:underline">{p.name}</Link><div className="text-xs text-ink-3">{p.lines.length} dòng chi tiết</div></td>
+                  <td><Link href={`/plan/${p.id}`} className="font-medium text-accent hover:underline">{p.name}</Link><div className="text-xs text-ink-3">{p.lines.length} dòng chi tiết{fromLark(p.id) ? ' · Lark Base' : ''}</div></td>
                   <td>{p.month.split('-').reverse().join('/')}</td>
                   <td className="text-right tabular-nums">{fmtNum(qty)}</td>
                   <td className="text-right tabular-nums">{fmtNum(jobs.length)} <span className="text-xs text-ink-3">{qty ? fmtPct(jobs.length / qty, 0) : ''}</span></td>

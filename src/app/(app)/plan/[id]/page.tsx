@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
 import { CANCELLED, jobCode } from '@/lib/jobs';
 import { PRICE_TYPES } from '@/lib/listing';
+import { fromLark } from '@/lib/planSync';
 import { requireUser } from '@/lib/session';
 import { KL_LEVELS } from '../../contacts/platforms';
 import { deletePlan, matchFromLine, removeLine, savePlan, saveLine } from '../actions';
@@ -40,7 +41,8 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
       orderBy: { number: 'asc' },
     }),
   ]);
-  const editing = sp.line === 'new' ? null : plan.lines.find((l) => l.id === sp.line);
+  // Plan / dòng từ Lark Base chỉ sửa trên Lark (đồng bộ ghi đè); vẫn thêm được dòng tay vào plan Lark.
+  const editing = sp.line === 'new' ? null : plan.lines.find((l) => l.id === sp.line && !fromLark(l.id));
   const lineOpen = canEdit && (sp.line === 'new' || editing);
   const qty = plan.lines.reduce((s, l) => s + l.quantity, 0);
   const jobs = plan.lines.flatMap((l) => l.jobs);
@@ -62,7 +64,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
         </div>
         {canEdit && (
           <div className="flex gap-2">
-            <Link href="?edit=1" className="btn">Sửa plan</Link>
+            {!fromLark(plan.id) && <Link href="?edit=1" className="btn">Sửa plan</Link>}
             <Link href="?line=new" className="btn btn-primary">Thêm dòng</Link>
           </div>
         )}
@@ -111,7 +113,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
                       <input type="hidden" name="id" value={l.id} />
                       <button className="link">{l.briefs[0] ? 'Mở matching' : 'Tìm KOC'}</button>
                     </form>
-                    {canEdit && <Link href={`?line=${l.id}`} className="link ml-3">Sửa</Link>}
+                    {canEdit && !fromLark(l.id) && <Link href={`?line=${l.id}`} className="link ml-3">Sửa</Link>}
                   </td>
                 </tr>
               );
@@ -179,7 +181,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
         </Dialog>
       )}
 
-      {sp.edit && canEdit && (
+      {sp.edit && canEdit && !fromLark(plan.id) && (
         <Dialog title="Sửa plan" closeHref={close}>
           <ActionForm action={savePlan} className="grid gap-4 sm:grid-cols-2">
             <input type="hidden" name="id" value={plan.id} />

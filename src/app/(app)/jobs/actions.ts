@@ -27,14 +27,15 @@ export async function createJobsFromListing(fd: FormData) {
   const brand = brands.find((b) => sameBrand(b.name, batch.brand));
   const product = brand?.products.find((p) => sameBrand(p.name, batch.product));
   const line = batch.planLineId ? await db.planLine.findUnique({ where: { id: batch.planLineId } }) : null;
-  // Mỗi job gắn vào dòng plan cùng brand + cùng tier KOC, lấp dòng tuần sớm nhất còn thiếu (đầy hết thì dòng tuần cuối).
+  // Mỗi job gắn vào dòng plan cùng brand + cùng loại content + cùng tier KOC, lấp dòng tuần sớm nhất còn thiếu (đầy hết thì dòng tuần cuối);
+  // cùng tuần thì ưu tiên dòng mở matching (plan Lark: nhiều gian hàng một brand, không chia tuần).
   // Không có dòng nào khớp tier: job không gắn dòng (ngoài plan), tab Plan báo riêng.
   const lines = line && brand
-    ? await db.planLine.findMany({
-        where: { planId: line.planId, brandId: brand.id },
+    ? (await db.planLine.findMany({
+        where: { planId: line.planId, brandId: brand.id, contentType: line.contentType },
         orderBy: [{ week: 'asc' }, { id: 'asc' }],
         include: { _count: { select: { jobs: { where: { stage: { not: CANCELLED } } } } } },
-      })
+      })).sort((a, b) => (a.week ?? 99) - (b.week ?? 99) || Number(b.id === line.id) - Number(a.id === line.id))
     : [];
   const pickLine = linePicker(lines.map((l) => ({ ...l, used: l._count.jobs })));
   for (const it of batch.items) {

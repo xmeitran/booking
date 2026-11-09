@@ -1,4 +1,5 @@
 # Gọi app trên Render: (1) đồng bộ "3.2 List duyệt book" từ Lark Base (src/lib/bookingSync.ts),
+# (1b) đồng bộ "4.1 Plan order tổng" vào tab Plan (src/lib/planSync.ts, 1 giờ / lần),
 # (2) cập nhật chỉ số KOL từ TikTok Shop qua Trạm dữ liệu (src/lib/creatorStats.ts, ~10 phút).
 # (3) tổng hợp tab Dữ liệu từ Trạm (6 giờ một lần, gọi trong giờ khác trả 429 là bình thường).
 # Gọi cũng đánh thức Render free nếu đang ngủ. Chạy tay: tab Actions > Sync bookings > Run workflow.
@@ -19,7 +20,7 @@ jobs:
     steps:
       - run: |
           ok=0
-          for job in sync-bookings creator-stats data-sources; do
+          for job in sync-bookings sync-plans creator-stats data-sources; do
             code=$(curl -sS -o out.json -w '%{http_code}' --max-time 900 -X POST "https://booking-lqms.onrender.com/api/cron/$job")
             echo "$job: $code $(cat out.json)"
             [ "$code" = 500 ] && ok=1

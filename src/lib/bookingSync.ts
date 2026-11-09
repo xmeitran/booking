@@ -98,7 +98,7 @@ const toNum = (v: unknown, opts: Options) => {
 };
 const firstUrl = (v: unknown) => (Array.isArray(v) ? (v[0] as { link?: string } | undefined)?.link ?? null : null);
 
-interface LarkRecord {
+export interface LarkRecord {
   record_id: string;
   last_modified_time: number;
   fields: Record<string, unknown>;
@@ -152,7 +152,7 @@ async function addKocs(rows: Row[]) {
   return (await db.koc.createMany({ data: [...byKey.values()], skipDuplicates: true })).count;
 }
 
-async function* searchPages(table: string, fieldNames: string[], token: string) {
+export async function* searchPages(table: string, fieldNames: string[], token: string) {
   let pageToken = '';
   do {
     const { data } = await larkPost(

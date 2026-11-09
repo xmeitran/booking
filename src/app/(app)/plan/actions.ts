@@ -1,11 +1,21 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 import { audit } from '@/lib/catalog';
+import { runOnce } from '@/lib/cronJob';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
+import { fromLark, syncPlansJob } from '@/lib/planSync';
 import { requireUser } from '@/lib/session';
 import { KL_LEVELS } from '../contacts/platforms';
+
+// Đồng bộ plan từ Lark Base ngay (chạy nền sau khi trả trang); cùng khoá với cron nên không chạy chồng.
+export async function syncPlansNow() {
+  await requireUser();
+  after(() => runOnce('plans', 2, syncPlansJob));
+  revalidatePath('/plan');
+}
 
 export async function savePlan(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser('ADMIN', 'LEADER');
@@ -13,6 +23,7 @@ export async function savePlan(_: string | null, fd: FormData): Promise<string |
   const name = str(fd, 'name');
   const month = str(fd, 'month');
   const budget = optInt(fd, 'budget');
+  if (fromLark(id)) return 'Plan đồng bộ từ Lark Base, sửa trên Lark.';
   if (!name) return 'Nhập tên plan.';
   if (!/^\d{4}-\d{2}$/.test(month)) return 'Chọn tháng.';
   if (Number.isNaN(budget)) return 'Ngân sách là số nguyên ≥ 0.';
@@ -26,6 +37,7 @@ export async function savePlan(_: string | null, fd: FormData): Promise<string |
 export async function deletePlan(fd: FormData) {
   const me = await requireUser('ADMIN', 'LEADER');
   const id = str(fd, 'id');
+  if (fromLark(id)) return; // đồng bộ lại sẽ tạo lại, xoá chỉ làm job mất liên kết
   await db.plan.delete({ where: { id } });
   await audit(me.id, 'Plan', id, 'Xoá');
   revalidatePath('/plan');
@@ -41,6 +53,7 @@ export async function saveLine(_: string | null, fd: FormData): Promise<string |
   const quantity = optInt(fd, 'quantity');
   const budget = optInt(fd, 'budget');
   const tier = str(fd, 'tier');
+  if (fromLark(id)) return 'Dòng đồng bộ từ Lark Base, sửa trên Lark.';
   if (!brandId) return 'Chọn brand.';
   if (Number.isNaN(week) || (week != null && (week < 1 || week > 5))) return 'Tuần từ 1 tới 5.';
   if (quantity == null || Number.isNaN(quantity)) return 'Nhập số KOC cần book (0 nếu dòng chỉ giữ ngân sách).';
@@ -63,6 +76,7 @@ export async function saveLine(_: string | null, fd: FormData): Promise<string |
 
 export async function removeLine(fd: FormData) {
   const me = await requireUser('ADMIN', 'LEADER');
+  if (fromLark(str(fd, 'id'))) return;
   const line = await db.planLine.delete({ where: { id: str(fd, 'id') } });
   await audit(me.id, 'PlanLine', line.id, 'Xoá');
   revalidatePath(`/plan/${line.planId}`);
