@@ -1,6 +1,8 @@
-# Gọi app trên Render: (1) đồng bộ "3.2 List duyệt book" từ Lark Base (src/lib/bookingSync.ts),
+# Gọi app trên Render và server DX (stg-booking.upbase.asia, chạy song song tới khi tắt Render):
+# (1) đồng bộ "3.2 List duyệt book" từ Lark Base (src/lib/bookingSync.ts),
 # (1b) đồng bộ "4.1 Plan order tổng" vào tab Plan (src/lib/planSync.ts, 1 giờ / lần),
-# (2) cập nhật chỉ số KOL từ TikTok Shop qua Trạm dữ liệu (src/lib/creatorStats.ts, ~10 phút).
+# (2) cập nhật chỉ số KOL từ TikTok Shop qua Trạm dữ liệu (src/lib/creatorStats.ts, ~10 phút): chỉ một nơi gọi
+#     (CREATOR_HOST) để không gọi TikTok gấp đôi; tắt Render thì đổi CREATOR_HOST sang server DX.
 # (3) tổng hợp tab Dữ liệu từ Trạm (6 giờ một lần, gọi trong giờ khác trả 429 là bình thường).
 # Gọi cũng đánh thức Render free nếu đang ngủ. Chạy tay: tab Actions > Sync bookings > Run workflow.
 # Lịch 15 phút / lần: GitHub hay hoãn hoặc bỏ lịch của repo ít hoạt động (lịch "mỗi giờ" thực tế 5–8 giờ mới chạy,
@@ -18,11 +20,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - run: |
-          ok=0
-          for job in sync-bookings sync-plans creator-stats data-sources; do
-            code=$(curl -sS -o out.json -w '%{http_code}' --max-time 900 -X POST "https://booking-lqms.onrender.com/api/cron/$job")
-            echo "$job: $code $(cat out.json)"
-            [ "$code" = 500 ] && ok=1
+      - env:
+          HOSTS: https://booking-lqms.onrender.com https://stg-booking.upbase.asia
+          CREATOR_HOST: https://booking-lqms.onrender.com
+        run: |
+          # Mỗi host chạy lần lượt các job; các host chạy song song để không vượt timeout.
+          for base in $HOSTS; do
+            (
+              name=$(echo "$base" | sed -E 's#https?://##; s#[^a-z0-9]+#-#g')
+              for job in sync-bookings sync-plans creator-stats data-sources; do
+                [ "$job" = creator-stats ] && [ "$base" != "$CREATOR_HOST" ] && continue
+                code=$(curl -sS -o "out-$name.json" -w '%{http_code}' --max-time 900 -X POST "$base/api/cron/$job")
+                echo "$base $job: $code $(cat "out-$name.json")"
+                [ "$code" = 500 ] && touch failed
+              done
+            ) &
           done
-          exit $ok
+          wait
+          [ ! -e failed ]
