@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { Avatar } from '@/components/ui';
 import { db } from '@/lib/db';
-import { byShop, originOf, topCreators, type ShopRow, type Source, type SourceStats, type TopRow } from '@/lib/dataSources';
+import { byShop, originOf, placesOf, topCreators, type ShopRow, type Source, type SourceStats, type TopRow } from '@/lib/dataSources';
 import { fmtNum, fmtShort } from '@/lib/format';
 import { areaOf, day, Empty, fmtTime, KindPill, MetricNotes, Panel, Segmented, SourcePicker, Status } from './ui';
 
@@ -16,9 +16,9 @@ function SourceInfo({ s, st, at, ours }: { s: Source; st: Saved; at: Date | null
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-2xs text-ink-3">
       <KindPill k={areaOf(s)} />
+      <span>Nguồn <b className="font-medium text-ink-2">{placesOf(s)}</b></span>
       <span>Phủ dữ liệu <b className="font-medium text-ink-2">{st && !('error' in st) ? `${day(st.from)} – ${day(st.to)}` : '—'}</b></span>
       <span>Số trên trang <b className="font-medium text-ink-2">{at ? `kéo sẵn lúc ${fmtTime(at)}` : localOnly(s) || ours ? 'lưu trong Booking Hub' : 'tra trực tiếp lúc mở trang'}</b> · cập nhật {o.schedule}</span>
-      <span className="basis-full">Đến từ: {o.path}</span>
     </div>
   );
 }

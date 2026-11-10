@@ -233,15 +233,14 @@ async function Sources({ saved }: { saved: Record<string, Saved> }) {
   const statOf = (s: Source): Saved => (s.key === 'lark' ? lark : s.key === 'marketplace' ? market : saved[s.key]);
   return (
     <div className="grid gap-5">
-      <Panel flush title="Dữ liệu đi từ đâu tới Booking Hub" meta="Các bảng chồng lấn (một đơn có thể nằm ở Đơn MCN, Đơn TAP và Đơn affiliate của shop), nên không cộng số giữa các bảng. Creator khớp Danh bạ theo username TikTok">
+      <Panel flush title="Nguồn dữ liệu" meta="Các bảng chồng lấn (một đơn có thể nằm ở Đơn MCN, Đơn TAP và Đơn affiliate của shop), nên không cộng số giữa các bảng. Creator khớp Danh bạ theo username TikTok">
         <table className="dt">
-          <thead><tr><th>Nguồn</th><th>Loại số</th><th>Đường đi của dữ liệu</th><th>Cập nhật</th></tr></thead>
+          <thead><tr><th>Nguồn</th><th>Loại số</th><th>Cập nhật</th></tr></thead>
           <tbody>
             {(Object.keys(ORIGIN) as AreaKey[]).map((k) => (
               <tr key={k}>
                 <td className="font-medium whitespace-nowrap">{ORIGIN[k].name}</td>
                 <td><KindPill k={k} /></td>
-                <td className="text-ink-2">{ORIGIN[k].path}</td>
                 <td className="whitespace-nowrap text-ink-3">{ORIGIN[k].schedule}</td>
               </tr>
             ))}

@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { Avatar } from '@/components/ui';
 import { db } from '@/lib/db';
 import {
-  creatorStation, LARK, liveCreator, MARKET, ORIGIN, originOf, rawRows, STATION,
+  creatorStation, LARK, liveCreator, MARKET, ORIGIN, originOf, placesOf, rawRows, STATION,
   type CreatorSource, type RawColumn, type ShopRow, type Source, type SourceStats,
 } from '@/lib/dataSources';
 import { fmtDate, fmtNum, fmtShort, fmtVnd } from '@/lib/format';
@@ -213,7 +213,7 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
 
 function Kind({ g }: { g: keyof typeof ORIGIN }) {
   const team = ORIGIN[g].kind === 'Team tự điền';
-  return <span className={`pill ${team ? 'bg-warning-soft text-warning' : 'bg-positive-soft text-positive'}`} title={ORIGIN[g].path}>{ORIGIN[g].kind}</span>;
+  return <span className={`pill ${team ? 'bg-warning-soft text-warning' : 'bg-positive-soft text-positive'}`} title={ORIGIN[g].name}>{ORIGIN[g].kind}</span>;
 }
 
 function SourceTile({ t }: { t: Tile }) {
@@ -257,7 +257,7 @@ function SourceCard({ t, handle, coverage, updated, raw, children }: {
         <Kind g={t.s.key === 'marketplace' ? 'marketplace' : t.s.group} />
       </div>
       <dl className="mb-3 grid gap-x-6 gap-y-1 rounded-md bg-sunken px-3 py-2 text-xs sm:grid-cols-3">
-        <div><dt className="inline text-ink-3">Đến từ: </dt><dd className="inline">{o.path}</dd></div>
+        <div><dt className="inline text-ink-3">Nguồn: </dt><dd className="inline">{placesOf(t.s)}</dd></div>
         <div><dt className="inline text-ink-3">Phủ dữ liệu: </dt><dd className="inline">{cov ? `${day(cov.from)} – ${day(cov.to)}` : '—'}</dd></div>
         <div>
           <dt className="inline text-ink-3">Số trên trang: </dt>

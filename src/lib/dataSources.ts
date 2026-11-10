@@ -10,8 +10,9 @@ import { db } from './db';
 type Agg = 'sum' | 'count' | 'count_distinct' | 'max';
 export type Metric = { label: string; hint?: string; money?: boolean; field?: string; agg?: Agg }; // hint: cách tính, hiện cho người xem
 // shop: cột để tách hiệu quả creator theo shop / brand / sản phẩm. target = mã tài khoản, Trạm trả tên đọc được kèm theo.
+// from: nơi lấy số khi khác nhóm mặc định hoặc gồm nhiều nơi (hiện "Nguồn: A, B").
 export type Source = {
-  key: string; group: 'lark' | 'partner' | 'seller'; name: string; note: string; user?: string; date?: string; metrics: Metric[];
+  key: string; group: 'lark' | 'partner' | 'seller'; name: string; note: string; user?: string; date?: string; metrics: Metric[]; from?: string[];
   shop?: { field: string; label: string; target?: boolean };
 };
 export type ShopRow = { key: string; shop: string; m: number[] };
@@ -22,14 +23,16 @@ const ORDERS: Metric = { field: 'order_id', agg: 'count_distinct', label: 'Đơn
 const QTY: Metric = { field: 'quantity', agg: 'sum', label: 'Sản phẩm bán', hint: 'Tổng số lượng sản phẩm trong các đơn' };
 const ITEMS: Metric = { field: 'items', agg: 'sum', label: 'Sản phẩm bán', hint: 'Tổng số lượng sản phẩm trong các đơn' };
 
-// Dữ liệu đi từ đâu tới Booking Hub, ai tạo ra số, bao lâu cập nhật: hiện ở tab Dữ liệu và trang creator để người xem tin số.
+// Số lấy từ đâu (chỉ ghi tên nơi), ai tạo ra số, bao lâu cập nhật: hiện ở tab Dữ liệu và trang creator để người xem tin số.
 export const ORIGIN = {
-  lark: { name: 'Lark Base', path: 'Team B2C nhập trên bảng "3.2 List duyệt book" → Booking Hub đồng bộ mỗi giờ', kind: 'Team tự điền', schedule: 'mỗi giờ' },
-  partner: { name: 'TikTok Partner Center', path: 'API TikTok của tài khoản MCN / TAP UpBase → Trạm dữ liệu lấy mỗi ngày → Booking Hub tổng hợp', kind: 'Số TikTok trả về', schedule: '6 giờ / lần' },
-  seller: { name: 'TikTok Seller Center', path: 'API TikTok của 8 shop seller → Trạm dữ liệu lấy mỗi ngày → Booking Hub tổng hợp', kind: 'Số TikTok trả về', schedule: '6 giờ / lần' },
-  marketplace: { name: 'Creator Marketplace', path: 'Booking Hub tự gọi API TikTok Shop (token shop của Trạm), số 30 ngày gần nhất của từng KOL Danh bạ', kind: 'Số TikTok trả về', schedule: 'mỗi giờ, KOL cũ hơn 7 ngày' },
+  lark: { name: 'Lark Base', kind: 'Team tự điền', schedule: 'mỗi giờ' },
+  partner: { name: 'TikTok Partner Center', kind: 'Số TikTok trả về', schedule: '6 giờ / lần' },
+  seller: { name: 'TikTok Seller Center', kind: 'Số TikTok trả về', schedule: '6 giờ / lần' },
+  marketplace: { name: 'TikTok Creator Marketplace', kind: 'Số TikTok trả về', schedule: 'mỗi giờ, KOL cũ hơn 7 ngày' },
 } as const;
 export const originOf = (s: Source) => ORIGIN[s.key === 'marketplace' ? 'marketplace' : s.group];
+/** Nơi lấy số của một bảng; nhiều nơi thì ghi đủ. */
+export const placesOf = (s: Source) => (s.from ?? [originOf(s).name]).join(', ');
 const SHOP = { field: 'target', label: 'Shop', target: true }; // 8 shop seller trên Trạm
 
 export const LARK: Source = {
@@ -42,7 +45,7 @@ export const LARK: Source = {
   shop: { field: 'brand', label: 'Brand' },
 };
 export const MARKET: Source = {
-  key: 'marketplace', group: 'seller', name: 'Creator Marketplace (Booking Hub tự tra)', note: 'Hồ sơ 30 ngày của KOL Danh bạ, tra mỗi giờ bằng token shop của Trạm',
+  key: 'marketplace', group: 'seller', name: 'Creator Marketplace', note: 'Hồ sơ 30 ngày của KOL Danh bạ, tra mỗi giờ',
   metrics: [
     { label: 'Follower', hint: 'TikTok trả lúc tra' }, { label: 'View TB / video', hint: 'Lượt xem trung bình / video bán hàng, 30 ngày' },
     { label: 'View TB / LIVE', hint: 'Lượt xem trung bình / LIVE bán hàng, 30 ngày' }, { label: 'Sản phẩm bán 30 ngày', hint: 'Mọi shop trên TikTok Shop, không riêng shop UpBase' },
@@ -61,7 +64,8 @@ export const STATION: Source[] = [
       { field: 'video_count', agg: 'sum', label: 'Video', hint: 'Video làm cho sản phẩm chiến dịch' }, { field: 'room_count', agg: 'sum', label: 'Phiên live', hint: 'Phiên live cho sản phẩm chiến dịch' },
       { field: 'paid_amount', agg: 'sum', label: 'Đã trả', money: true, hint: 'Tiền đã trả theo chiến dịch' },
     ] },
-  { key: 'seller_creator_insights', group: 'partner', name: 'Hồ sơ creator MCN (30 ngày)', note: 'Creator MCN tra trên Creator Marketplace, chụp mỗi ngày', user: 'username', date: 'day',
+  { key: 'seller_creator_insights', group: 'partner', name: 'Hồ sơ creator MCN (30 ngày)', note: 'Hồ sơ 30 ngày của creator MCN, chụp mỗi ngày', user: 'username', date: 'day',
+    from: ['TikTok Partner Center', 'TikTok Creator Marketplace'],
     metrics: [
       { field: 'follower_count', agg: 'max', label: 'Follower (cao nhất)', hint: 'Ảnh chụp hồ sơ mỗi ngày, lấy số cao nhất' },
       { field: 'avg_video_views', agg: 'max', label: 'View TB / video (cao nhất)', hint: 'Lượt xem trung bình / video bán hàng 30 ngày' },
