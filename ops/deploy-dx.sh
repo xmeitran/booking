@@ -5,7 +5,7 @@
 set -euo pipefail
 HOST=${HOST:-merkle@54.254.6.67}
 cd "$(dirname "$0")/.."
-rsync -az --delete --exclude node_modules --exclude .next --exclude .git --exclude '.env*' --exclude graphify-out --exclude '*.log' ./ "$HOST:booking-hub/"
+rsync -az --delete --exclude node_modules --exclude .next --exclude .git --exclude '.env*' --exclude graphify-out --exclude '*.log' --exclude .cron-secret ./ "$HOST:booking-hub/"
 ssh "$HOST" 'set -e; cd booking-hub
 docker build -q -t booking-hub:$(date +%Y%m%d-%H%M) -t booking-hub:latest . >/dev/null
 docker rm -f booking-hub >/dev/null 2>&1 || true
