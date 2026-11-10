@@ -61,12 +61,21 @@ const EXTRA = {
   contractLink: '🎃Link hợp đồng (nếu có)',
   listingRound: 'Đợt listing',
   note: 'Ghi chú',
+  // Trang hồ sơ KOC (SPEC-koc-profile.md): ngành hàng, biên độ giá, nhận xét hiệu quả, đầu mối vận hành.
+  kocCategory: 'KOC category',
+  maxPrice: 'Giá book cao nhất',
+  minPrice: 'Giá book thấp nhất',
+  videoReview: 'Đánh giá hiệu quả video',
+  review14: 'Đánh giá 14 days',
+  review30: 'Đánh giá 30 days',
+  mediaPic: 'Media PIC',
+  growthPic: 'Growth PIC',
 } as const;
 // Thông tin thanh toán của KOC trên từng booking: chỉ dùng để điền ô còn trống ở Danh bạ (Admin / Leader xem, không lưu vào Booking).
 const BANK = { holder: 'Tên tài khoản ngân hàng', account: 'Số tài khoản', bank: 'Ngân hàng', id: 'CCCD/MST/Passport' } as const;
 
 // Tăng khi thêm cột: lượt đồng bộ sau ghi lại mọi dòng để lấp cột mới.
-const SYNC_VERSION = 3; // 3: chuẩn hoá kênh (bỏ khoảng trắng, @)
+const SYNC_VERSION = 4; // 3: chuẩn hoá kênh (bỏ khoảng trắng, @); 4: thêm ngành hàng, giá cao / thấp, đánh giá, Media / Growth PIC
 
 // id → chữ: option "opt..." (cột công thức kiểu chọn) và record "rec..." của bảng được liên kết.
 type Options = Map<string, string>;
@@ -265,7 +274,11 @@ export const AUTO_SYNC_GAP_MIN = 55;
 /** Một lượt đồng bộ, trả câu tóm tắt lưu ở SyncState (dùng cho cron và nút "Đồng bộ ngay"). */
 export async function syncBookingsJob() {
   const r = await syncBookings();
-  return `${r.total} booking · ${r.created} mới · ${r.updated} cập nhật · ${r.removed} xoá · ${r.kocs} KOL mới`;
+  // Liên hệ / giá / PIC của KOC từ bảng KOC trên Lark (import động: kocLarkSync dùng lại hàm của file này).
+  const { syncKocContacts } = await import('./kocLarkSync');
+  const c = await syncKocContacts(await tenantToken());
+  const filled = [c.phone && `${c.phone} SĐT`, c.email && `${c.email} email`, c.pic && `${c.pic} PIC`, c.rate && `${c.rate} giá`].filter(Boolean).join(', ');
+  return `${r.total} booking · ${r.created} mới · ${r.updated} cập nhật · ${r.removed} xoá · ${r.kocs} KOL mới${filled ? ` · Danh bạ điền thêm ${filled}` : ''}`;
 }
 
 /** Số booking, booking gần nhất, cấp KL gần nhất của từng KOC: để Danh bạ lọc / sắp xếp không phải gộp lại mỗi lần xem. */

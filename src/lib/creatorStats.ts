@@ -154,15 +154,18 @@ export async function prefillOpenIds() {
 export async function refreshCreatorStats() {
   const prefilled = await prefillOpenIds().catch(() => 0);
   const base = callVia(await pickShop());
-  // KOL chưa tra trước, rồi KOL có booking gần đây. Không có trên Marketplace thì 30 ngày tra lại.
+  // KOL đang nằm trong listing tháng này / tháng trước trước tiên (team đang chọn, cần số), rồi KOL chưa tra, rồi KOL có booking gần đây.
+  // Không có trên Marketplace thì 30 ngày tra lại.
   const due = await db.$queryRaw<{ id: string; handle: string; ttsOpenId: string | null }[]>`
-    with recent as (select lower(channel) h, max("larkUpdatedAt") last from "Booking" where channel is not null group by 1)
-    select k.id, k.handle, k."ttsOpenId" from "Koc" k left join recent r on r.h = k.handle
+    with recent as (select lower(channel) h, max("larkUpdatedAt") last from "Booking" where channel is not null group by 1),
+    listed as (select distinct i."kocId" id from "ListingItem" i join "ListingBatch" b on b.id = i."batchId"
+               where b.month >= to_char(now() - interval '1 month', 'YYYY-MM'))
+    select k.id, k.handle, k."ttsOpenId" from "Koc" k left join recent r on r.h = k.handle left join listed l on l.id = k.id
     where k.platform = 'TikTok' and (
       k."ttsCheckedAt" is null
       or (k."ttsOpenId" is null and k."ttsCheckedAt" < now() - interval '30 days')
       or (k."ttsOpenId" is not null and (k."statsAt" is null or k."statsAt" < now() - interval '7 days')))
-    order by (k."ttsCheckedAt" is null) desc, (k."ttsOpenId" is not null) desc, r.last desc nulls last
+    order by (l.id is not null) desc, (k."ttsCheckedAt" is null) desc, (k."ttsOpenId" is not null) desc, r.last desc nulls last
     limit 40`;
 
   let calls = 0;
