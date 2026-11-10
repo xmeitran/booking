@@ -14,7 +14,7 @@ const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { dateStyle: 'short', tim
 export default async function UsersPage({ searchParams }: { searchParams: Promise<{ edit?: string }> }) {
   const me = await requireUser('ADMIN');
   const { edit } = await searchParams;
-  const [users, policy] = await Promise.all([db.user.findMany({ orderBy: [{ active: 'desc' }, { role: 'asc' }, { name: 'asc' }] }), readPolicy()]);
+  const [users, policy] = await Promise.all([db.user.findMany({ where: { id: { not: 'lark' } }, orderBy: [{ active: 'desc' }, { role: 'asc' }, { name: 'asc' }] }) /* 'lark': user hệ thống đứng tên listing đồng bộ từ Lark */, readPolicy()]);
   // Gợi ý tên phòng ban Lark đang có (cột phòng ban của user ghép nhiều phòng bằng dấu phẩy).
   const depts = [...new Set(users.flatMap((u) => u.department?.split(', ') ?? []))].sort();
   const editing = edit && edit !== 'new' ? users.find((u) => u.id === edit && u.id !== me.id) : undefined;

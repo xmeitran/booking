@@ -6,7 +6,7 @@ import { InlineField } from '@/components/InlineField';
 import { ActionForm, Avatar, CopyButton, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
-import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, loadListing, PRICE_TYPES, RECOMMEND, type Col, type ListingRow } from '@/lib/listing';
+import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, fromLarkListing, loadListing, PRICE_TYPES, RECOMMEND, sameBrand, type Col, type ListingRow } from '@/lib/listing';
 import { gmvLabel } from '@/lib/kocInsights';
 import { guard } from '@/lib/scope';
 import { can, requireUser } from '@/lib/session';
@@ -18,7 +18,7 @@ const CHOICE_TONE: Record<string, string> = { Yes: 'bg-positive-soft text-positi
 const REC_TONE: Record<string, string> = { 'Must Have': 'bg-accent-soft text-accent', Recommend: 'bg-sunken text-ink-2', Optional: 'bg-sunken text-ink-3' };
 const isoDate = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
 
-type Search = { edit?: string; item?: string; view?: string; choice?: string; rec?: string; sort?: string; hide?: string; dup?: string };
+type Search = { edit?: string; item?: string; view?: string; choice?: string; rec?: string; sort?: string; hide?: string; dup?: string; kq?: string };
 
 const SORTS: Record<string, { label: string; key?: (r: ListingRow) => number | null; asc?: boolean }> = {
   '': { label: 'Thứ tự thêm' },
@@ -54,7 +54,9 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   if (!data) notFound();
   const catalog = edit ? await db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, stores: { select: { id: true, name: true }, orderBy: { name: 'asc' } }, products: { select: { id: true, name: true }, orderBy: { name: 'asc' } } } }) : [];
   const { batch, rows } = data;
-  const editingRow = rows.find((r) => r.item.id === itemId);
+  const lark = fromLarkListing(batch.id); // đồng bộ từ Lark 3.1 Listing KOCs: chỉ đọc
+  const editingRow = lark ? undefined : rows.find((r) => r.item.id === itemId);
+  const [picker, synced] = await Promise.all([lark ? null : kocPicker(batch, rows.map((r) => r.koc.id), sp.kq ?? ''), lark ? db.syncState.findUnique({ where: { id: 'listings' } }) : null]);
   const canDelete = me.role !== 'STAFF' || batch.createdById === me.id;
 
   // Lọc + xếp trên bộ nhớ: một đợt chỉ vài chục KOC.
@@ -110,8 +112,8 @@ export default async function ListingBatchPage({ params, searchParams }: { param
               <a href={`/listing/${batch.id}/export?mode=internal`} className="btn">Tải file nội bộ</a>
             </>
           )}
-          <Link href="?edit=1" className="btn">Sửa đợt</Link>
-          {jobsToCreate > 0 && (
+          {!lark && <Link href="?edit=1" className="btn">Sửa đợt</Link>}
+          {!lark && jobsToCreate > 0 && (
             <form action={createJobsFromListing}>
               <input type="hidden" name="batchId" value={batch.id} />
               <button className="btn btn-primary">Tạo {jobsToCreate} job cho KOC Brand chọn Yes</button>
@@ -127,7 +129,13 @@ export default async function ListingBatchPage({ params, searchParams }: { param
         <Kpi label="GMV Target (Brand chọn)" value={fmtShort(sum(chosen, (r) => times(r.f.gmvTarget, r)))} sub={`Toàn đợt ${fmtShort(sum(rows, (r) => times(r.f.gmvTarget, r)))}`} />
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]">
+      {lark && (
+        <p className="mb-4 rounded-lg border border-line bg-accent-soft px-4 py-3 text-[13px] text-accent">
+          Đợt này đồng bộ từ Lark (bảng <b>3.1 Listing KOCs</b>){synced?.finishedAt && `, lần gần nhất ${synced.finishedAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}`}.
+          Giá, đề xuất, Brand duyệt, lý do từ chối sửa trên Lark; Booking Hub tự cập nhật mỗi giờ. Nhiều dòng cùng KOC trên Lark được gộp, số video = số dòng.
+        </p>
+      )}
+      {!lark && <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]">
         <span className="font-medium">Brand duyệt online</span>
         {batch.shareToken ? (
           <>
@@ -148,20 +156,9 @@ export default async function ListingBatchPage({ params, searchParams }: { param
             </form>
           </>
         )}
-      </div>
+      </div>}
 
-      <ActionForm action={addKocs} className="mb-4 grid gap-2 rounded-lg border border-line bg-surface p-4 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-        <input type="hidden" name="batchId" value={batch.id} />
-        <div>
-          <label className="label" htmlFor="ids">Thêm KOC: ID kênh hoặc link TikTok, mỗi dòng một kênh</label>
-          <textarea id="ids" name="ids" rows={2} required placeholder={'@mesaylamdep\nhttps://www.tiktok.com/@sooi.unbox'} className="input font-mono" />
-        </div>
-        <div>
-          <label className="label" htmlFor="priceType">Loại giá</label>
-          <select id="priceType" name="priceType" className="input">{PRICE_TYPES.map((p) => <option key={p}>{p}</option>)}</select>
-        </div>
-        <button className="btn btn-primary">Thêm vào listing</button>
-      </ActionForm>
+      {picker && <AddKocs batchId={batch.id} brand={batch.brand} picker={picker} kq={sp.kq ?? ''} keep={[...query]} />}
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1.5">
@@ -222,10 +219,10 @@ export default async function ListingBatchPage({ params, searchParams }: { param
                       <Link href={`/contacts/${r.koc.id}`} className="font-medium hover:text-accent hover:underline">{r.koc.nickname ?? r.koc.name}</Link>
                       <div className="text-ink-3">@{r.koc.handle}</div>
                       <Dup notes={r.dup} />
-                      <Link href={`?${new URLSearchParams([...query, ['item', r.item.id]])}`} className="link">Sửa</Link>
+                      {!lark && <Link href={`?${new URLSearchParams([...query, ['item', r.item.id]])}`} className="link">Sửa</Link>}
                     </td>
                     {cols.map((c) => {
-                      const e = EDIT[c.h];
+                      const e = lark ? undefined : EDIT[c.h];
                       if (e) {
                         const v = e.value(r);
                         return (
@@ -261,8 +258,8 @@ export default async function ListingBatchPage({ params, searchParams }: { param
               </tr>
             </thead>
             <tbody>
-              {shown.map((r) => <Row key={r.item.id} r={r} />)}
-              {!shown.length && <tr><td colSpan={9} className="py-12 text-center text-ink-3">{rows.length ? 'Không có KOC khớp bộ lọc.' : 'Chưa có KOC. Dán ID kênh ở ô phía trên.'}</td></tr>}
+              {shown.map((r) => <Row key={r.item.id} r={r} readOnly={lark} />)}
+              {!shown.length && <tr><td colSpan={9} className="py-12 text-center text-ink-3">{rows.length ? 'Không có KOC khớp bộ lọc.' : lark ? 'Đợt chưa có KOC.' : 'Chưa có KOC. Tìm trong Danh bạ, tick từ gợi ý hoặc dán ID kênh ở khung "Thêm KOC" phía trên.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -304,7 +301,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   );
 }
 
-function Row({ r }: { r: ListingRow }) {
+function Row({ r, readOnly }: { r: ListingRow; readOnly?: boolean }) {
   const { koc: k, p, item } = r;
   const pending = !k.ttsCheckedAt;
   return (
@@ -361,7 +358,7 @@ function Row({ r }: { r: ListingRow }) {
         {item.jobs.map((j) => <Link key={j.id} href={`/jobs/${j.id}`} className="mt-0.5 block text-accent hover:underline">{jobCode(j.number)} · {j.stage}</Link>)}
         {item.rejectReason && <div className="max-w-40 truncate text-critical" title={item.rejectReason}>{item.rejectReason}</div>}
       </td>
-      <td className="text-right"><Link href={`?item=${item.id}`} className="link">Sửa</Link></td>
+      <td className="text-right">{!readOnly && <Link href={`?item=${item.id}`} className="link">Sửa</Link>}</td>
     </tr>
   );
 }
@@ -446,5 +443,101 @@ function Dup({ notes }: { notes: string[] }) {
     <div className="mt-0.5 max-w-64 text-xs text-warning" title={notes.join('\n')}>
       <span className="pill bg-warning-soft text-warning">Trùng</span> <span className="line-clamp-2">{notes[0]}{notes.length > 1 && ` (+${notes.length - 1})`}</span>
     </div>
+  );
+}
+
+type Pick = { id: string; handle: string; name: string; followers: number | null; kl: string | null; niche: string | null; bookings: number; note?: string };
+
+/** Ứng viên thêm vào đợt: KOC Danh bạ khớp ô tìm, và KOC đã book brand của đợt trên Lark (chưa có trong đợt). */
+async function kocPicker(batch: { brand: string | null }, inBatch: string[], kq: string) {
+  const q = kq.trim().replace(/^@/, '');
+  const found = q
+    ? await db.koc.findMany({
+        where: { id: { notIn: inBatch }, OR: [{ name: { contains: q, mode: 'insensitive' } }, { nickname: { contains: q, mode: 'insensitive' } }, { handle: { contains: q.toLowerCase() } }] },
+        orderBy: [{ bookingCount: 'desc' }, { followers: { sort: 'desc', nulls: 'last' } }], take: 20,
+      })
+    : [];
+  let booked: Pick[] = [];
+  const word = batch.brand?.trim().split(/\s+/)[0];
+  if (word) {
+    const bookings = (await db.booking.findMany({
+      where: { brand: { contains: word, mode: 'insensitive' }, channel: { not: null } },
+      select: { channel: true, brand: true, cost: true, airDate: true, planAirDate: true, larkUpdatedAt: true, extra: true },
+    })).filter((b) => sameBrand(b.brand, batch.brand));
+    const by = new Map<string, { n: number; last: Date; price: number | null; views: number[] }>();
+    for (const b of bookings) {
+      const h = b.channel!.toLowerCase();
+      const at = b.airDate ?? b.planAirDate ?? b.larkUpdatedAt;
+      const cur = by.get(h) ?? { n: 0, last: new Date(0), price: null, views: [] };
+      cur.n++;
+      if (at > cur.last) { cur.last = at; cur.price = b.cost && b.cost > 0 ? b.cost : cur.price; }
+      const v = Number((b.extra as { views30?: string } | null)?.views30);
+      if (v > 0) cur.views.push(v);
+      by.set(h, cur);
+    }
+    const kocs = await db.koc.findMany({ where: { platform: 'TikTok', handle: { in: [...by.keys()] }, id: { notIn: inBatch }, blacklisted: false } });
+    booked = kocs.map((k) => {
+      const x = by.get(k.handle)!;
+      const avg = x.views.length ? Math.round(x.views.reduce((s, v) => s + v, 0) / x.views.length) : null;
+      return {
+        id: k.id, handle: k.handle, name: k.nickname ?? k.name, followers: k.followers, kl: k.kl ?? k.klAuto, niche: k.niche, bookings: x.n,
+        note: [`${x.n} đợt ${batch.brand}`, `gần nhất ${fmtDate(x.last)}`, x.price && `giá ${fmtShort(x.price)}`, avg && `view 30 ngày TB ${fmtShort(avg)}`].filter(Boolean).join(' · '),
+        last: x.last,
+      };
+    }).sort((a, b) => b.bookings - a.bookings || +b.last - +a.last).slice(0, 30);
+  }
+  const toPick = (k: (typeof found)[number]): Pick => ({ id: k.id, handle: k.handle, name: k.nickname ?? k.name, followers: k.followers, kl: k.kl ?? k.klAuto, niche: k.niche, bookings: k.bookingCount });
+  return { found: found.map(toPick), booked };
+}
+
+/** Thêm KOC: tìm trong Danh bạ / tick từ gợi ý / dán ID, cùng một nút thêm. */
+function AddKocs({ batchId, brand, picker, kq, keep }: { batchId: string; brand: string | null; picker: { found: Pick[]; booked: Pick[] }; kq: string; keep: [string, string][] }) {
+  const list = (title: string, items: Pick[], empty: string) => (
+    <div>
+      <p className="mb-1.5 text-xs font-semibold text-ink-2">{title}</p>
+      {items.length ? (
+        <ul className="grid max-h-64 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
+          {items.map((k) => (
+            <li key={k.id}>
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line px-2.5 py-1.5 text-xs hover:bg-canvas has-[:checked]:border-accent has-[:checked]:bg-accent-soft">
+                <input type="checkbox" name="pick" value={k.handle} className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-ink">{k.name} <span className="font-normal text-ink-3">@{k.handle}</span></span>
+                  <span className="block truncate text-ink-3">{k.note ?? [k.kl, k.niche, k.followers != null && `${fmtShort(k.followers)} follower`, k.bookings && `${k.bookings} booking`].filter(Boolean).join(' · ')}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-xs text-ink-3">{empty}</p>}
+    </div>
+  );
+  return (
+    <section className="mb-4 rounded-lg border border-line bg-surface p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">Thêm KOC vào đợt</h2>
+        <form className="flex gap-2">
+          {keep.filter(([k]) => k !== 'kq').map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
+          <input name="kq" defaultValue={kq} placeholder="Tìm trong Danh bạ: tên, @handle" aria-label="Tìm KOC trong Danh bạ" className="input h-8 w-64 text-[13px]" />
+          <button className="btn h-8 px-3 text-xs">Tìm</button>
+        </form>
+      </div>
+      <ActionForm action={addKocs} className="grid gap-4">
+        <input type="hidden" name="batchId" value={batchId} />
+        {kq && list(`Kết quả tìm "${kq}"`, picker.found, 'Không có KOC nào khớp (hoặc đã có trong đợt).')}
+        {brand && list(`Gợi ý: KOC đã book ${brand} trên Lark (${picker.booked.length})`, picker.booked, `Chưa có KOC nào từng book ${brand}, hoặc đã có hết trong đợt.`)}
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          <div>
+            <label className="label" htmlFor="ids">Hoặc dán ID kênh / link TikTok, mỗi dòng một kênh (chưa có trong Danh bạ thì tự thêm)</label>
+            <textarea id="ids" name="ids" rows={2} placeholder={'@mesaylamdep\nhttps://www.tiktok.com/@sooi.unbox'} className="input font-mono" />
+          </div>
+          <div>
+            <label className="label" htmlFor="priceType">Loại giá</label>
+            <select id="priceType" name="priceType" className="input">{PRICE_TYPES.map((p) => <option key={p}>{p}</option>)}</select>
+          </div>
+          <button className="btn btn-primary">Thêm KOC đã chọn vào listing</button>
+        </div>
+      </ActionForm>
+    </section>
   );
 }

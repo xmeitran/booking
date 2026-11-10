@@ -69,7 +69,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     !coopTab && rows.length
       ? db.listingItem.findMany({ where: { kocId: { in: rows.map((k) => k.id) } }, orderBy: { createdAt: 'desc' }, select: { kocId: true, batch: { select: { name: true, brand: true, store: true } } } })
       : [],
-    bookKoc ? db.listingBatch.findMany({ where: listingScope(await scopeOf(me)), orderBy: [{ month: 'desc' }, { createdAt: 'desc' }], take: 50, select: { id: true, name: true, month: true, brand: true } }) : [],
+    bookKoc ? db.listingBatch.findMany({ where: { AND: [listingScope(await scopeOf(me)), { NOT: { id: { startsWith: 'lark-' } } }] }, orderBy: [{ month: 'desc' }, { createdAt: 'desc' }], take: 50, select: { id: true, name: true, month: true, brand: true } }) : [],
     contactKoc ? db.kocNote.findMany({ where: { kocId: contactKoc.id }, include: { author: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 30 }) : [],
     reviewKoc ? db.kocReview.findMany({ where: { kocId: reviewKoc.id }, include: { reviewer: { select: { name: true } } } }) : [],
     reviewKoc ? db.brand.findMany({ select: { name: true }, orderBy: { name: 'asc' } }) : [],

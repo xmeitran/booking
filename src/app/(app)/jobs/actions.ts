@@ -5,7 +5,7 @@ import { audit, checklistOf } from '@/lib/catalog';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
 import { CANCELLED, linePicker, RESULTS, SAMPLE, STAGES, type ReviewItem } from '@/lib/jobs';
-import { PRICE_TYPES, sameBrand } from '@/lib/listing';
+import { fromLarkListing, LARK_LISTING_READONLY, PRICE_TYPES, sameBrand } from '@/lib/listing';
 import { guard } from '@/lib/scope';
 import { requirePerm, requireUser } from '@/lib/session';
 
@@ -20,6 +20,7 @@ const done = (id: string) => {
 export async function createJobsFromListing(fd: FormData) {
   const me = await requireUser();
   await guard(me, 'listing', str(fd, 'batchId'));
+  if (fromLarkListing(str(fd, 'batchId'))) throw new Error(LARK_LISTING_READONLY); // Lark tạo BO cho đợt này
   // KOC blacklist không tạo job dù Brand đã chọn.
   const batch = await db.listingBatch.findUniqueOrThrow({
     where: { id: str(fd, 'batchId') },

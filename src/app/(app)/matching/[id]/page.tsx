@@ -34,7 +34,7 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
   const c = b.criteria as Criteria;
   const [matches, allBatches, niches, cats, brands] = await Promise.all([
     matchKocs(c, b.brand),
-    db.listingBatch.findMany({ where: listingScope(await scopeOf(me)), orderBy: { updatedAt: 'desc' }, take: 200, select: { id: true, name: true, brand: true, month: true } }),
+    db.listingBatch.findMany({ where: { AND: [listingScope(await scopeOf(me)), { NOT: { id: { startsWith: 'lark-' } } }] }, orderBy: { updatedAt: 'desc' }, take: 200, select: { id: true, name: true, brand: true, month: true } }),
     edit ? db.koc.findMany({ where: { niche: { not: null } }, distinct: ['niche'], select: { niche: true }, orderBy: { niche: 'asc' } }) : [],
     edit ? db.matchBrief.findMany({ where: { category: { not: null } }, distinct: ['category'], select: { category: true } }) : [],
     edit && !b.template ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }) : [],

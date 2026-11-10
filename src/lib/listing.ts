@@ -13,6 +13,10 @@ export const RECOMMEND = ['Must Have', 'Recommend', 'Optional'];
 export const BRAND_CHOICE = ['Yes', 'No', 'Cân nhắc'];
 
 /** "@abc", "abc", "https://www.tiktok.com/@abc/video/1?q=" → "abc". Không hợp lệ → null. */
+/** Đợt / dòng listing đồng bộ từ Lark (3.1 Listing KOCs): chỉ đọc trong app, sửa trên Lark. */
+export const fromLarkListing = (id: string) => id.startsWith('lark-');
+export const LARK_LISTING_READONLY = 'Đợt listing đồng bộ từ Lark (3.1 Listing KOCs): sửa trên Lark, lượt đồng bộ sau tự cập nhật.';
+
 export function parseHandle(s: string): string | null {
   const t = s.trim();
   const m = t.match(/tiktok\.com\/@([A-Za-z0-9._]+)/i) ?? t.match(/^@?([A-Za-z0-9._]{2,24})$/);

@@ -6,6 +6,7 @@ import { refreshKoc } from '@/lib/creatorStats';
 import { db } from '@/lib/db';
 import { str } from '@/lib/form';
 import { audit } from '@/lib/catalog';
+import { fromLarkListing, LARK_LISTING_READONLY } from '@/lib/listing';
 import { parseCriteria } from '@/lib/matching';
 import { guard } from '@/lib/scope';
 import { can, requireUser } from '@/lib/session';
@@ -56,6 +57,7 @@ export async function addMatchesToListing(_: string | null, fd: FormData): Promi
   } else if (!batchId) return 'Chọn đợt listing.';
   else {
     await guard(me, 'listing', batchId);
+    if (fromLarkListing(batchId)) return LARK_LISTING_READONLY;
     // Đợt có sẵn chưa gắn plan: gắn theo dòng plan của brief để job tạo ra tính vào tiến độ plan.
     const brief = await db.matchBrief.findUnique({ where: { id: str(fd, 'briefId') }, select: { planLineId: true } });
     if (brief?.planLineId) await db.listingBatch.updateMany({ where: { id: batchId, planLineId: null }, data: { planLineId: brief.planLineId } });
