@@ -1,5 +1,5 @@
 import { runOnce } from '@/lib/cronJob';
-import { refreshCreatorStats } from '@/lib/creatorStats';
+import { refreshCreatorStats } from '@/lib/koc/creatorStats';
 
 // Gọi mỗi giờ từ GitHub Actions, sau sync-bookings. Một lượt tối đa ~10 phút (gọi TikTok cách nhau 25s).
 export const POST = () =>

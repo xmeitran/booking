@@ -1,9 +1,9 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
-import { syncBookingsJob } from '@/lib/bookingSync';
+import { syncBookingsJob } from '@/lib/lark/bookingSync';
 import { runOnce } from '@/lib/cronJob';
-import { requireUser } from '@/lib/session';
+import { requireUser } from '@/lib/auth/session';
 
 // Đồng bộ Lark Base ngay (chạy sau khi trả trang, ~2–3 phút); cùng khoá với cron nên không chạy chồng.
 export async function syncNow() {

@@ -2,7 +2,7 @@
 // Chỉ xét booking gần đây (air / dự kiến air trong 60 ngày qua trở đi, hoặc tháng plan từ 2 tháng trước), để danh sách là
 // việc còn sửa được. Không lọc theo ngày sửa trên Lark: Lark đổi ngày sửa của mọi dòng mỗi khi cột công thức tính lại.
 import { Prisma } from '@prisma/client';
-import { db } from './db';
+import { db } from '../db';
 
 export const QUALITY_DAYS = 60;
 

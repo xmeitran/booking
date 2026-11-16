@@ -1,6 +1,6 @@
-import { AUTO_SYNC_GAP_MIN } from '@/lib/bookingSync';
+import { AUTO_SYNC_GAP_MIN } from '@/lib/lark/bookingSync';
 import { runOnce, scheduledGap } from '@/lib/cronJob';
-import { syncPlansJob } from '@/lib/planSync';
+import { syncPlansJob } from '@/lib/lark/planSync';
 
 // Đồng bộ master data + "4.1 Plan order tổng" từ Lark Base. Server DX: crontab gọi đúng :00 mỗi giờ kèm CRON_SECRET
 // (ops/cron-dx.sh). Render / gọi khác: tối đa 1 lần / giờ.

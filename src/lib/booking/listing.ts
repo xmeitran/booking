@@ -1,7 +1,7 @@
 // Listing: mỗi dòng KOC tự điền theo sheet "[Booking] - Requirement Excel Listing (UpAI)" (tab Excel Listing _ Final).
-import { db } from './db';
-import { fmtPct } from './format';
-import { bookingsOf, collabSummary, defaultViewTarget, forecast, profileInsights, USD_VND } from './kocInsights';
+import { db } from '../db';
+import { fmtPct } from '../format';
+import { bookingsOf, collabSummary, defaultViewTarget, forecast, profileInsights, USD_VND } from '../koc/kocInsights';
 
 // Lựa chọn lấy từ tab "Excel Listing _ Final" và "Các loại giá".
 export const PRICE_TYPES = [

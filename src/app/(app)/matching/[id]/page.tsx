@@ -1,13 +1,13 @@
 import Link from 'next/link';
-import { sameBrand } from '@/lib/listing';
+import { sameBrand } from '@/lib/booking/listing';
 import { notFound } from 'next/navigation';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
-import { profileInsights, USD_VND } from '@/lib/kocInsights';
-import { describe, matchKocs, TIKTOK_CATEGORIES, type Criteria } from '@/lib/matching';
-import { listingScope, scopeOf } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
+import { profileInsights, USD_VND } from '@/lib/koc/kocInsights';
+import { describe, matchKocs, TIKTOK_CATEGORIES, type Criteria } from '@/lib/booking/matching';
+import { listingScope, scopeOf } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
 import { addMatchesToListing, decideKoc, deleteBrief } from '../actions';
 import { BriefForm } from '../BriefForm';
 

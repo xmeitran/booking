@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Avatar } from '@/components/ui';
-import { isPayIssue, PIPELINE, PIPELINE_TONE } from '@/lib/bookings';
+import { isPayIssue, PIPELINE, PIPELINE_TONE } from '@/lib/booking/bookings';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort, fmtVnd } from '@/lib/format';
-import { FEE_DIVISOR } from '@/lib/kocInsights';
-import { guard } from '@/lib/scope';
-import { requireUser } from '@/lib/session';
+import { FEE_DIVISOR } from '@/lib/koc/kocInsights';
+import { guard } from '@/lib/auth/scope';
+import { requireUser } from '@/lib/auth/session';
 
 const LARK_BASE = 'https://upbasevn.sg.larksuite.com/base/W6vRbbuOVar3qtsV18dlan1xgXb?table=tbluWrjJd9Pt9uzb';
 const today = () => new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) + 'T00:00:00+07:00');

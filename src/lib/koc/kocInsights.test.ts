@@ -58,7 +58,7 @@ test('collabSummary: giá gần nhất cùng hình thức, booking GMV tốt nh�
 });
 
 test('parseHandle nhận @username, username, link kênh / link video', async () => {
-  const { parseHandle } = await import('./listing');
+  const { parseHandle } = await import('../booking/listing');
   assert.equal(parseHandle('@Mesaylamdep'), 'mesaylamdep');
   assert.equal(parseHandle('sooi.unbox'), 'sooi.unbox');
   assert.equal(parseHandle('https://www.tiktok.com/@_thanhthuy.hhvn_/video/7687586402111933716?q=_'), '_thanhthuy.hhvn_');
@@ -73,7 +73,7 @@ test('gmvLabel quy USD ra ₫, giữ nguyên khoảng', async () => {
 });
 
 test('dupKey gom các ID kênh viết khác của cùng KOC, không gom KOC khác tên', async () => {
-  const { dupKey } = await import('./listing');
+  const { dupKey } = await import('../booking/listing');
   assert.equal(dupKey('chengtom02'), 'chengtom');
   assert.equal(dupKey('chengtom2'), dupKey('Cheng Tôm'));
   assert.equal(dupKey('kimchungphan20'), dupKey('kimchungphan'));

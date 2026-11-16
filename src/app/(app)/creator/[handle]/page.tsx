@@ -5,10 +5,10 @@ import { db } from '@/lib/db';
 import {
   creatorStation, LARK, liveCreator, MARKET, ORIGIN, originOf, placesOf, rawRows, STATION,
   type CreatorSource, type RawColumn, type ShopRow, type Source, type SourceStats,
-} from '@/lib/dataSources';
+} from '@/lib/koc/dataSources';
 import { fmtDate, fmtNum, fmtShort, fmtVnd } from '@/lib/format';
-import { profileInsights, USD_VND } from '@/lib/kocInsights';
-import { requireUser } from '@/lib/session';
+import { profileInsights, USD_VND } from '@/lib/koc/kocInsights';
+import { requireUser } from '@/lib/auth/session';
 import { TIKTOK_USERNAME } from '@/lib/validate';
 import { lookupTikTok } from '../actions';
 

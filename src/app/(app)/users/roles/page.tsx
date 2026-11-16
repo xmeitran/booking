@@ -1,7 +1,7 @@
 import { ActionForm } from '@/components/ui';
-import { ALL_PERMS, EDITABLE_ROLES, PERMS, readPolicy } from '@/lib/access';
+import { ALL_PERMS, EDITABLE_ROLES, PERMS, readPolicy } from '@/lib/auth/access';
 import { db } from '@/lib/db';
-import { requireUser, ROLE_LABEL } from '@/lib/session';
+import { requireUser, ROLE_LABEL } from '@/lib/auth/session';
 import { savePerms } from '../actions';
 import { UsersTabs } from '../Tabs';
 

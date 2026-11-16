@@ -1,16 +1,16 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Avatar } from '@/components/ui';
-import { creatorSources } from '@/lib/dataSources';
-import { jobCode } from '@/lib/jobs';
+import { creatorSources } from '@/lib/koc/dataSources';
+import { jobCode } from '@/lib/booking/jobs';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
-import { bookingsOf, collabSummary, gmvLabel, profileInsights, USD_VND } from '@/lib/kocInsights';
-import { dupKey } from '@/lib/listing';
-import { jobScope, scopeOf } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
+import { bookingsOf, collabSummary, gmvLabel, profileInsights, USD_VND } from '@/lib/koc/kocInsights';
+import { dupKey } from '@/lib/booking/listing';
+import { jobScope, scopeOf } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
 import { addNote, closeFollowUp, mergeKoc, refreshFromTikTok } from '../actions';
-import { ALL_BRANDS_SCOPE, isCoop, legalProfilesOf, reviewSummary, VERDICTS, type LegalType } from '@/lib/kocDirectory';
+import { ALL_BRANDS_SCOPE, isCoop, legalProfilesOf, reviewSummary, VERDICTS, type LegalType } from '@/lib/koc/kocDirectory';
 import { LegalDialog, LegalSection } from './legal';
 
 const TIKTOK_MSG: Record<string, string> = {

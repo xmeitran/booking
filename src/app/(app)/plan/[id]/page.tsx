@@ -3,11 +3,11 @@ import { notFound } from 'next/navigation';
 import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
-import { CANCELLED, jobCode } from '@/lib/jobs';
-import { PRICE_TYPES } from '@/lib/listing';
-import { fromLark } from '@/lib/planSync';
-import { jobScope, lineScope, planScope, scopeOf } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
+import { CANCELLED, jobCode } from '@/lib/booking/jobs';
+import { PRICE_TYPES } from '@/lib/booking/listing';
+import { fromLark } from '@/lib/lark/planSync';
+import { jobScope, lineScope, planScope, scopeOf } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
 import { KL_LEVELS } from '../../contacts/platforms';
 import { deletePlan, matchFromLine, removeLine, savePlan, saveLine } from '../actions';
 

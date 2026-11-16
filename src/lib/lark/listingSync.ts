@@ -5,12 +5,12 @@
 // KOC chưa có trong Danh bạ được thêm (ID kênh TikTok hợp lệ); Zalo / email / thông tin nhận hàng điền ô trống của Danh bạ.
 import { createHash } from 'node:crypto';
 import { type LarkRecord, searchPages, toText } from './bookingSync';
-import { db } from './db';
+import { db } from '../db';
 import { fillKocContacts, type ContactFill, emailOf, handleOf, phoneOf } from './kocLarkSync';
 import { tenantToken } from './lark';
-import { brandKey, RECOMMEND } from './listing';
+import { brandKey, RECOMMEND } from '../booking/listing';
 import { matchUser, people } from './masterSync';
-import { TIKTOK_USERNAME } from './validate';
+import { TIKTOK_USERNAME } from '../validate';
 
 const TABLE = 'tblmbt4LeSjjJtce';
 // Tên cột trên Lark. Đổi tên cột bên Lark thì sửa ở đây.

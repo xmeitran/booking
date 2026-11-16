@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import { BrandLogo } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
-import { gmvLabel } from '@/lib/kocInsights';
-import { BRAND_CHOICE, loadListing } from '@/lib/listing';
+import { gmvLabel } from '@/lib/koc/kocInsights';
+import { BRAND_CHOICE, loadListing } from '@/lib/booking/listing';
 import { submitReview } from '../actions';
 
 export const metadata: Metadata = { title: 'Duyệt KOC · UpBase', robots: { index: false, follow: false } };

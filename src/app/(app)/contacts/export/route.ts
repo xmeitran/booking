@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { csvResponse } from '@/lib/csv';
 import { db } from '@/lib/db';
-import { kocTable } from '@/lib/kocExport';
-import { directory } from '@/lib/kocDirectory';
-import { dupKey } from '@/lib/listing';
-import { can, requirePerm } from '@/lib/session';
+import { kocTable } from '@/lib/koc/kocExport';
+import { directory } from '@/lib/koc/kocDirectory';
+import { dupKey } from '@/lib/booking/listing';
+import { can, requirePerm } from '@/lib/auth/session';
 import { boHandles, loadDirectory } from '../directory';
 
 // Tải Excel Danh bạ theo đúng bảng và bộ lọc đang xem (cùng logic lọc với trang).

@@ -1,4 +1,4 @@
-import type { Scope } from '@/lib/scope';
+import type { Scope } from '@/lib/auth/scope';
 
 /** Nhắc người bị giới hạn phạm vi (Phân quyền → "Xem dữ liệu mọi brand" tắt) rằng danh sách chỉ gồm brand được giao. */
 export function ScopeNote({ scope, className = 'mt-1' }: { scope: Scope; className?: string }) {

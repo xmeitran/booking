@@ -2,12 +2,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum } from '@/lib/format';
-import { jobCode } from '@/lib/jobs';
-import { FEE_DIVISOR } from '@/lib/kocInsights';
-import { PAY_STATUS, PAY_TONE } from '@/lib/payments';
-import { paymentScope, scopeOf } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
-import { deletePayment, removeFromPayment, setPaymentStatus } from '../actions';
+import { jobCode } from '@/lib/booking/jobs';
+import { FEE_DIVISOR } from '@/lib/koc/kocInsights';
+import { PAY_STATUS, PAY_TONE } from '@/lib/booking/payments';
+import { paymentScope, scopeOf } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
+import { deletePayment, removeFromPayment, sendToApproval, setPaymentStatus, syncApproval } from '../actions';
+import { configured } from '@/lib/integrations';
 
 export default async function PaymentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ err?: string }> }) {
   const me = await requireUser();
@@ -21,6 +22,8 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
   const bank = can(me, 'koc.bank'); // số tài khoản, CCCD theo Phân quyền
   const net = p.jobs.reduce((s, j) => s + (j.price ?? 0), 0);
   const step = PAY_STATUS.indexOf(p.status);
+  const larkReady = await configured('approval');
+  const APPROVAL_LABEL: Record<string, string> = { PENDING: 'đang chờ duyệt', APPROVED: 'đã duyệt', REJECTED: 'bị từ chối', CANCELED: 'đã huỷ', DELETED: 'đã xoá' };
 
   return (
     <>
@@ -47,9 +50,22 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
         </div>
       </div>
       {err && <p role="alert" className="mb-3 rounded-md bg-critical-soft px-3 py-2 text-critical">{err}</p>}
-      <p className="mb-3 rounded-md bg-sunken px-3 py-2 text-xs text-ink-2">
-        Chưa đẩy tự động sang Lark Approval: cần mã quy trình duyệt (approval code) của kế toán. Hiện tải file ĐNTT gửi kế toán, rồi cập nhật trạng thái ở đây.
-      </p>
+      {(larkReady || p.approvalCode) && (
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md bg-sunken px-3 py-2 text-xs text-ink-2">
+        <span className="font-medium">Lark Approval</span>
+        {p.approvalCode ? (
+          <>
+            <span>Đơn <code>{p.approvalCode}</code> {APPROVAL_LABEL[p.approvalStatus ?? ''] ?? p.approvalStatus}.</span>
+            <form action={syncApproval}><input type="hidden" name="id" value={p.id} /><button className="btn h-7 px-2 text-xs">Cập nhật trạng thái từ Lark</button></form>
+          </>
+        ) : p.status === 'Nháp' ? (
+          <>
+            <span>{p.approvalStatus ? `Đơn trước ${APPROVAL_LABEL[p.approvalStatus] ?? p.approvalStatus}. ` : ''}Gửi ĐNTT sang Lark Approval đứng tên bạn.</span>
+            <form action={sendToApproval}><input type="hidden" name="id" value={p.id} /><button className="btn btn-primary h-7 px-2 text-xs">Gửi Lark Approval</button></form>
+          </>
+        ) : <span>ĐNTT này được chuyển trạng thái tay, không qua Lark Approval.</span>}
+      </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">

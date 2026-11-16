@@ -1,8 +1,8 @@
 import { csvResponse } from '@/lib/csv';
 import { db } from '@/lib/db';
-import { kocTable } from '@/lib/kocExport';
-import { matchKocs, type Criteria } from '@/lib/matching';
-import { can, requirePerm } from '@/lib/session';
+import { kocTable } from '@/lib/koc/kocExport';
+import { matchKocs, type Criteria } from '@/lib/booking/matching';
+import { can, requirePerm } from '@/lib/auth/session';
 
 // Excel toàn bộ KOC khớp bộ tiêu chí (không giới hạn 200 như trên trang), giữ thứ tự xếp hạng.
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {

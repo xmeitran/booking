@@ -6,19 +6,20 @@ import { InlineField } from '@/components/InlineField';
 import { ActionForm, Avatar, CopyButton, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
-import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, fromLarkListing, loadListing, PRICE_TYPES, RECOMMEND, sameBrand, type Col, type ListingRow } from '@/lib/listing';
-import { gmvLabel } from '@/lib/kocInsights';
-import { guard } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
-import { addKocs, createShare, deleteBatch, removeItem, revokeShare, saveBatch, saveItem, setItemField } from '../actions';
+import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, fromLarkListing, loadListing, PRICE_TYPES, RECOMMEND, sameBrand, type Col, type ListingRow } from '@/lib/booking/listing';
+import { gmvLabel } from '@/lib/koc/kocInsights';
+import { guard } from '@/lib/auth/scope';
+import { configured } from '@/lib/integrations';
+import { can, requireUser } from '@/lib/auth/session';
+import { addKocs, createShare, deleteBatch, inviteKocs, pullFromSheet, pushToSheet, removeItem, revokeShare, saveBatch, saveItem, setItemField } from '../actions';
 import { createJobsFromListing } from '../../jobs/actions';
-import { jobCode } from '@/lib/jobs';
+import { jobCode } from '@/lib/booking/jobs';
 
 const CHOICE_TONE: Record<string, string> = { Yes: 'bg-positive-soft text-positive', No: 'bg-critical-soft text-critical', 'Cân nhắc': 'bg-warning-soft text-warning' };
 const REC_TONE: Record<string, string> = { 'Must Have': 'bg-accent-soft text-accent', Recommend: 'bg-sunken text-ink-2', Optional: 'bg-sunken text-ink-3' };
 const isoDate = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
 
-type Search = { edit?: string; item?: string; view?: string; choice?: string; rec?: string; sort?: string; hide?: string; dup?: string; kq?: string };
+type Search = { msg?: string; err?: string; edit?: string; item?: string; view?: string; choice?: string; rec?: string; sort?: string; hide?: string; dup?: string; kq?: string };
 
 const SORTS: Record<string, { label: string; key?: (r: ListingRow) => number | null; asc?: boolean }> = {
   '': { label: 'Thứ tự thêm' },
@@ -57,6 +58,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   const lark = fromLarkListing(batch.id); // đồng bộ từ Lark 3.1 Listing KOCs: chỉ đọc
   const editingRow = lark ? undefined : rows.find((r) => r.item.id === itemId);
   const [picker, synced] = await Promise.all([lark ? null : kocPicker(batch, rows.map((r) => r.koc.id), sp.kq ?? ''), lark ? db.syncState.findUnique({ where: { id: 'listings' } }) : null]);
+  const [sheetsOn, mailOn] = await Promise.all([configured('sheets'), configured('mail')]);
   const canDelete = me.role !== 'STAFF' || batch.createdById === me.id;
 
   // Lọc + xếp trên bộ nhớ: một đợt chỉ vài chục KOC.
@@ -92,11 +94,12 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   // Phí / GMV của dòng = 1 video × số video KOC làm trong đợt.
   const times = (v: number | null, r: ListingRow) => (v == null ? null : v * r.item.videos);
   // Video Brand chọn Yes chưa có job (KOC blacklist không tạo job).
+  const toInvite = rows.filter((r) => !r.item.invitedAt && r.koc.email && !r.koc.blacklisted && r.item.brandChoice !== 'No').length;
   const jobsToCreate = sum(chosen.filter((r) => !r.koc.blacklisted), (r) => Math.max(0, r.item.videos - r.item.jobs.length));
 
   return (
     <>
-      <Link href="/listing" className="text-xs text-ink-3 hover:text-ink">← Listing</Link>
+      <Link href={`/listing?month=${batch.month}`} className="text-xs text-ink-3 hover:text-ink">← Listing</Link>
       <div className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{batch.name}</h1>
@@ -111,6 +114,12 @@ export default async function ListingBatchPage({ params, searchParams }: { param
               <a href={`/listing/${batch.id}/export?mode=brand`} className="btn">Tải file cho Brand</a>
               <a href={`/listing/${batch.id}/export?mode=internal`} className="btn">Tải file nội bộ</a>
             </>
+          )}
+          {!lark && mailOn && toInvite > 0 && (
+            <form action={inviteKocs}>
+              <input type="hidden" name="id" value={batch.id} />
+              <button className="btn" title="Gửi cho KOC có email trong Danh bạ, chưa được mời, Brand chưa chọn No">Gửi mail mời {toInvite} KOC</button>
+            </form>
           )}
           {!lark && <Link href="?edit=1" className="btn">Sửa đợt</Link>}
           {!lark && jobsToCreate > 0 && (
@@ -157,6 +166,29 @@ export default async function ListingBatchPage({ params, searchParams }: { param
           </>
         )}
       </div>}
+
+      {sp.msg && <p role="status" className="mb-4 rounded-md bg-positive-soft px-3 py-2 text-[13px] text-positive">{sp.msg}</p>}
+      {sp.err && <p role="alert" className="mb-4 rounded-md bg-critical-soft px-3 py-2 text-[13px] text-critical">{sp.err}</p>}
+      {!lark && sheetsOn && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]">
+          <span className="font-medium">Google Sheet của brand</span>
+          <form action={pushToSheet} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <input type="hidden" name="id" value={batch.id} />
+            <input name="sheetUrl" defaultValue={batch.sheetUrl ?? ''} placeholder="Dán link Google Sheet brand đã chia sẻ cho service account" aria-label="Link Google Sheet của brand" className="input h-8 min-w-64 flex-1 text-xs" />
+            <button className="btn h-8 px-2.5 text-xs">{batch.sheetUrl ? 'Đẩy lại listing' : 'Đẩy listing sang sheet'}</button>
+          </form>
+          {batch.sheetUrl && (
+            <>
+              <form action={pullFromSheet}>
+                <input type="hidden" name="id" value={batch.id} />
+                <button className="btn h-8 px-2.5 text-xs">Lấy kết quả duyệt</button>
+              </form>
+              <a href={batch.sheetUrl} target="_blank" rel="noreferrer" className="link text-xs">Mở sheet</a>
+              {batch.sheetAt && <span className="text-xs text-ink-3">Đẩy lần cuối {fmtDate(batch.sheetAt)}</span>}
+            </>
+          )}
+        </div>
+      )}
 
       {picker && <AddKocs batchId={batch.id} brand={batch.brand} picker={picker} kq={sp.kq ?? ''} keep={[...query]} />}
 
@@ -355,6 +387,7 @@ function Row({ r, readOnly }: { r: ListingRow; readOnly?: boolean }) {
           {item.brandChoice && <span className={`pill ${CHOICE_TONE[item.brandChoice]}`}>Brand: {item.brandChoice}</span>}
         </div>
         {item.status && <div className="mt-0.5 text-ink-3">{item.status}</div>}
+        {item.invitedAt && <div className="mt-0.5 text-ink-3">Đã gửi mail mời {fmtDate(item.invitedAt)}</div>}
         {item.jobs.map((j) => <Link key={j.id} href={`/jobs/${j.id}`} className="mt-0.5 block text-accent hover:underline">{jobCode(j.number)} · {j.stage}</Link>)}
         {item.rejectReason && <div className="max-w-40 truncate text-critical" title={item.rejectReason}>{item.rejectReason}</div>}
       </td>
@@ -500,7 +533,7 @@ function AddKocs({ batchId, brand, picker, kq, keep }: { batchId: string; brand:
           {items.map((k) => (
             <li key={k.id}>
               <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line px-2.5 py-1.5 text-xs hover:bg-canvas has-[:checked]:border-accent has-[:checked]:bg-accent-soft">
-                <input type="checkbox" name="pick" value={k.handle} className="mt-0.5 size-4 shrink-0" />
+                <input type="checkbox" name="pick" value={k.id} className="mt-0.5 size-4 shrink-0" />
                 <span className="min-w-0">
                   <span className="block truncate font-medium text-ink">{k.name} <span className="font-normal text-ink-3">@{k.handle}</span></span>
                   <span className="block truncate text-ink-3">{k.note ?? [k.kl, k.niche, k.followers != null && `${fmtShort(k.followers)} follower`, k.bookings && `${k.bookings} booking`].filter(Boolean).join(' · ')}</span>

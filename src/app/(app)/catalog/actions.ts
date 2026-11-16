@@ -1,11 +1,11 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { audit, BRAND_ROLES } from '@/lib/catalog';
+import { audit, BRAND_ROLES } from '@/lib/booking/catalog';
 import { db } from '@/lib/db';
 import { isUniqueError, optInt, str } from '@/lib/form';
-import { brandKey } from '@/lib/listing';
-import { requirePerm, requireUser } from '@/lib/session';
+import { brandKey } from '@/lib/booking/listing';
+import { requirePerm, requireUser } from '@/lib/auth/session';
 
 // Danh mục: người có quyền "Sửa danh mục" (Phân quyền) sửa, mọi người xem.
 const editor = () => requirePerm('catalog.edit');
@@ -22,7 +22,7 @@ export async function saveBrand(_: string | null, fd: FormData): Promise<string 
   const logoUrl = url(fd, 'logoUrl');
   if (!name) return 'Nhập tên brand.';
   if (logoUrl === undefined) return 'Link logo phải bắt đầu bằng http(s)://';
-  const data = { name, logoUrl, usp: opt(fd, 'usp'), guideline: opt(fd, 'guideline'), checklist: opt(fd, 'checklist'), note: opt(fd, 'note') };
+  const data = { name, logoUrl, usp: opt(fd, 'usp'), guideline: opt(fd, 'guideline'), checklist: opt(fd, 'checklist'), keywords: opt(fd, 'keywords'), note: opt(fd, 'note') };
   let b;
   try {
     b = id ? await db.brand.update({ where: { id }, data }) : await db.brand.create({ data });

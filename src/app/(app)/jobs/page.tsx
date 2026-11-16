@@ -3,9 +3,9 @@ import type { Prisma } from '@prisma/client';
 import { Avatar } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort } from '@/lib/format';
-import { CANCELLED, jobCode, STAGE_HINT, STAGE_TONE, STAGES } from '@/lib/jobs';
-import { jobScope, scopeOf } from '@/lib/scope';
-import { requireUser } from '@/lib/session';
+import { CANCELLED, jobCode, STAGE_HINT, STAGE_TONE, STAGES } from '@/lib/booking/jobs';
+import { jobScope, scopeOf } from '@/lib/auth/scope';
+import { requireUser } from '@/lib/auth/session';
 import { ScopeNote } from '@/components/ScopeNote';
 
 type Search = { view?: string; brand?: string; pic?: string; mine?: string; line?: string; batch?: string; late?: string };

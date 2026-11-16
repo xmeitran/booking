@@ -1,15 +1,16 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ActionForm, Avatar, CopyButton } from '@/components/ui';
-import { checklistOf } from '@/lib/catalog';
+import { checklistOf } from '@/lib/booking/catalog';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort, fmtVnd } from '@/lib/format';
-import { CANCELLED, jobCode, RESULT_TONE, RESULTS, SAMPLE, STAGE_HINT, STAGE_TONE, STAGES, type ReviewItem } from '@/lib/jobs';
-import { FEE_DIVISOR } from '@/lib/kocInsights';
-import { PRICE_TYPES } from '@/lib/listing';
-import { jobScope, scopeOf } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
-import { aiDraftBrief, deleteJob, draftBrief, moveStage, reviewJob, saveBrief, updateJob } from '../actions';
+import { CANCELLED, jobCode, RESULT_TONE, RESULTS, SAMPLE, STAGE_HINT, STAGE_TONE, STAGES, type ReviewItem } from '@/lib/booking/jobs';
+import { FEE_DIVISOR } from '@/lib/koc/kocInsights';
+import { PRICE_TYPES } from '@/lib/booking/listing';
+import { jobScope, scopeOf } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
+import { aiDraftBrief, autoCheckJob, deleteJob, draftBrief, moveStage, reviewJob, saveBrief, updateJob } from '../actions';
+import { VERDICT_LABEL, verdict, type Check } from '@/lib/linkCheck';
 import { aiEnabled } from '@/lib/ai';
 
 const iso = (d: Date | null) => (d ? d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
@@ -188,6 +189,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
             </div>
           </form>
         )}
+        {j.submittedUrl && <AutoCheck id={j.id} auto={j.autoCheck as { at: string; checks: Check[] } | null} />}
         {fixText && (
           <div className="mt-3 rounded-md bg-warning-soft px-3 py-2">
             <div className="mb-1 flex items-center justify-between gap-2 text-[13px] font-medium text-warning">Yêu cầu sửa gửi KOC (chép, gửi qua Zalo / TikTok) <CopyButton text={fixText} /></div>
@@ -229,4 +231,25 @@ function Section({ title, meta, children }: { title: string; meta?: string; chil
 
 function F({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
   return <label className={`block ${wide ? 'col-span-full' : ''}`}><span className="label">{label}</span>{children}</label>;
+}
+
+const TONE = { PASS: 'bg-positive-soft text-positive', WARN: 'bg-warning-soft text-warning', FAIL: 'bg-critical-soft text-critical' } as const;
+
+/** Kiểm tra tự động link nộp. Chỉ là gợi ý cho người nghiệm thu. */
+function AutoCheck({ id, auto }: { id: string; auto: { at: string; checks: Check[] } | null }) {
+  return (
+    <div className="mt-3 rounded-md border border-line px-3 py-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px] font-medium">
+        Kiểm tra tự động
+        {auto && <span className={`pill ${TONE[verdict(auto.checks)]}`}>{VERDICT_LABEL[verdict(auto.checks)]}</span>}
+        <form action={autoCheckJob} className="ml-auto"><input type="hidden" name="id" value={id} /><button className="btn h-7 px-2 text-xs">{auto ? 'Kiểm tra lại' : 'Kiểm tra link'}</button></form>
+      </div>
+      {auto ? (
+        <ul className="grid gap-1 text-xs">
+          {auto.checks.map((c) => <li key={c.check}><span className={`pill ${TONE[c.status]}`}>{VERDICT_LABEL[c.status]}</span> <b>{c.check}</b> <span className="break-all text-ink-3">{c.detail}</span></li>)}
+          <li className="text-ink-3">Lúc {new Date(auto.at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}.</li>
+        </ul>
+      ) : <p className="text-xs text-ink-3">Kiểm tra link còn sống, đúng kênh KOC, từ khoá / hashtag bắt buộc của brand (Danh mục) trong caption.</p>}
+    </div>
+  );
 }

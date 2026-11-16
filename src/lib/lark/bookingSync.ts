@@ -4,9 +4,9 @@
 // Dùng API search (nhanh) thay vì list (~24s/trang, hay bị cắt kết nối); search chỉ trả record_id cho cột liên kết
 // nên tra chữ từ cột chính của bảng được liên kết (KOCs tổng hợp, Stores, Tệp KOCs).
 import type { Prisma } from '@prisma/client';
-import { db } from './db';
+import { db } from '../db';
 import { larkGet, larkPost, tenantToken } from './lark';
-import { bankAccount, idNumber } from './validate';
+import { bankAccount, idNumber } from '../validate';
 
 const APP = 'W6vRbbuOVar3qtsV18dlan1xgXb';
 const TABLE = 'tbluWrjJd9Pt9uzb';

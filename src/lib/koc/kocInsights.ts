@@ -1,6 +1,6 @@
 // Số liệu dẫn xuất cho hồ sơ KOC và Listing: chân dung follower, tỷ trọng GMV, lịch sử hợp tác với UpBase,
 // giá đã hợp tác, dự báo View / GMV Target. Định nghĩa theo sheet "[Booking] - Requirement Excel Listing (UpAI)".
-import { db } from './db';
+import { db } from '../db';
 
 // Phí booking kèm thuế TNCN = giá / 0,9 (cách Lark đang tính). Kế toán chưa chốt giữa ÷0,9 và ×1,1.
 export const FEE_DIVISOR = 0.9;

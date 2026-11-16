@@ -3,15 +3,15 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { isUniqueError, optInt, str } from '@/lib/form';
-import { refreshKoc } from '@/lib/creatorStats';
-import { refreshKocAggregates } from '@/lib/bookingSync';
-import { audit } from '@/lib/catalog';
-import { parseHandle } from '@/lib/listing';
-import { can, requirePerm, requireUser } from '@/lib/session';
+import { refreshKoc } from '@/lib/koc/creatorStats';
+import { refreshKocAggregates } from '@/lib/lark/bookingSync';
+import { audit } from '@/lib/booking/catalog';
+import { parseHandle } from '@/lib/booking/listing';
+import { can, requirePerm, requireUser } from '@/lib/auth/session';
 import {
   accountError, ALL_BRANDS_SCOPE, CATEGORY_VALUES, cccdError, cleanHandle, CONTACT_CHANNELS, CONTACT_STATUS, DEFAULT_TAX_ACCOUNT, dateError, initialReadiness,
   LEGAL_TYPES, OTHER_PLATFORMS, placeError, profileCode, READINESS, REVIEW_REASONS, TIKTOK_ROLES, upperNoAccent, VERDICTS, type LegalType,
-} from '@/lib/kocDirectory';
+} from '@/lib/koc/kocDirectory';
 import { bankAccount, idNumber, phoneVN } from '@/lib/validate';
 import { KL_LEVELS, PLATFORMS } from './platforms';
 

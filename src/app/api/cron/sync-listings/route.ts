@@ -1,6 +1,6 @@
-import { AUTO_SYNC_GAP_MIN } from '@/lib/bookingSync';
+import { AUTO_SYNC_GAP_MIN } from '@/lib/lark/bookingSync';
 import { runOnce, scheduledGap } from '@/lib/cronJob';
-import { syncListingsJob } from '@/lib/listingSync';
+import { syncListingsJob } from '@/lib/lark/listingSync';
 
 // Đồng bộ "3.1 Listing KOCs" từ Lark Base vào tab Listing. Server DX: crontab gọi đúng :00 mỗi giờ kèm CRON_SECRET
 // (ops/cron-dx.sh). Gọi khác: tối đa 1 lần / giờ.

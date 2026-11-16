@@ -120,14 +120,14 @@ Plan → Creator matching → Listing → Brand duyệt → Job → Nghiệm thu
 `/matching`: B2C soạn **best practice theo ngành hàng** (ghi chú + bộ tiêu chí). Mỗi **brief brand** chép tiêu chí từ best practice
 của ngành, thêm Brand guideline, Content strategy, Content plan (dán link tài liệu được). Bộ tiêu chí: tệp kênh, cấp KOL, follower,
 view TB, số món bán, GPM, giá booking gần nhất, % follower nữ, % 18–34 tuổi, tỷ trọng GMV ngành hàng TikTok, đã / chưa hợp tác.
-KOC trượt tiêu chí bị loại; thiếu số liệu thì "chưa rõ", xếp sau (`src/lib/matching.ts`). Tick KOC → thêm vào đợt listing có sẵn
+KOC trượt tiêu chí bị loại; thiếu số liệu thì "chưa rõ", xếp sau (`src/lib/booking/matching.ts`). Tick KOC → thêm vào đợt listing có sẵn
 hoặc đợt mới; tải Excel toàn bộ KOC khớp. Danh bạ cũng có nút Tải Excel theo bộ lọc.
 
 ## Kiểm soát nhập liệu
 
 - Form KOC kiểm SĐT Việt Nam, CCCD / CMND / MST, số tài khoản, ID kênh TikTok (`src/lib/validate.ts`).
 - Tab Dữ liệu liệt kê booking Lark gần đây nhập sai / thiếu: ID kênh TikTok sai định dạng, thiếu ID kênh, chi phí, tháng plan,
-  người phụ trách, nghi trùng (cùng kênh + brand + tháng) (`src/lib/dataQuality.ts`).
+  người phụ trách, nghi trùng (cùng kênh + brand + tháng) (`src/lib/koc/dataQuality.ts`).
 - Listing gắn cờ **Trùng** khi KOC đã ở đợt listing khác cùng tháng hoặc đã book cùng brand tháng này / tháng trước.
 
 ## Dữ liệu
@@ -135,7 +135,7 @@ hoặc đợt mới; tải Excel toàn bộ KOC khớp. Danh bạ cũng có nút
 Tab `/data` cho biết mỗi nguồn có bao nhiêu creator, bao nhiêu KOL Danh bạ có mặt, và hiệu quả (GMV, đơn, lượt xem…) của họ:
 Lark Base (bảng 3.2), TikTok Partner Center (Đơn MCN, phiên live MCN, Đơn TAP, creator nhận TAP, hồ sơ creator MCN) và
 TikTok Seller Center (creator hợp tác với shop, đơn affiliate, video, LIVE, yêu cầu mẫu, Creator Marketplace do Booking Hub tự tra).
-Bảng TikTok đọc qua `POST /api/explore` của Trạm dữ liệu (`src/lib/dataSources.ts`). Bảng lớn mất ~10 giây nên job
+Bảng TikTok đọc qua `POST /api/explore` của Trạm dữ liệu (`src/lib/koc/dataSources.ts`). Bảng lớn mất ~10 giây nên job
 `/api/cron/data-sources` (workflow mỗi giờ, chạy 6 giờ một lần, ~2 phút) lưu phần tổng vào `SyncState.data` và số của từng KOL
 vào bảng `CreatorMetric`; hồ sơ KOC đọc bảng này cho mục "Hiệu quả theo nguồn TikTok". Nút Làm mới chạy job ngay.
 Mỗi nguồn tách được theo **shop / brand**: bảng Seller theo 8 shop, Đơn MCN theo shop của đơn, Đơn TAP theo sản phẩm, Lark theo brand.
@@ -144,3 +144,21 @@ và lọc theo một shop. Job lưu tối đa 20 shop lớn nhất mỗi KOL và
 Job cũng **kéo sẵn** bảng xếp hạng vào `SourceCache` (top 200 creator theo từng chỉ số, bảng theo shop, top creator của từng shop
 seller) nên trang từng nguồn chỉ đọc DB (< 1 giây). Chỉ khi lọc một shop của Đơn MCN / một sản phẩm TAP (hàng nghìn giá trị) mới
 hỏi Trạm lúc mở. Một lượt job ~10 phút.
+
+## Tích hợp theo tài liệu giải pháp B2C-Ops Phase 1
+
+Cấu hình và checklist thứ còn thiếu: **Phân quyền → Tích hợp** (`/users/integrations`, chỉ Admin). Giá trị đọc từ `.env` trước, không có
+thì đọc bản Admin nhập trên trang (lưu trong DB, không mã hoá: khoá bí mật nên đặt ở `.env` trên server). Danh sách khoá ở
+`src/lib/integrations.ts`. Tích hợp chưa đủ cấu hình thì phần giao diện của nó không hiện trong app.
+UpAffiliate / UpS (U1, U2, U5) đã đóng vì chưa có API: app không gọi, không hiện số liệu UpAffiliate, không đoán dạng dữ liệu.
+Hợp đồng (U3, U4: HĐNT, WeSign) và Cloudflare R2 cũng đóng, để nâng cấp sau; HĐNT vẫn nhập tay trong hồ sơ pháp lý.
+
+| Mã | Chức năng | Ở đâu trong app | Code |
+|---|---|---|---|
+| G1, G2 | Đẩy listing sang Google Sheet của brand, lấy kết quả duyệt về. Đẩy lại không làm mất lựa chọn brand đã điền | Trang đợt listing | `src/lib/google.ts`, `listing/actions.ts` |
+| L6 | Gửi mail mời hợp tác (SMTP) cho KOC có email, chưa được mời | Trang đợt listing | `src/lib/mail.ts` |
+| L4, L5 | Gửi ĐNTT sang Lark Approval, đọc lại Duyệt / Từ chối | Trang ĐNTT | `src/lib/lark/approval.ts` |
+| — | Kiểm tra tự động link nộp: link sống, đúng kênh, từ khoá / hashtag bắt buộc của brand (Danh mục) | Trang job, mục Nghiệm thu | `src/lib/linkCheck.ts` |
+
+Chưa làm (ghi ở từng mục "Cần bổ sung thêm" trên tab Tích hợp): ghi ngược view 3.2 / bảng 6.1 (L3), trạng thái đã thanh toán từ Kế toán,
+phụ lục SOW / BBNT, mọi phần UpAffiliate (hồ sơ KOC, số liệu video / ads, thông tin nghiệm thu), Zalo, Kalodata.

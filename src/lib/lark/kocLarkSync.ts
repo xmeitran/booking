@@ -1,11 +1,11 @@
 // Liên hệ, giá, PIC của KOC từ 2 bảng KOC trên Lark Base B2C_Quản lý Booking (3.4 KOCs tổng hợp, 3.4 List KOCs tổng hợp).
 // Chỉ điền ô đang trống ở Danh bạ (sửa tay không bị ghi đè), như CCCD / số TK lấy từ booking (bookingSync.fillBankInfo).
 // Chạy trong lượt đồng bộ booking mỗi giờ. Lark không có địa chỉ nhận mẫu (cột trống), phần đó nhập trong app.
-import { db } from './db';
+import { db } from '../db';
 import { toText, searchPages } from './bookingSync';
-import { parseHandle } from './listing';
+import { parseHandle } from '../booking/listing';
 import { matchUser, people } from './masterSync';
-import { phoneVN } from './validate';
+import { phoneVN } from '../validate';
 
 const KOCS = 'tblTzGxo27dWxfjT'; // 3.4 KOCs tổng hợp
 const KOCS_LIST = 'tblY8408KFBMJVFw'; // 3.4 List KOCs tổng hợp

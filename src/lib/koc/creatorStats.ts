@@ -1,8 +1,8 @@
 // Chỉ số 30 ngày của KOL (follower, lượt xem TB, số món bán, GMV) từ TikTok Shop Creator Marketplace.
 // Gọi qua Trạm dữ liệu TikTok (Data-tiktok, POST /api/console) bằng token shop nó đang giữ: Booking Hub
 // KHÔNG giữ token TikTok, vì làm mới token ở 2 nơi sẽ làm token bên kia mất hiệu lực.
-import { db } from './db';
-import { TIKTOK_USERNAME } from './validate';
+import { db } from '../db';
+import { TIKTOK_USERNAME } from '../validate';
 
 const SEARCH = '/affiliate_seller/202608/marketplace_creators/search';
 const PERF = (openId: string) => `/affiliate_seller/202508/marketplace_creators/${encodeURIComponent(openId)}`;

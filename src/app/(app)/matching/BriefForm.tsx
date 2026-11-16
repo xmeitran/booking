@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ActionForm } from '@/components/ui';
-import { NUM_FIELDS, TIKTOK_CATEGORIES, type Criteria } from '@/lib/matching';
+import { NUM_FIELDS, TIKTOK_CATEGORIES, type Criteria } from '@/lib/booking/matching';
 import { KL_LEVELS } from '../contacts/platforms';
 import { saveBrief } from './actions';
 

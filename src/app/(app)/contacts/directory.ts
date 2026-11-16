@@ -2,8 +2,8 @@
 import 'server-only';
 import { cache } from 'react';
 import { db } from '@/lib/db';
-import { CANCELLED } from '@/lib/jobs';
-import type { DirKoc, LarkInfo, LegalType } from '@/lib/kocDirectory';
+import { CANCELLED } from '@/lib/booking/jobs';
+import type { DirKoc, LarkInfo, LegalType } from '@/lib/koc/kocDirectory';
 
 const endOfToday = () => new Date(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) + 'T23:59:59+07:00');
 

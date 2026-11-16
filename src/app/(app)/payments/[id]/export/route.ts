@@ -1,9 +1,9 @@
 import { csvResponse } from '@/lib/csv';
 import { db } from '@/lib/db';
-import { jobCode } from '@/lib/jobs';
-import { FEE_DIVISOR } from '@/lib/kocInsights';
-import { paymentScope, scopeOf } from '@/lib/scope';
-import { can, requirePerm } from '@/lib/session';
+import { jobCode } from '@/lib/booking/jobs';
+import { FEE_DIVISOR } from '@/lib/koc/kocInsights';
+import { paymentScope, scopeOf } from '@/lib/auth/scope';
+import { can, requirePerm } from '@/lib/auth/session';
 
 // File ĐNTT gửi kế toán. Cột tài khoản / CCCD chỉ có khi Admin, Leader tải.
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {

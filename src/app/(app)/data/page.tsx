@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { Avatar } from '@/components/ui';
-import { CHECKS, QUALITY_DAYS, qualityCounts, qualityRows } from '@/lib/dataQuality';
+import { CHECKS, QUALITY_DAYS, qualityCounts, qualityRows } from '@/lib/koc/dataQuality';
 import { db } from '@/lib/db';
-import { larkStats, marketStats, ORIGIN, sourceOf, STATION, topCreators, type Source, type SourceStats } from '@/lib/dataSources';
+import { larkStats, marketStats, ORIGIN, sourceOf, STATION, topCreators, type Source, type SourceStats } from '@/lib/koc/dataSources';
 import { fmtNum, fmtPct } from '@/lib/format';
-import { requireUser } from '@/lib/session';
+import { requireUser } from '@/lib/auth/session';
 import { refreshData } from './actions';
 import { RankView, ShopView } from './rank';
 import { AREAS, day, Empty, fmtTime, Freshness, KindPill, Metrics, Panel, SectionHeader, Stat, StatRow, Status, TabNav, val, type AreaKey } from './ui';

@@ -1,8 +1,8 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { exchangeCode } from '@/lib/lark';
-import { syncUsersFromLark } from '@/lib/larkSync';
-import { absUrl, findLoginUser, setSessionCookie } from '@/lib/session';
+import { exchangeCode } from '@/lib/lark/lark';
+import { syncUsersFromLark } from '@/lib/lark/larkSync';
+import { absUrl, findLoginUser, setSessionCookie } from '@/lib/auth/session';
 
 const toLogin = (req: NextRequest, error: string) => NextResponse.redirect(absUrl(`/login?error=${error}`, req));
 

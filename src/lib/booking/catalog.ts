@@ -1,6 +1,6 @@
 // Danh mục dùng chung: vai trò nghiệp vụ (theo tài liệu B2C-Ops), checklist nghiệm thu mặc định, audit log.
 import type { Prisma } from '@prisma/client';
-import { db } from './db';
+import { db } from '../db';
 
 export const JOB_ROLES = ['Trưởng phòng', 'Booking PIC', 'Booking Support', 'Brand Manager'];
 export const BRAND_ROLES = ['Booking PIC', 'Booking Support', 'Brand Manager'];

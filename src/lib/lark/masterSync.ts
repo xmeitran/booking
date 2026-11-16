@@ -1,4 +1,4 @@
-// Đồng bộ master data dùng cho Booking từ Lark Base B2C_Quản lý Booking; chạy trước plan trong cùng lượt (src/lib/planSync.ts).
+// Đồng bộ master data dùng cho Booking từ Lark Base B2C_Quản lý Booking; chạy trước plan trong cùng lượt (src/lib/lark/planSync.ts).
 // - 5.1 Stores → Danh mục: brand + gian hàng (sàn, link). Không xoá gì; tỷ lệ chuyển đổi / AOV sửa trong app giữ nguyên.
 // - 6.2 Nhân sự Booking → User: người team Booking còn tài khoản Lark được tạo user Nhân viên, đăng nhập bằng Lark
 //   (như "quy tắc phòng ban tự cho đăng nhập" của app b2c). User đã có không bị đổi quyền / khoá.
@@ -7,9 +7,9 @@
 // - 3.5 Danh sách file brand → Guideline brand: chỉ điền brand chưa có guideline.
 import type { Prisma } from '@prisma/client';
 import { type LarkRecord, searchPages, toText } from './bookingSync';
-import { db } from './db';
+import { db } from '../db';
 import { fetchLarkProfiles, tenantToken } from './lark';
-import { brandKey } from './listing';
+import { brandKey } from '../booking/listing';
 
 const T = { stores: 'tbldXi2AMbyGWUgY', staff: 'tblqWfTyEyRcYJCU', cast: 'tblzMmYoBuYFTB1f', files: 'tbl9y6mJH0bp9ZHl' };
 // Tên cột trên Lark. Đổi tên cột bên Lark thì sửa ở đây.

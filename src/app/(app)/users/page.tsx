@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { Role } from '@prisma/client';
-import { JOB_ROLES } from '@/lib/catalog';
+import { JOB_ROLES } from '@/lib/booking/catalog';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
-import { readPolicy } from '@/lib/access';
-import { requireUser, ROLE_LABEL } from '@/lib/session';
+import { readPolicy } from '@/lib/auth/access';
+import { requireUser, ROLE_LABEL } from '@/lib/auth/session';
 import { saveLoginDepts, saveUser } from './actions';
 import { UsersTabs } from './Tabs';
 

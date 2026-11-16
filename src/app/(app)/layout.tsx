@@ -1,5 +1,5 @@
 import { Avatar, BrandLogo, NavLink } from '@/components/ui';
-import { can, requireUser, ROLE_LABEL } from '@/lib/session';
+import { can, requireUser, ROLE_LABEL } from '@/lib/auth/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();

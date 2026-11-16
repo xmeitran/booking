@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
-import { handoverWhere } from '@/lib/access';
-import { BRAND_ROLES } from '@/lib/catalog';
+import { handoverWhere } from '@/lib/auth/access';
+import { BRAND_ROLES } from '@/lib/booking/catalog';
 import { db } from '@/lib/db';
-import { requirePerm, ROLE_LABEL } from '@/lib/session';
+import { requirePerm, ROLE_LABEL } from '@/lib/auth/session';
 import { assignBrand, handover, unassignBrand } from '../actions';
 import { UsersTabs } from '../Tabs';
 

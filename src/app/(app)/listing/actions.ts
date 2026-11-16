@@ -3,14 +3,18 @@ import { randomBytes } from 'node:crypto';
 import { after } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { refreshKoc } from '@/lib/creatorStats';
+import { refreshKoc } from '@/lib/koc/creatorStats';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
-import { BRAND_CHOICE, CONTACT_STATUS, fromLarkListing, LARK_LISTING_READONLY, parseHandle, PRICE_TYPES, RECOMMEND } from '@/lib/listing';
+import { BRAND_CHOICE, COLS, CONTACT_STATUS, fromLarkListing, loadListing, LARK_LISTING_READONLY, parseHandle, PRICE_TYPES, RECOMMEND } from '@/lib/booking/listing';
 import { runOnce } from '@/lib/cronJob';
-import { syncListingsJob } from '@/lib/listingSync';
-import { guard } from '@/lib/scope';
-import { requireUser } from '@/lib/session';
+import { syncListingsJob } from '@/lib/lark/listingSync';
+import { guard } from '@/lib/auth/scope';
+import { readTab, sheetIdOf, writeTab } from '@/lib/google';
+import { inviteTemplate, mailer, render } from '@/lib/mail';
+import { fmtNum } from '@/lib/format';
+import { fmtPct } from '@/lib/format';
+import { requireUser } from '@/lib/auth/session';
 
 const oneOf = (list: string[], v: string) => (list.includes(v) ? v : null);
 
@@ -75,9 +79,10 @@ export async function addKocs(_: string | null, fd: FormData): Promise<string | 
   await guard(me, 'listing', batchId);
   if (fromLarkListing(batchId)) return LARK_LISTING_READONLY;
   const priceType = oneOf(PRICE_TYPES, str(fd, 'priceType')) ?? 'Video';
-  // Dán ID / link (ô nhập) hoặc tick chọn từ Danh bạ / gợi ý (pick = handle).
-  const lines = [...str(fd, 'ids').split(/[\n,;]+/), ...fd.getAll('pick').map(String)].map((s) => s.trim()).filter(Boolean);
-  if (!lines.length) return 'Tick chọn KOC từ Danh bạ / gợi ý, hoặc dán ID kênh / link TikTok.';
+  // Dán ID / link (ô nhập) hoặc tick chọn từ Danh bạ / gợi ý (pick = id KOC: thêm đúng dòng đã tick, kể cả kênh không phải TikTok).
+  const picked = fd.getAll('pick').map(String).filter(Boolean);
+  const lines = str(fd, 'ids').split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+  if (!lines.length && !picked.length) return 'Tick chọn KOC từ Danh bạ / gợi ý, hoặc dán ID kênh / link TikTok.';
   // ID không đúng dạng TikTok handle (kênh brand / UGC Lark ghi "phcarevietnam_VJ Xuân Mai") vẫn nhận nếu Danh bạ đã có;
   // ID đã gộp (alias) quy về KOC giữ lại.
   const keys = [...new Set(lines.map((l) => parseHandle(l) ?? l.replace(/^@/, '').toLowerCase()))];
@@ -91,7 +96,7 @@ export async function addKocs(_: string | null, fd: FormData): Promise<string | 
     data: handles.filter((h) => !known.has(h)).map((h) => ({ platform: 'TikTok', handle: h, name: h, channelUrl: `https://www.tiktok.com/@${h}` })),
     skipDuplicates: true,
   });
-  const kocs = await db.koc.findMany({ where: { platform: 'TikTok', handle: { in: handles } } });
+  const kocs = await db.koc.findMany({ where: { OR: [{ id: { in: picked } }, { platform: 'TikTok', handle: { in: handles } }] } });
   await db.listingItem.createMany({
     data: kocs.map((k) => ({ batchId, kocId: k.id, createdById: me.id, priceType })),
     skipDuplicates: true,
@@ -180,4 +185,114 @@ export async function syncListingsNow() {
   await requireUser();
   after(() => runOnce('listings', 2, syncListingsJob));
   revalidatePath('/listing');
+}
+
+// ---- Google Sheet của brand (G1 đẩy listing, G2 lấy kết quả duyệt). Tab trong sheet đặt theo tên đợt.
+const tabOf = (name: string) => name.replace(/[\[\]:*?/\\]/g, ' ').slice(0, 90);
+const back = (id: string, k: 'msg' | 'err', text: string): never => redirect(`/listing/${id}?${k}=${encodeURIComponent(text)}`);
+const errText = (e: unknown) => (e instanceof Error ? e.message : 'Lỗi không rõ');
+
+/** G1: ghi đè tab của đợt trên Google Sheet bằng các cột gửi Brand (không có thông tin cá nhân, không có KOC blacklist). */
+export async function pushToSheet(fd: FormData) {
+  const me = await requireUser();
+  const id = str(fd, 'id');
+  await guard(me, 'listing', id);
+  if (fromLarkListing(id)) back(id, 'err', LARK_LISTING_READONLY);
+  const first = await db.listingBatch.findUnique({ where: { id } });
+  if (!first) return back(id, 'err', 'Không có đợt listing này');
+  const sheetId = sheetIdOf(str(fd, 'sheetUrl') || first.sheetUrl || '');
+  if (!sheetId) back(id, 'err', 'Dán link Google Sheet của brand (https://docs.google.com/spreadsheets/d/...).');
+  // Đẩy lại là ghi đè cả tab: lấy lựa chọn brand đã điền trên sheet về app trước, để không mất phần brand đã duyệt.
+  try { await applySheetDecisions(id, sheetId!); } catch { /* tab chưa có / chưa chia sẻ: lỗi sẽ báo ở bước ghi bên dưới */ }
+  const data = (await loadListing(id))!;
+  const { batch } = data;
+  const cols = COLS.filter((c) => !c.personal);
+  const fixed: Record<string, string | null> = { 'Đợt listing': batch.name, Store: batch.store, 'Sản phẩm': batch.product, CR: batch.cr == null ? '' : fmtPct(batch.cr) };
+  const rows = data.rows.filter((r) => !r.koc.blacklisted);
+  try {
+    await writeTab(sheetId!, tabOf(batch.name), [cols.map((c) => c.h), ...rows.map((r) => cols.map((c) => (c.h in fixed ? fixed[c.h] : c.v(r))))]);
+  } catch (e) { back(id, 'err', errText(e)); }
+  await db.listingBatch.update({ where: { id }, data: { sheetUrl: `https://docs.google.com/spreadsheets/d/${sheetId}`, sheetAt: new Date() } });
+  revalidatePath(`/listing/${id}`);
+  back(id, 'msg', `Đã đẩy ${rows.length} KOC sang Google Sheet, tab "${tabOf(batch.name)}".`);
+}
+
+/** Chữ brand gõ trên sheet → Yes / No / Cân nhắc (như bản b2c). Không nhận ra → null. */
+function choiceOf(raw: string) {
+  const v = raw.trim().toLowerCase();
+  if (['yes', 'y', 'duyệt', 'đã duyệt', 'ok', 'đồng ý', 'dong y'].includes(v)) return 'Yes';
+  if (['no', 'n', 'từ chối', 'không'].includes(v)) return 'No';
+  return v.includes('cân nhắc') || v.includes('can nhac') || v === 'maybe' ? 'Cân nhắc' : null;
+}
+
+/** Đọc "Brand chọn" / "Lý do từ chối" trên tab của đợt, khớp dòng theo "ID kênh", ghi vào app. Trả số dòng đổi; null = tab chưa có cột cần đọc. */
+async function applySheetDecisions(batchId: string, sheetId: string) {
+  const batch = await db.listingBatch.findUniqueOrThrow({ where: { id: batchId }, include: { items: { include: { koc: { select: { handle: true } } } } } });
+  const grid = await readTab(sheetId, tabOf(batch.name));
+  const head = (grid[0] ?? []).map((h) => h.trim());
+  const [iKey, iChoice, iReason] = ['ID kênh', 'Brand chọn', 'Lý do từ chối'].map((h) => head.indexOf(h));
+  if (iKey < 0 || iChoice < 0) return null;
+  const byHandle = new Map(batch.items.map((it) => [it.koc.handle, it]));
+  const changes = grid.slice(1).flatMap((row) => {
+    const it = byHandle.get((row[iKey] ?? '').trim().replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i, '').replace(/^@/, '').toLowerCase());
+    const choice = choiceOf(row[iChoice] ?? '');
+    if (!it || !choice) return []; // ô Brand chọn trống / không nhận ra: giữ nguyên trong app
+    const rejectReason = (iReason < 0 ? '' : row[iReason] ?? '').trim().slice(0, 500) || null;
+    return choice === it.brandChoice && rejectReason === it.rejectReason ? [] : [db.listingItem.update({ where: { id: it.id }, data: { brandChoice: choice, rejectReason } })];
+  });
+  if (changes.length) await db.$transaction(changes);
+  return changes.length;
+}
+
+/** G2: lấy kết quả duyệt của brand từ Google Sheet. */
+export async function pullFromSheet(fd: FormData) {
+  const me = await requireUser();
+  const id = str(fd, 'id');
+  await guard(me, 'listing', id);
+  if (fromLarkListing(id)) back(id, 'err', LARK_LISTING_READONLY);
+  const sheetId = sheetIdOf((await db.listingBatch.findUniqueOrThrow({ where: { id } })).sheetUrl ?? '');
+  if (!sheetId) back(id, 'err', 'Đợt này chưa đẩy sang Google Sheet.');
+  let n: number | null = 0;
+  try { n = await applySheetDecisions(id, sheetId!); } catch (e) { back(id, 'err', errText(e)); }
+  if (n == null) back(id, 'err', 'Sheet thiếu cột "ID kênh" hoặc "Brand chọn" ở dòng tiêu đề. Đẩy lại listing để tạo lại tab.');
+  revalidatePath(`/listing/${id}`);
+  back(id, 'msg', n ? `Đã cập nhật kết quả duyệt của ${n} KOC từ Google Sheet.` : 'Google Sheet chưa có thay đổi nào so với app.');
+}
+
+/** L6: gửi mail mời hợp tác cho KOC trong đợt có email và chưa được mời (KOC blacklist, KOC brand đã từ chối thì bỏ qua). */
+export async function inviteKocs(fd: FormData) {
+  const me = await requireUser();
+  const id = str(fd, 'id');
+  await guard(me, 'listing', id);
+  if (fromLarkListing(id)) back(id, 'err', LARK_LISTING_READONLY);
+  const batch = await db.listingBatch.findUniqueOrThrow({
+    where: { id },
+    include: { items: { where: { invitedAt: null, brandChoice: { not: 'No' }, koc: { blacklisted: false, email: { not: null } } }, include: { koc: true } } },
+  });
+  if (!batch.items.length) back(id, 'err', 'Không có KOC nào để mời: KOC cần có email trong Danh bạ và chưa được gửi mail mời.');
+  let send: Awaited<ReturnType<typeof mailer>>;
+  try { send = await mailer(); } catch (e) { return back(id, 'err', errText(e)); }
+  const tpl = await inviteTemplate();
+  const [y, m] = batch.month.split('-');
+  let sent = 0;
+  const failed: string[] = [];
+  for (const it of batch.items) {
+    const k = it.koc;
+    const vars = {
+      ten_koc: k.nickname ?? k.name, id_kenh: `@${k.handle}`, link_kenh: k.channelUrl ?? `https://www.tiktok.com/@${k.handle}`,
+      thuong_hieu: batch.brand ?? '', gian_hang: batch.store ?? batch.brand ?? '', san_pham: batch.product ?? '', loai_gia: it.priceType,
+      thang_chien_dich: `${m}/${y}`, dot_booking: batch.name,
+      muc_cat_xe: it.price ? `${fmtNum(it.price)} VNĐ (giá net nhận về)` : 'Trao đổi chi tiết theo ratecard kênh',
+      ngay_air_du_kien: it.planAirDate ? it.planAirDate.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'sẽ thống nhất sau',
+      ten_pic: me.name ?? 'Team Booking UpBase', email_pic: me.email ?? '', ghi_chu_rieng: it.contentNote ? `- Ghi chú: ${it.contentNote}` : '',
+    };
+    try {
+      await send(k.email!, render(tpl.subject, vars), render(tpl.body, vars), me.email);
+      // Ghi ngay từng dòng: lượt gửi đứt giữa chừng thì bấm lại không gửi trùng người đã nhận.
+      await db.listingItem.update({ where: { id: it.id }, data: { invitedAt: new Date(), status: it.status ?? 'Đang liên hệ' } });
+      sent++;
+    } catch (e) { failed.push(`@${k.handle} (${errText(e).slice(0, 80)})`); }
+  }
+  revalidatePath(`/listing/${id}`);
+  back(id, failed.length ? 'err' : 'msg', `Đã gửi mail mời ${sent}/${batch.items.length} KOC.${failed.length ? ` Lỗi: ${failed.slice(0, 5).join('; ')}` : ''}`);
 }

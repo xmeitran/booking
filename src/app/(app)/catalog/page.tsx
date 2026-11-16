@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtNum } from '@/lib/format';
-import { can, requireUser } from '@/lib/session';
+import { can, requireUser } from '@/lib/auth/session';
 import { KL_LEVELS } from '../contacts/platforms';
 import { importFromBookings, saveBrand, saveTierPrices } from './actions';
 

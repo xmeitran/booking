@@ -4,9 +4,9 @@
 // Id lấy từ Lark ("lark-2026-11", "lark-<record_id>-self") nên đồng bộ lại không đổi id: job, matching đã gắn vào dòng vẫn giữ.
 // Plan / dòng tạo tay trong app (id cuid) không bị đụng tới.
 import { type LarkRecord, searchPages, toText } from './bookingSync';
-import { db } from './db';
+import { db } from '../db';
 import { tenantToken } from './lark';
-import { brandKey } from './listing';
+import { brandKey } from '../booking/listing';
 import { matchUser, people, syncMasterJob } from './masterSync';
 
 const TABLE = 'tblvgyOkneDKOVsB';

@@ -120,7 +120,7 @@ Hiệu quả với UpBase (Trạm, đã lưu cho KOL Danh bạ): bán cho 8 shop
 ## 6. Kỹ thuật
 - Stack: Next.js 16 App Router (server component, `searchParams` cho tab / hộp thoại), Prisma 6, Postgres 17, Tailwind 4 (token b2c trong `src/app/globals.css`).
 - Lệnh: `npm run typecheck` · `npm test` · `npx next build` · deploy server DX: `bash ops/deploy-dx.sh`.
-- Vị trí: `src/app/(app)/contacts/[id]/` (trang, các tab), logic thuần (CPV, ROI, đúng hạn, tóm tắt) trong `src/lib/kocInsights.ts` kèm test `src/lib/kocInsights.test.ts`.
+- Vị trí: `src/app/(app)/contacts/[id]/` (trang, các tab), logic thuần (CPV, ROI, đúng hạn, tóm tắt) trong `src/lib/koc/kocInsights.ts` kèm test `src/lib/kocInsights.test.ts`.
 - Kiểm thử: unit test cho mọi công thức metric (thiếu số, chia 0, chỉ tính trên bản ghi đủ số); render thử trang với dữ liệu production trên server (như đã làm với Danh bạ); chụp màn hình so với b2c.
 
 ## 7. Ranh giới

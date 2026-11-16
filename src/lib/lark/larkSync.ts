@@ -1,5 +1,5 @@
 import 'server-only';
-import { db } from './db';
+import { db } from '../db';
 import { fetchLarkProfiles } from './lark';
 
 /** Cập nhật tên, email, avatar, phòng ban, chức danh từ Lark. Trả về các Lark ID không tìm thấy. */

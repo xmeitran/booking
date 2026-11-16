@@ -1,13 +1,14 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { audit, checklistOf } from '@/lib/catalog';
+import { audit, checklistOf } from '@/lib/booking/catalog';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
-import { CANCELLED, linePicker, RESULTS, SAMPLE, STAGES, type ReviewItem } from '@/lib/jobs';
-import { fromLarkListing, LARK_LISTING_READONLY, PRICE_TYPES, sameBrand } from '@/lib/listing';
-import { guard } from '@/lib/scope';
-import { requirePerm, requireUser } from '@/lib/session';
+import { CANCELLED, linePicker, RESULTS, SAMPLE, STAGES, type ReviewItem } from '@/lib/booking/jobs';
+import { fromLarkListing, LARK_LISTING_READONLY, PRICE_TYPES, sameBrand } from '@/lib/booking/listing';
+import { guard } from '@/lib/auth/scope';
+import { requirePerm, requireUser } from '@/lib/auth/session';
+import { evaluate, inspect, keywordsOf, videoIdOf } from '@/lib/linkCheck';
 
 const vnDate = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00+07:00`) : null);
 const done = (id: string) => {
@@ -170,7 +171,7 @@ export async function draftBrief(fd: FormData) {
   const id = str(fd, 'id');
   await guard(me, 'job', id);
   const j = await db.job.findUniqueOrThrow({ where: { id }, include: { koc: true, brand: true, product: true } });
-  const { briefTemplate } = await import('@/lib/jobs');
+  const { briefTemplate } = await import('@/lib/booking/jobs');
   await db.job.update({ where: { id }, data: { brief: briefTemplate(j, checklistOf(j.brand?.checklist)), briefApproved: false } });
   await audit(me.id, 'Job', id, 'Tạo brief nháp');
   done(id);
@@ -212,4 +213,20 @@ export async function deleteJob(fd: FormData) {
   await audit(me.id, 'Job', id, 'Xoá job', { number: job.number, kocId: job.kocId });
   revalidatePath('/jobs');
   redirect('/jobs');
+}
+
+const jobErr = (id: string, e: unknown, hash = ''): never => redirect(`/jobs/${id}?err=${encodeURIComponent(e instanceof Error ? e.message : 'Lỗi không rõ')}${hash}`);
+
+/** Kiểm tra tự động link KOC nộp (link sống, đúng kênh, từ khoá / hashtag bắt buộc của brand). Kết quả là gợi ý, người nghiệm thu vẫn chốt. */
+export async function autoCheckJob(fd: FormData) {
+  const id = str(fd, 'id');
+  await guard(await requireUser(), 'job', id);
+  const job = await db.job.findUniqueOrThrow({ where: { id }, include: { koc: { select: { handle: true } }, brand: { select: { keywords: true } } } });
+  if (!job.submittedUrl) jobErr(id, new Error('KOC chưa nộp video'), '#review');
+  const info = await inspect(job.submittedUrl!);
+  const checks = evaluate(info, { handle: job.koc.handle, keywords: keywordsOf(job.brand?.keywords) });
+  // Link rút gọn mở ra link đầy đủ: lưu link đầy đủ.
+  await db.job.update({ where: { id }, data: { autoCheck: { at: new Date().toISOString(), checks }, ...(info.live && videoIdOf(info.finalUrl) && { submittedUrl: info.finalUrl }) } });
+  revalidatePath(`/jobs/${id}`);
+  redirect(`/jobs/${id}#review`);
 }

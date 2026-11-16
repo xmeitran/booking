@@ -4,7 +4,7 @@ import {
   accountError, cccdError, channelSummary, cleanHandle, contractReadiness, dateError, directory, findDuplicates, inferLegalType, legalProfilesOf, placeError,
   ratingSummary, reviewSummary, upperNoAccent, type DirKoc,
 } from './kocDirectory';
-import { dupKey } from './listing';
+import { dupKey } from '../booking/listing';
 
 const koc = (o: Partial<DirKoc> & { id: string; handle: string }): DirKoc => ({
   name: o.handle, nickname: null, platform: 'TikTok', avatarUrl: null, channelUrl: null, phone: null, zalo: null, email: null, niche: null, category: null,

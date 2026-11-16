@@ -4,8 +4,8 @@
 // - Cổng đăng nhập: người chưa có user mà thuộc phòng ban Lark được cho phép thì tự được tạo user Nhân viên khi đăng nhập.
 // Lưu một dòng SyncState id "access-policy" để không phải thêm bảng.
 import type { Role } from '@prisma/client';
-import { db } from './db';
-import { CANCELLED } from './jobs';
+import { db } from '../db';
+import { CANCELLED } from '../booking/jobs';
 
 export const PERMS = {
   'data.all': { label: 'Xem dữ liệu mọi brand', hint: 'Tắt: chỉ thấy Plan, Job, Listing, Booking, Thanh toán của brand được giao (Danh mục → nhân sự) và việc mình là PIC / người tạo.' },

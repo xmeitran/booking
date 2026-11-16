@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { Avatar } from '@/components/ui';
 import { db } from '@/lib/db';
-import { byShop, originOf, placesOf, topCreators, type ShopRow, type Source, type SourceStats, type TopRow } from '@/lib/dataSources';
+import { byShop, originOf, placesOf, topCreators, type ShopRow, type Source, type SourceStats, type TopRow } from '@/lib/koc/dataSources';
 import { fmtNum, fmtShort } from '@/lib/format';
 import { areaOf, day, Empty, fmtTime, KindPill, MetricNotes, Panel, Segmented, SourcePicker, Status } from './ui';
 

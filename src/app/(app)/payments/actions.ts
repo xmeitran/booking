@@ -1,12 +1,15 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { audit } from '@/lib/catalog';
+import { audit } from '@/lib/booking/catalog';
 import { db } from '@/lib/db';
 import { str } from '@/lib/form';
-import { PAY_STATUS } from '@/lib/payments';
-import { guard, jobScope, scopeOf } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
+import { PAY_STATUS } from '@/lib/booking/payments';
+import { guard, jobScope, scopeOf } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
+import { approvalStatus, sendApproval } from '@/lib/lark/approval';
+import { jobCode } from '@/lib/booking/jobs';
+import { FEE_DIVISOR } from '@/lib/koc/kocInsights';
 
 /** Gom job nghiệm thu Đạt (chưa vào ĐNTT nào) thành một đề nghị thanh toán; job chuyển sang "Thanh toán". */
 export async function createPayment(_: string | null, fd: FormData): Promise<string | null> {
@@ -78,4 +81,53 @@ export async function deletePayment(fd: FormData) {
   await audit(me.id, 'PaymentRequest', p.id, `Xoá ĐNTT #${p.number}`);
   revalidatePath('/payments');
   redirect('/payments');
+}
+
+const fail = (id: string, e: unknown): never => redirect(`/payments/${id}?err=${encodeURIComponent(e instanceof Error ? e.message : 'Lỗi không rõ')}`);
+
+/** L4: gửi ĐNTT còn Nháp sang Lark Approval, đứng tên người bấm. Thành công thì ĐNTT sang "Đã gửi duyệt". */
+export async function sendToApproval(fd: FormData) {
+  const me = await requireUser();
+  const id = str(fd, 'id');
+  await guard(me, 'payment', id);
+  const p = await db.paymentRequest.findUniqueOrThrow({ where: { id }, include: { jobs: { include: { koc: true, brand: { select: { name: true } } }, orderBy: { number: 'asc' } } } });
+  if (p.status !== 'Nháp' || p.approvalCode) fail(id, new Error('ĐNTT này đã gửi duyệt rồi.'));
+  const noBank = p.jobs.filter((j) => !j.koc.bankAccount || !j.koc.bankHolder);
+  if (noBank.length) fail(id, new Error(`Thiếu số tài khoản / chủ tài khoản của: ${[...new Set(noBank.map((j) => `@${j.koc.handle}`))].join(', ')}. Bổ sung ở Danh bạ trước khi gửi duyệt.`));
+  const net = p.jobs.reduce((s, j) => s + (j.price ?? 0), 0);
+  const kocs = [...new Map(p.jobs.map((j) => [j.kocId, j.koc])).values()];
+  let code = '';
+  try {
+    code = await sendApproval(me.larkUserId, {
+      code: `ĐNTT #${p.number}`, amount: net, gross: Math.round(net / FEE_DIVISOR),
+      jobs: p.jobs.map((j) => `${jobCode(j.number)} · @${j.koc.handle} · ${j.brand?.name ?? '—'} · ${j.price ?? 0}`).join('\n'),
+      koc: kocs.map((k) => k.nickname ?? k.name).join(', '),
+      bank: kocs.map((k) => `${k.bankHolder} - ${k.bankAccount} - ${k.bankName ?? ''}`).join('\n'),
+      note: p.note ?? '', creator: me.name ?? me.larkUserId,
+    });
+  } catch (e) { fail(id, e); }
+  // Chỉ ghi khi ĐNTT vẫn còn Nháp và chưa có mã: hai người bấm cùng lúc thì một đơn Lark bị thừa, báo để huỷ tay.
+  const { count } = await db.paymentRequest.updateMany({ where: { id, status: 'Nháp', approvalCode: null }, data: { status: 'Đã gửi duyệt', approvalCode: code, approvalStatus: 'PENDING' } });
+  if (!count) fail(id, new Error(`ĐNTT vừa được người khác gửi duyệt. Đơn Lark ${code} vừa tạo bị thừa, huỷ trên Lark Approval.`));
+  await audit(me.id, 'PaymentRequest', id, 'Gửi Lark Approval', { instance: code });
+  revalidatePath(`/payments/${id}`);
+  redirect(`/payments/${id}`);
+}
+
+/** L5: đọc trạng thái đơn trên Lark. APPROVED → "Đã duyệt"; bị từ chối / huỷ → về Nháp để sửa và gửi lại. */
+export async function syncApproval(fd: FormData) {
+  const me = await requireUser();
+  const id = str(fd, 'id');
+  await guard(me, 'payment', id);
+  const p = await db.paymentRequest.findUniqueOrThrow({ where: { id } });
+  if (!p.approvalCode) fail(id, new Error('ĐNTT này chưa gửi qua Lark Approval.'));
+  let st = '';
+  try { st = await approvalStatus(p.approvalCode!); } catch (e) { fail(id, e); }
+  const data = st === 'APPROVED' && p.status === 'Đã gửi duyệt' ? { status: 'Đã duyệt', approvalStatus: st }
+    : ['REJECTED', 'CANCELED', 'DELETED'].includes(st) && p.status === 'Đã gửi duyệt' ? { status: 'Nháp', approvalStatus: st, approvalCode: null }
+    : { approvalStatus: st };
+  await db.paymentRequest.update({ where: { id }, data });
+  if (data.status) await audit(me.id, 'PaymentRequest', id, `Lark Approval: ${st} → ${data.status}`, { instance: p.approvalCode });
+  revalidatePath(`/payments/${id}`);
+  redirect(`/payments/${id}`);
 }

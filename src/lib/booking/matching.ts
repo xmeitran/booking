@@ -1,8 +1,8 @@
 // Creator matching: chấm KOL trong Danh bạ theo bộ tiêu chí của brief / best practice ngành hàng.
 // Tiêu chí thiếu số liệu (KOL chưa có số TikTok) tính là "chưa rõ", không loại; sai tiêu chí rõ ràng thì loại.
 import { Prisma } from '@prisma/client';
-import { db } from './db';
-import { CATEGORY, profileInsights, USD_VND } from './kocInsights';
+import { db } from '../db';
+import { CATEGORY, profileInsights, USD_VND } from '../koc/kocInsights';
 
 export type Criteria = {
   niches?: string[]; kl?: string[];

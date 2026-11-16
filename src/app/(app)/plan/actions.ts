@@ -2,13 +2,13 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
-import { audit } from '@/lib/catalog';
+import { audit } from '@/lib/booking/catalog';
 import { runOnce } from '@/lib/cronJob';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
-import { fromLark, syncPlansJob } from '@/lib/planSync';
-import { guard } from '@/lib/scope';
-import { requirePerm, requireUser } from '@/lib/session';
+import { fromLark, syncPlansJob } from '@/lib/lark/planSync';
+import { guard } from '@/lib/auth/scope';
+import { requirePerm, requireUser } from '@/lib/auth/session';
 import { KL_LEVELS } from '../contacts/platforms';
 
 // Đồng bộ plan từ Lark Base ngay (chạy nền sau khi trả trang); cùng khoá với cron nên không chạy chồng.

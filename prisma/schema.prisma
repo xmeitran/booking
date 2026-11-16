@@ -171,6 +171,8 @@ model ListingBatch {
   cr          Float?        // tỷ lệ chuyển đổi SP theo gian hàng, 0.05 = 5%
   aov         Int?          // AOV sản phẩm theo gian hàng, VND
   planLineId  String?       // đợt tạo từ matching của một dòng plan: job tạo từ đợt này gắn về dòng plan đó
+  sheetUrl    String?       // Google Sheet của brand đã đẩy listing (G1); kết quả duyệt đọc lại từ đây (G2)
+  sheetAt     DateTime?     // lần đẩy gần nhất
   shareToken  String?       // link Brand duyệt /review/<token>; null = chưa tạo hoặc đã thu hồi. Index thường, không @unique: thêm unique
                             // vào bảng có sẵn khiến `prisma db push` trên Render dừng đòi --accept-data-loss; token ngẫu nhiên 144 bit.
   createdById String
@@ -213,6 +215,7 @@ model ListingItem {
   brandChoice    String?      // Yes / No / Cân nhắc
   rejectReason   String?
   planAirDate    DateTime?
+  invitedAt      DateTime?    // đã gửi mail mời hợp tác (L6)
   viewTarget     Int?         // nhập tay khi cần (KL6–KL7, hoặc chưa có số TikTok)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -311,6 +314,7 @@ model Brand {
   usp       String?  // điểm bán hàng chính
   guideline String?  // brand guideline: link tài liệu + điểm chính (tone, từ cấm, claim được phép)
   checklist String?  // tiêu chí nghiệm thu video, mỗi dòng một tiêu chí; trống = checklist mặc định
+  keywords  String?  // từ khoá / hashtag bắt buộc trong caption video, cách nhau dấu phẩy (kiểm tra tự động khi nghiệm thu)
   note      String?
   stores    Store[]
   products  Product[]
@@ -450,6 +454,7 @@ model Job {
   reviewNote    String?
   reviewedById  String?
   reviewedAt    DateTime?
+  autoCheck     Json?           // kiểm tra tự động link nộp: [{ check, status PASS/WARN/FAIL, detail }] + at
   paymentId     String?
   payment       PaymentRequest? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   note          String?
@@ -467,6 +472,8 @@ model PaymentRequest { // đề nghị thanh toán (ĐNTT) gom từ job đã ngh
   id          String   @id @default(cuid())
   number      Int      @unique @default(autoincrement())
   status      String   @default("Nháp") // Nháp / Đã gửi duyệt / Đã duyệt / Đã thanh toán
+  approvalCode   String?  // instance_code trên Lark Approval (L4); null = chưa gửi qua Lark
+  approvalStatus String?  // PENDING / APPROVED / REJECTED / CANCELED / DELETED đọc lại từ Lark (L5)
   note        String?
   createdById String
   jobs        Job[]

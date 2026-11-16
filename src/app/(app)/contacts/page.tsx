@@ -3,14 +3,14 @@ import { pageOf, Pager } from '@/components/Pager';
 import { ActionForm, Avatar, Dialog, Menu } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtVnd, fmtVndShort } from '@/lib/format';
-import { gmvLabel } from '@/lib/kocInsights';
+import { gmvLabel } from '@/lib/koc/kocInsights';
 import {
   channelSummary, CONTACT_FILTERS, contactLabel, contractReadiness, directory, EXTRA_FLAGS, ISSUES, isCoop, KOC_CATEGORIES, LEGAL_FILTER_LABEL, legalOf,
   mask, picOf, PLATFORM_FILTERS, ratingSummary, READINESS, readinessOf, reviewSummary, salaryOf, UNCATEGORIZED, type DirFilters, type DirKoc,
-} from '@/lib/kocDirectory';
-import { dupKey } from '@/lib/listing';
-import { listingScope, scopeOf } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
+} from '@/lib/koc/kocDirectory';
+import { dupKey } from '@/lib/booking/listing';
+import { listingScope, scopeOf } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
 import { deleteKoc, refreshFromTikTok, saveKoc } from './actions';
 import { BookDialog, ChannelsDialog, ContactDialog, ReviewDialog } from './dialogs';
 import { boHandles, loadDirectory } from './directory';

@@ -1,13 +1,14 @@
 'use server';
+import { INTEGRATIONS, saveCfg } from '@/lib/integrations';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { Role } from '@prisma/client';
 import { db } from '@/lib/db';
 import { isUniqueError, str } from '@/lib/form';
-import { fetchLarkProfiles } from '@/lib/lark';
-import { ALL_PERMS, EDITABLE_ROLES, handoverWhere, readPolicy, writePolicy, type AccessPolicy } from '@/lib/access';
-import { audit, BRAND_ROLES, JOB_ROLES } from '@/lib/catalog';
-import { requirePerm, requireUser } from '@/lib/session';
+import { fetchLarkProfiles } from '@/lib/lark/lark';
+import { ALL_PERMS, EDITABLE_ROLES, handoverWhere, readPolicy, writePolicy, type AccessPolicy } from '@/lib/auth/access';
+import { audit, BRAND_ROLES, JOB_ROLES } from '@/lib/booking/catalog';
+import { requirePerm, requireUser } from '@/lib/auth/session';
 
 export async function saveUser(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser('ADMIN');
@@ -125,4 +126,18 @@ export async function handover(_: string | null, fd: FormData): Promise<string |
   await audit(me.id, 'User', fromId, `Bàn giao cho ${to.name ?? to.larkUserId}${lock ? ', khoá tài khoản' : ''}`, { toId, ...moved });
   revalidatePath(ASSIGN);
   redirect(`${ASSIGN}?done=${encodeURIComponent(`Đã bàn giao từ ${from.name ?? from.larkUserId} cho ${to.name ?? to.larkUserId}: ${moved.brands ?? 0} phân công brand, ${moved.jobs ?? 0} job, ${moved.lines ?? 0} dòng plan, ${moved.kocs ?? 0} KOC${lock ? '; đã khoá tài khoản' : ''}.`)}`);
+}
+
+/** Checklist tích hợp (Phân quyền → Tích hợp): lưu các ô Admin vừa điền. Nhật ký chỉ ghi tên mục, không ghi giá trị. */
+export async function saveIntegration(_: string | null, fd: FormData): Promise<string | null> {
+  const me = await requireUser('ADMIN');
+  const id = str(fd, 'integration');
+  const it = INTEGRATIONS.find((i) => i.id === id);
+  if (!it) return 'Tích hợp không hợp lệ.';
+  const map = str(fd, 'LARK_APPROVAL_FORM_MAP');
+  if (map && map !== '-') { try { JSON.parse(map); } catch { return 'Mapping ô form Approval phải là JSON hợp lệ.'; } }
+  const changed = await saveCfg(Object.fromEntries(it.items.map((x) => [x.key, str(fd, x.key)])));
+  await audit(me.id, 'Access', `integration:${id}`, 'Sửa cấu hình tích hợp', { keys: changed });
+  revalidatePath('/users/integrations');
+  redirect(`/users/integrations?saved=${id}#${id}`);
 }

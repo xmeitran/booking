@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Avatar, BrandLogo, CopyButton } from '@/components/ui';
-import { getCurrentUser } from '@/lib/session';
+import { getCurrentUser } from '@/lib/auth/session';
 
 const ERRORS: Record<string, string> = {
   not_configured: 'Chưa cấu hình LARK_APP_ID / LARK_APP_SECRET.',

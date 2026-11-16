@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server';
-import { AUTO_SYNC_GAP_MIN, syncBookingsJob } from '@/lib/bookingSync';
+import { AUTO_SYNC_GAP_MIN, syncBookingsJob } from '@/lib/lark/bookingSync';
 import { runOnce } from '@/lib/cronJob';
 
 // Webhook cho Lark Base automation (Gửi HTTP request) đồng bộ "3.2 List duyệt book". 05/11/2026 đã tắt automation vì

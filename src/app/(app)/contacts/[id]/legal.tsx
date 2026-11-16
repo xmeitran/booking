@@ -6,7 +6,7 @@ import { fmtDate } from '@/lib/format';
 import {
   CONTRACT_STATUS, contractReadiness, DEFAULT_SIGN_ROLE, DEFAULT_TAX_ACCOUNT, DEFAULT_VAT, LEGAL_FORM_LABEL, LEGAL_TYPE_LABEL, LEGAL_TYPES, mask, profileCode,
   SIGN_ROLES, TAX_ACCOUNT_OPTIONS, VAT_OPTIONS, type LegalProfileView, type LegalType,
-} from '@/lib/kocDirectory';
+} from '@/lib/koc/kocDirectory';
 import { deleteLegalProfile, saveLegalProfile, setDefaultLegalProfile } from '../actions';
 
 type Full = LegalProfileView & {

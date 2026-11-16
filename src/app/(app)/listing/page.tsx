@@ -3,11 +3,11 @@ import { CatalogPick } from '@/components/CatalogPick';
 import { ActionForm, Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate } from '@/lib/format';
-import { listingScope, scopeOf } from '@/lib/scope';
-import { requireUser } from '@/lib/session';
+import { listingScope, scopeOf } from '@/lib/auth/scope';
+import { requireUser } from '@/lib/auth/session';
 import { ScopeNote } from '@/components/ScopeNote';
 import { saveBatch, syncListingsNow } from './actions';
-import { fromLarkListing } from '@/lib/listing';
+import { fromLarkListing } from '@/lib/booking/listing';
 
 const thisMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).slice(0, 7);
 
@@ -30,7 +30,7 @@ export default async function ListingPage({ searchParams }: { searchParams: Prom
       q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { brand: { contains: q, mode: 'insensitive' as const } }, { store: { contains: q, mode: 'insensitive' as const } }] } : {},
     ],
   };
-  const [batches, brands, months, synced] = await Promise.all([
+  const [batches, brands, months, synced, elsewhere] = await Promise.all([
     db.listingBatch.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -39,6 +39,8 @@ export default async function ListingPage({ searchParams }: { searchParams: Prom
     isNew ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, stores: { select: { id: true, name: true }, orderBy: { name: 'asc' } }, products: { select: { id: true, name: true }, orderBy: { name: 'asc' } } } }) : [],
     db.listingBatch.findMany({ where: listingScope(scope), distinct: ['month'], select: { month: true }, orderBy: { month: 'desc' } }),
     db.syncState.findUnique({ where: { id: 'listings' } }),
+    // Đợt tạo trong app ở tháng khác bị bộ lọc tháng mặc định giấu: báo để người tạo không tưởng đợt bị mất.
+    sp.month ? 0 : db.listingBatch.count({ where: { AND: [listingScope(scope), { month: { not: month } }, { NOT: { id: { startsWith: 'lark-' } } }] } }),
   ]);
   const params = (o: Partial<Search>) => {
     const p = new URLSearchParams(Object.entries({ month: sp.month ?? '', src, q, ...o }).filter(([, v]) => v) as [string, string][]);
@@ -78,6 +80,12 @@ export default async function ListingPage({ searchParams }: { searchParams: Prom
         {(sp.month || src || q) && <Link href="/listing" className="btn border-transparent text-ink-3">Xóa lọc</Link>}
         <span className="ml-auto text-xs text-ink-3">{batches.length} đợt · {batches.reduce((s, b) => s + b.items.length, 0)} KOC</span>
       </form>
+
+      {elsewhere > 0 && (
+        <p className="mb-3 rounded-md bg-warning-soft px-3 py-2 text-[13px] text-warning">
+          Đang lọc tháng {month.split('-').reverse().join('/')}. Có {elsewhere} đợt tạo trong app ở tháng khác. <Link href="/listing?month=all&src=app" className="link">Xem</Link>
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">

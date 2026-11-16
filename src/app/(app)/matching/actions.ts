@@ -2,14 +2,14 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { after } from 'next/server';
-import { refreshKoc } from '@/lib/creatorStats';
+import { refreshKoc } from '@/lib/koc/creatorStats';
 import { db } from '@/lib/db';
 import { str } from '@/lib/form';
-import { audit } from '@/lib/catalog';
-import { fromLarkListing, LARK_LISTING_READONLY } from '@/lib/listing';
-import { parseCriteria } from '@/lib/matching';
-import { guard } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
+import { audit } from '@/lib/booking/catalog';
+import { fromLarkListing, LARK_LISTING_READONLY } from '@/lib/booking/listing';
+import { parseCriteria } from '@/lib/booking/matching';
+import { guard } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
 
 export async function saveBrief(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();

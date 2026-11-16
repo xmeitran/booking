@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate } from '@/lib/format';
-import { describe, TIKTOK_CATEGORIES, type Criteria } from '@/lib/matching';
-import { requireUser } from '@/lib/session';
+import { describe, TIKTOK_CATEGORIES, type Criteria } from '@/lib/booking/matching';
+import { requireUser } from '@/lib/auth/session';
 import { BriefForm } from './BriefForm';
 
 type Search = { new?: string; from?: string };

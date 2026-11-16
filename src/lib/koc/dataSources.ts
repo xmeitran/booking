@@ -3,7 +3,7 @@
 // bảng lớn mất ~10 giây nên phần tổng chạy nền (cron mỗi 6 giờ hoặc nút Làm mới) rồi lưu ở SyncState 'data-sources'.
 import { Prisma } from '@prisma/client';
 import { station } from './creatorStats';
-import { db } from './db';
+import { db } from '../db';
 
 // Chỉ dùng phép gộp cộng được qua các lô handle (mỗi creator chỉ nằm ở một lô): sum, count, count_distinct theo
 // trường của riêng creator, max. Không dùng avg vì không gộp đúng được.

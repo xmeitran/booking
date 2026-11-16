@@ -8,13 +8,15 @@
     "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
-    "test": "tsx --test src/lib/*.test.ts"
+    "test": "tsx --test src/lib/*.test.ts src/lib/*/*.test.ts"
   },
   "private": true,
   "dependencies": {
     "@anthropic-ai/sdk": "^1.5.0",
     "@prisma/client": "^6.19.3",
+    "@types/nodemailer": "^8.0.2",
     "next": "^16.3.5",
+    "nodemailer": "^7.0.13",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "server-only": "^0.0.1"

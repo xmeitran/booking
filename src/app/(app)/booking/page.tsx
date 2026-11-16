@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import type { Prisma } from '@prisma/client';
 import { pageOf, Pager } from '@/components/Pager';
-import { bookingWhere, FLAGS, isPayIssue, PIPELINE, PIPELINE_TONE, type BookingFilters } from '@/lib/bookings';
+import { bookingWhere, FLAGS, isPayIssue, PIPELINE, PIPELINE_TONE, type BookingFilters } from '@/lib/booking/bookings';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort } from '@/lib/format';
-import { bookingScope, scopeOf } from '@/lib/scope';
-import { requireUser } from '@/lib/session';
+import { bookingScope, scopeOf } from '@/lib/auth/scope';
+import { requireUser } from '@/lib/auth/session';
 import { ScopeNote } from '@/components/ScopeNote';
 import { syncNow } from './actions';
 
@@ -16,7 +16,7 @@ const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute
 type Search = BookingFilters & { view?: string; page?: string };
 type Row = Awaited<ReturnType<typeof db.booking.findMany>>[number];
 
-// Dữ liệu gốc ở Lark Base, đồng bộ mỗi giờ (src/lib/bookingSync.ts); sửa trên Lark.
+// Dữ liệu gốc ở Lark Base, đồng bộ mỗi giờ (src/lib/lark/bookingSync.ts); sửa trên Lark.
 export default async function BookingPage({ searchParams }: { searchParams: Promise<Search> }) {
   const scope = await scopeOf(await requireUser());
   const sw = bookingScope(scope);

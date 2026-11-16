@@ -1,6 +1,6 @@
 // Xuất Excel (CSV) dữ liệu KOC: dùng cho Danh bạ (theo bộ lọc) và Creator matching (danh sách khớp tiêu chí).
 import type { Koc, User } from '@prisma/client';
-import { fmtPct } from './format';
+import { fmtPct } from '../format';
 import { profileInsights, USD_VND } from './kocInsights';
 
 type K = Koc & { pic: Pick<User, 'name'> | null };

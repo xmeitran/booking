@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { larkAuthUrl, larkConfigured } from '@/lib/lark';
-import { absUrl } from '@/lib/session';
+import { larkAuthUrl, larkConfigured } from '@/lib/lark/lark';
+import { absUrl } from '@/lib/auth/session';
 
 export async function GET(req: NextRequest) {
   if (!larkConfigured()) return NextResponse.redirect(absUrl('/login?error=not_configured', req));

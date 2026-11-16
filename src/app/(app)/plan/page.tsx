@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { ActionForm, Dialog } from '@/components/ui';
-import { CANCELLED } from '@/lib/jobs';
+import { CANCELLED } from '@/lib/booking/jobs';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtShort } from '@/lib/format';
-import { fromLark } from '@/lib/planSync';
-import { jobScope, lineScope, planScope, scopeOf } from '@/lib/scope';
-import { can, requireUser } from '@/lib/session';
+import { fromLark } from '@/lib/lark/planSync';
+import { jobScope, lineScope, planScope, scopeOf } from '@/lib/auth/scope';
+import { can, requireUser } from '@/lib/auth/session';
 import { ScopeNote } from '@/components/ScopeNote';
 import { savePlan, syncPlansNow } from './actions';
 

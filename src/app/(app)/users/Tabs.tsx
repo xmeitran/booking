@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import { can, type Me } from '@/lib/session';
+import { can, type Me } from '@/lib/auth/session';
 
 // Tab "Phân quyền" (theo nhóm "Phân quyền & Định mức" của app b2c, chưa có định mức công việc).
 const TABS = [
   { href: '/users', label: 'Người dùng & đăng nhập', admin: true },
   { href: '/users/roles', label: 'Vai trò & quyền', admin: true },
   { href: '/users/assign', label: 'Phân công & bàn giao', admin: false },
+  { href: '/users/integrations', label: 'Tích hợp', admin: true },
 ];
 
 export function UsersTabs({ me, active, action }: { me: Me; active: string; action?: React.ReactNode }) {

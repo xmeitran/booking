@@ -1,10 +1,10 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { refreshKoc } from '@/lib/creatorStats';
+import { refreshKoc } from '@/lib/koc/creatorStats';
 import { db } from '@/lib/db';
 import { str } from '@/lib/form';
-import { requireUser } from '@/lib/session';
+import { requireUser } from '@/lib/auth/session';
 import { TIKTOK_USERNAME } from '@/lib/validate';
 
 /** Tra TikTok Shop Creator Marketplace ngay cho một creator; creator chưa có trong Danh bạ thì thêm vào (bấm nút ghi rõ). */

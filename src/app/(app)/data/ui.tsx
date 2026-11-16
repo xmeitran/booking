@@ -1,7 +1,7 @@
 // Phần hiển thị tab Dữ liệu, theo bộ component giao diện của app b2c (web-admin/src/components/ui: Panel, Status, Stat,
 // StatRow, Tabs, Chips, Segmented, DataTable). Bản server: chuyển mục bằng link thay cho onClick.
 import Link from 'next/link';
-import { LARK, MARKET, ORIGIN, STATION, type Source } from '@/lib/dataSources';
+import { LARK, MARKET, ORIGIN, STATION, type Source } from '@/lib/koc/dataSources';
 import { fmtDate, fmtShort } from '@/lib/format';
 
 export type AreaKey = keyof typeof ORIGIN;

@@ -4,8 +4,8 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { Role, User } from '@prisma/client';
 import { deptAllowed, permsOf, readPolicy, type Perm } from './access';
-import { db } from './db';
-import { fetchLarkProfiles } from './lark';
+import { db } from '../db';
+import { fetchLarkProfiles } from '../lark/lark';
 import type { NextRequest, NextResponse } from 'next/server';
 import { signToken, verifyToken } from './token';
 

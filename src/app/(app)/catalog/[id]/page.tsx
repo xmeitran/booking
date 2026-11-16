@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ActionForm, Avatar, Dialog } from '@/components/ui';
-import { BRAND_ROLES, checklistOf } from '@/lib/catalog';
+import { BRAND_ROLES, checklistOf } from '@/lib/booking/catalog';
 import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtVnd } from '@/lib/format';
-import { can, requireUser } from '@/lib/session';
+import { can, requireUser } from '@/lib/auth/session';
 import { addMember, deleteBrand, removeItem, saveBrand, saveProduct, saveStore } from '../actions';
 
 type Search = { edit?: string; store?: string; product?: string };
@@ -135,6 +135,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
             <F label="Link logo"><input name="logoUrl" type="url" defaultValue={b.logoUrl ?? ''} className="input" /></F>
             <F label="USP"><textarea name="usp" rows={3} defaultValue={b.usp ?? ''} className="input" /></F>
             <F label="Brand guideline (link tài liệu + điểm chính)"><textarea name="guideline" rows={4} defaultValue={b.guideline ?? ''} className="input" /></F>
+            <F label="Từ khoá / hashtag bắt buộc trong caption (cách nhau dấu phẩy)"><input name="keywords" defaultValue={b.keywords ?? ''} placeholder="#phcare, dung dịch vệ sinh" className="input" /></F>
             <F label="Checklist nghiệm thu (mỗi dòng một tiêu chí; trống = dùng mặc định)">
               <textarea name="checklist" rows={6} defaultValue={b.checklist ?? ''} placeholder={checklist.join('\n')} className="input" />
             </F>

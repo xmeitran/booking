@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { fmtPct } from '@/lib/format';
 import { csvResponse } from '@/lib/csv';
-import { COLS, loadListing } from '@/lib/listing';
-import { guard } from '@/lib/scope';
-import { can, requirePerm } from '@/lib/session';
+import { COLS, loadListing } from '@/lib/booking/listing';
+import { guard } from '@/lib/auth/scope';
+import { can, requirePerm } from '@/lib/auth/session';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await requirePerm('data.export');

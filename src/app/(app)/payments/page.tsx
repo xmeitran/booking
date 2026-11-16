@@ -2,11 +2,11 @@ import Link from 'next/link';
 import { ActionForm } from '@/components/ui';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum } from '@/lib/format';
-import { jobCode } from '@/lib/jobs';
-import { FEE_DIVISOR } from '@/lib/kocInsights';
-import { PAY_TONE } from '@/lib/payments';
-import { jobScope, paymentScope, scopeOf } from '@/lib/scope';
-import { requireUser } from '@/lib/session';
+import { jobCode } from '@/lib/booking/jobs';
+import { FEE_DIVISOR } from '@/lib/koc/kocInsights';
+import { PAY_TONE } from '@/lib/booking/payments';
+import { jobScope, paymentScope, scopeOf } from '@/lib/auth/scope';
+import { requireUser } from '@/lib/auth/session';
 import { ScopeNote } from '@/components/ScopeNote';
 import { createPayment } from './actions';
 

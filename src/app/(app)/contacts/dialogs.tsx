@@ -5,8 +5,8 @@ import { fmtDate } from '@/lib/format';
 import {
   ALL_BRANDS_SCOPE, channelSummary, CONTACT_CHANNELS, CONTACT_STATUS, OTHER_PLATFORMS, READINESS_OPTIONS, ratingSummary, REVIEW_REASONS, reviewSummary,
   TIKTOK_ROLES, VERDICTS,
-} from '@/lib/kocDirectory';
-import { PRICE_TYPES } from '@/lib/listing';
+} from '@/lib/koc/kocDirectory';
+import { PRICE_TYPES } from '@/lib/booking/listing';
 import { addKocs } from '../listing/actions';
 import { deleteReview, logContact, saveChannels, saveReview } from './actions';
 
