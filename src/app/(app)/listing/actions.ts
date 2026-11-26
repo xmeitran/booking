@@ -36,8 +36,8 @@ export async function saveBatch(_: string | null, fd: FormData): Promise<string 
   const aov = optInt(fd, 'aov');
   if (!name) return 'Nhập tên đợt listing.';
   if (!/^\d{4}-\d{2}$/.test(month)) return 'Chọn tháng.';
-  if (Number.isNaN(cr)) return 'CR là phần trăm từ 0 tới 100.';
-  if (Number.isNaN(aov)) return 'AOV phải là số nguyên ≥ 0.';
+  if (Number.isNaN(cr)) return 'Tỉ lệ chuyển đổi nhập số % từ 0 tới 100.';
+  if (Number.isNaN(aov)) return 'Giá trị 1 đơn phải là số tiền từ 0 trở lên.';
   // Brand / gian hàng / sản phẩm chọn từ Danh mục; CR, AOV trống thì lấy của gian hàng.
   const place = str(fd, 'place');
   const storeRow = place.startsWith('s:') ? await db.store.findUnique({ where: { id: place.slice(2) }, include: { brand: true } }) : null;
@@ -113,7 +113,7 @@ export async function saveItem(_: string | null, fd: FormData): Promise<string |
   const viewTarget = optInt(fd, 'viewTarget');
   const planAirDate = str(fd, 'planAirDate');
   const videos = optInt(fd, 'videos') ?? 1;
-  if (Number.isNaN(price) || Number.isNaN(viewTarget)) return 'Giá và View Target phải là số nguyên ≥ 0.';
+  if (Number.isNaN(price) || Number.isNaN(viewTarget)) return 'Giá và view mục tiêu phải là số từ 0 trở lên.';
   if (Number.isNaN(videos) || videos < 1 || videos > 50) return 'Số video từ 1 tới 50.';
   const item = await db.listingItem.update({
     where: { id },
@@ -186,7 +186,7 @@ export async function syncListingsNow() {
 // ---- Google Sheet của brand (G1 đẩy listing, G2 lấy kết quả duyệt). Tab trong sheet đặt theo tên đợt.
 const tabOf = (name: string) => name.replace(/[\[\]:*?/\\]/g, ' ').slice(0, 90);
 const back = (id: string, k: 'msg' | 'err', text: string): never => redirect(`/listing/${id}?${k}=${encodeURIComponent(text)}`);
-const errText = (e: unknown) => (e instanceof Error ? e.message : 'Lỗi không rõ');
+const errText = (e: unknown) => (e instanceof Error ? e.message : 'Có lỗi, thử lại sau.');
 
 /** G1: ghi đè tab của đợt trên Google Sheet bằng các cột gửi Brand (không có thông tin cá nhân, không có KOC blacklist). */
 export async function pushToSheet(fd: FormData) {
@@ -210,7 +210,7 @@ export async function pushToSheet(fd: FormData) {
   } catch (e) { back(id, 'err', errText(e)); }
   await db.listingBatch.update({ where: { id }, data: { sheetUrl: `https://docs.google.com/spreadsheets/d/${sheetId}`, sheetAt: new Date() } });
   revalidatePath(`/listing/${id}`);
-  back(id, 'msg', `Đã đẩy ${rows.length} KOC sang Google Sheet, tab "${tabOf(batch.name)}".`);
+  back(id, 'msg', `Đã gửi ${rows.length} KOC sang Google Sheet của brand, trang "${tabOf(batch.name)}".`);
 }
 
 /** Chữ brand gõ trên sheet → Yes / No / Cân nhắc (như bản b2c). Không nhận ra → null. */
@@ -247,12 +247,12 @@ export async function pullFromSheet(fd: FormData) {
   await guard(me, 'listing', id);
   if (fromLarkListing(id)) back(id, 'err', LARK_LISTING_READONLY);
   const sheetId = sheetIdOf((await db.listingBatch.findUniqueOrThrow({ where: { id } })).sheetUrl ?? '');
-  if (!sheetId) back(id, 'err', 'Đợt này chưa đẩy sang Google Sheet.');
+  if (!sheetId) back(id, 'err', 'Đợt này chưa gửi sang Google Sheet.');
   let n: number | null = 0;
   try { n = await applySheetDecisions(id, sheetId!); } catch (e) { back(id, 'err', errText(e)); }
-  if (n == null) back(id, 'err', 'Sheet thiếu cột "ID kênh" hoặc "Brand chọn" ở dòng tiêu đề. Đẩy lại listing để tạo lại tab.');
+  if (n == null) back(id, 'err', 'Google Sheet thiếu cột "ID kênh" hoặc "Brand chọn". Bấm "Gửi lại listing sang sheet" để tạo lại.');
   revalidatePath(`/listing/${id}`);
-  back(id, 'msg', n ? `Đã cập nhật kết quả duyệt của ${n} KOC từ Google Sheet.` : 'Google Sheet chưa có thay đổi nào so với app.');
+  back(id, 'msg', n ? `Đã lấy lựa chọn của brand cho ${n} KOC từ Google Sheet.` : 'Google Sheet chưa có lựa chọn nào mới của brand.');
 }
 
 /** L6: gửi mail mời hợp tác cho KOC trong đợt có email và chưa được mời (KOC blacklist, KOC brand đã từ chối thì bỏ qua). */
@@ -278,7 +278,7 @@ export async function inviteKocs(fd: FormData) {
       ten_koc: k.nickname ?? k.name, id_kenh: `@${k.handle}`, link_kenh: k.channelUrl ?? `https://www.tiktok.com/@${k.handle}`,
       thuong_hieu: batch.brand ?? '', gian_hang: batch.store ?? batch.brand ?? '', san_pham: batch.product ?? '', loai_gia: it.priceType,
       thang_chien_dich: `${m}/${y}`, dot_booking: batch.name,
-      muc_cat_xe: it.price ? `${fmtNum(it.price)} VNĐ (giá net nhận về)` : 'Trao đổi chi tiết theo ratecard kênh',
+      muc_cat_xe: it.price ? `${fmtNum(it.price)} VNĐ (thực nhận)` : 'Trao đổi chi tiết theo bảng giá của kênh',
       ngay_air_du_kien: it.planAirDate ? it.planAirDate.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'sẽ thống nhất sau',
       ten_pic: me.name ?? 'Team Booking UpBase', email_pic: me.email ?? '', ghi_chu_rieng: it.contentNote ? `- Ghi chú: ${it.contentNote}` : '',
     };
@@ -290,5 +290,5 @@ export async function inviteKocs(fd: FormData) {
     } catch (e) { failed.push(`@${k.handle} (${errText(e).slice(0, 80)})`); }
   }
   revalidatePath(`/listing/${id}`);
-  back(id, failed.length ? 'err' : 'msg', `Đã gửi mail mời ${sent}/${batch.items.length} KOC.${failed.length ? ` Lỗi: ${failed.slice(0, 5).join('; ')}` : ''}`);
+  back(id, failed.length ? 'err' : 'msg', `Đã gửi mail mời ${sent}/${batch.items.length} KOC.${failed.length ? ` Chưa gửi được: ${failed.slice(0, 5).join('; ')}` : ''}`);
 }

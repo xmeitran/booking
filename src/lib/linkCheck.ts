@@ -13,11 +13,11 @@ export const videoIdOf = (url: string) => url.match(/\/video\/(\d{10,25})/)?.[1]
 export function evaluate(v: VideoInfo, expect: { handle: string; keywords: string[] }): Check[] {
   if (!v.live) return [{ check: 'Link video', status: 'FAIL', detail: 'Không mở được video (đã xoá, riêng tư hoặc link sai).' }];
   // TikTok trả 200 nhưng không kèm tác giả / caption (video giới hạn vùng, vừa đăng): không kết luận được, để người nghiệm thu xem.
-  const out: Check[] = [v.author || v.caption != null ? { check: 'Link video', status: 'PASS', detail: v.finalUrl } : { check: 'Link video', status: 'WARN', detail: `TikTok không trả thông tin video, mở link kiểm tra tay: ${v.finalUrl}` }];
+  const out: Check[] = [v.author || v.caption != null ? { check: 'Link video', status: 'PASS', detail: v.finalUrl } : { check: 'Link video', status: 'WARN', detail: `Không đọc được thông tin video, mở link xem tay: ${v.finalUrl}` }];
   const author = v.author?.replace(/^@/, '').toLowerCase() ?? null;
-  out.push(!author ? { check: 'Đúng kênh', status: 'WARN', detail: 'Không đọc được tên kênh từ TikTok, kiểm tra tay.' }
+  out.push(!author ? { check: 'Đúng kênh', status: 'WARN', detail: 'Không đọc được tên kênh, mở link xem tay.' }
     : author === expect.handle.toLowerCase() ? { check: 'Đúng kênh', status: 'PASS', detail: `@${author}` }
-    : { check: 'Đúng kênh', status: 'FAIL', detail: `Video của @${author}, job của @${expect.handle}.` });
+    : { check: 'Đúng kênh', status: 'FAIL', detail: `Video thuộc kênh @${author}, không phải @${expect.handle}.` });
   const cap = norm(v.caption ?? '');
   for (const k of expect.keywords) {
     const tag = k.startsWith('#');

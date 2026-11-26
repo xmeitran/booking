@@ -7,7 +7,7 @@ import { fmtNum, fmtPct } from '@/lib/format';
 import { requireUser } from '@/lib/auth/session';
 import { refreshData } from './actions';
 import { RankView, ShopView } from './rank';
-import { AREAS, day, Empty, fmtTime, Freshness, KindPill, Metrics, Panel, SectionHeader, Stat, StatRow, Status, TabNav, val, type AreaKey } from './ui';
+import { AREAS, day, Empty, fmtWhen, Freshness, KindPill, Metrics, Panel, SectionHeader, Stat, StatRow, Status, TabNav, val, type AreaKey } from './ui';
 
 // Tab Dữ liệu chia theo việc người xem cần: Tổng quan (dữ liệu có mới, đủ không; KOL nào bán tốt) · Xếp hạng creator ·
 // Theo shop / brand · Kiểm soát nhập liệu Lark · Nguồn & cách tính. Giao diện theo bộ component của app b2c.
@@ -17,6 +17,8 @@ type Saved = SourceStats | { error: string } | undefined;
 type Quality = Awaited<ReturnType<typeof qualityCounts>>;
 
 const DEFAULT_SRC = 'aff_orders'; // Đơn affiliate creator bán cho shop UpBase: câu hỏi hay gặp nhất
+const QUALITY_NOTE = `Booking air từ ${QUALITY_DAYS} ngày trước trở đi hoặc plan 2 tháng gần đây. Sửa trên Lark, lỗi tự hết trong vòng 1 giờ`;
+const REFRESH = 'Cập nhật số liệu ngay';
 
 export default async function DataPage({ searchParams }: { searchParams: Promise<Search> }) {
   await requireUser();
@@ -50,7 +52,7 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
     <>
       <div className="mb-3">
         <h1 className="text-xl font-semibold">Dữ liệu</h1>
-        <p className="mt-0.5 text-xs text-ink-3">Số liệu creator lấy từ kho dữ liệu UpBase (đơn, video, LIVE của các shop UpBase quản lý; hồ sơ creator TikTok) và từ Lark (booking team nhập).</p>
+        <p className="mt-0.5 text-xs text-ink-3">Creator nào bán tốt cho shop UpBase, số liệu mới tới đâu, booking nào nhập thiếu trên Lark.</p>
       </div>
       {sp.notfound && <p role="alert" className="mb-3 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">Không đọc được username TikTok. Nhập dạng @username hoặc dán link kênh.</p>}
       <TabNav
@@ -58,7 +60,7 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
           { href: '/data', label: 'Tổng quan', active: view === '' },
           { href: '/data?view=rank', label: 'Xếp hạng creator', active: view === 'rank' },
           { href: '/data?view=shop', label: 'Theo shop / brand', active: view === 'shop' },
-          { href: '/data?view=quality', label: 'Kiểm soát nhập liệu', active: view === 'quality', count: errors ? fmtNum(errors) : undefined, tone: 'critical' },
+          { href: '/data?view=quality', label: 'Lỗi nhập trên Lark', active: view === 'quality', count: errors ? fmtNum(errors) : undefined, tone: 'critical' },
           { href: '/data?view=sources', label: 'Nguồn & cách tính', active: view === 'sources' },
         ]}
         actions={
@@ -69,8 +71,8 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
             </form>
             <form action={refreshData}>
               <button className="btn h-8 px-3 text-xs" disabled={running}
-                title={running ? 'Đang tổng hợp số từ kho (~2 phút), tải lại trang sau' : state?.finishedAt ? `Số kho tổng hợp lúc ${fmtTime(state.finishedAt)}` : 'Số kho chưa tổng hợp'}>
-                {running ? 'Đang làm mới…' : 'Làm mới số kho'}
+                title={running ? 'Đang cập nhật, mất vài phút. Tải lại trang sau' : state?.finishedAt ? `Cập nhật lần cuối ${fmtWhen(state.finishedAt)}` : 'Chưa cập nhật lần nào'}>
+                {running ? 'Đang cập nhật…' : REFRESH}
               </button>
             </form>
           </>
@@ -110,13 +112,12 @@ async function Overview({ saved, stationAt, syncs, quality }: { saved: Record<st
   return (
     <div className="grid gap-6">
       <section>
-        <SectionHeader title={`Dữ liệu có mới và đủ không · KOL Danh bạ (${fmtNum(kocTotal)}) có số ở từng nhóm`} />
+        <SectionHeader title={`KOL Danh bạ đã có số liệu (tổng ${fmtNum(kocTotal)} KOL)`} />
         <StatRow>
           {cards.map(({ k, at, error, coverage }) => {
             const a = AREAS.find((x) => x.key === k)!;
             return (
               <Stat key={k} href={`/data?view=sources#${k}`} label={a.title} value={fmtNum(coverage)} note={`${fmtPct(kocTotal ? coverage / kocTotal : null)} Danh bạ · ${a.question}`}>
-                <span className="mt-1.5 flex flex-wrap items-center gap-1.5"><KindPill k={k} /><span className="text-2xs text-ink-3">{a.system}</span></span>
                 <Freshness k={k} at={at} error={error} />
               </Stat>
             );
@@ -125,11 +126,11 @@ async function Overview({ saved, stationAt, syncs, quality }: { saved: Record<st
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <MiniRank title="KOL Danh bạ bán tốt nhất cho shop UpBase" meta="GMV đơn affiliate bán cho các shop UpBase quản lý, toàn bộ khoảng ngày của bảng" s={shopSrc} rows={ourTop?.rows ?? null} more={ranking(true)} />
-        <MiniRank title="Creator ngoài Danh bạ đang bán mạnh cho shop UpBase" meta="Đáng xem để mời hợp tác; chưa có trong Danh bạ KOC" s={shopSrc} rows={outside} more={ranking(false)} />
+        <MiniRank title="KOL Danh bạ bán tốt nhất cho shop UpBase" meta="Xếp theo GMV đơn affiliate, tính toàn bộ thời gian" s={shopSrc} rows={ourTop?.rows ?? null} more={ranking(true)} />
+        <MiniRank title="Creator ngoài Danh bạ đang bán mạnh cho shop UpBase" meta="Chưa có trong Danh bạ, nên xem để mời hợp tác" s={shopSrc} rows={outside} more={ranking(false)} />
       </div>
 
-      <Panel flush title="Lark nhập thiếu / sai" meta={`Booking air / dự kiến air từ ${QUALITY_DAYS} ngày trước hoặc tháng plan gần đây; sửa trên Lark, lượt đồng bộ sau tự hết`}
+      <Panel flush title="Lỗi nhập trên Lark" meta={QUALITY_NOTE}
         actions={<Link href="/data?view=quality" className="link text-xs">Xem chi tiết</Link>}>
         <QualityTable quality={quality} />
       </Panel>
@@ -142,7 +143,7 @@ async function MiniRank({ title, meta, s, rows, more }: { title: string; meta: s
   const kocOf = new Map(kocs.map((k) => [k.handle, k]));
   return (
     <Panel flush title={title} meta={meta} actions={<Link href={more} className="link text-xs">Xem bảng xếp hạng</Link>}>
-      {rows === null ? <Empty>Chưa đọc được số từ kho. Bấm Làm mới số kho hoặc xem lại sau.</Empty> : !rows.length ? <Empty>Chưa có creator nào.</Empty> : (
+      {rows === null ? <Empty>Chưa đọc được số liệu. Bấm &quot;{REFRESH}&quot; hoặc xem lại sau.</Empty> : !rows.length ? <Empty>Chưa có creator nào.</Empty> : (
         <table className="dt">
           <thead><tr><th className="w-8">#</th><th>Creator</th><th className="text-right">{s.metrics[0].label}</th><th className="text-right">{s.metrics[1].label}</th></tr></thead>
           <tbody>
@@ -188,8 +189,7 @@ function QualityTable({ quality }: { quality: Quality }) {
 
 function QualityView({ quality }: { quality: Quality }) {
   return (
-    <Panel flush title="Kiểm soát nhập liệu trên Lark Base"
-      meta={`Booking điền thiếu / sai khiến Booking Hub không khớp được KOL, không tính được chi phí, KPI. Chỉ xét booking air / dự kiến air từ ${QUALITY_DAYS} ngày trước hoặc tháng plan gần đây; sửa trên Lark, lượt đồng bộ sau tự hết`}>
+    <Panel flush title="Lỗi nhập trên Lark" meta={QUALITY_NOTE}>
       <QualityTable quality={quality} />
     </Panel>
   );
@@ -200,8 +200,8 @@ async function CheckList({ check }: { check: string }) {
   const rows = (await qualityRows(check)) ?? [];
   return (
     <div className="grid gap-3">
-      <Link href="/data?view=quality" className="text-xs text-ink-3 hover:text-ink">← Kiểm soát nhập liệu</Link>
-      <Panel flush title={c.label} meta={`${c.hint}. Tối đa 500 dòng; mở booking rồi bấm "Mở trên Lark" để sửa`} actions={<Status tone={rows.length ? 'warning' : 'positive'}>{fmtNum(rows.length)} booking</Status>}>
+      <Link href="/data?view=quality" className="text-xs text-ink-3 hover:text-ink">← Lỗi nhập trên Lark</Link>
+      <Panel flush title={c.label} meta={`${c.hint}. Bấm mã booking rồi "Mở trên Lark" để sửa (hiện tối đa 500 dòng)`} actions={<Status tone={rows.length ? 'warning' : 'positive'}>{fmtNum(rows.length)} booking</Status>}>
         {!rows.length ? <Empty>Không còn booking nào lỗi này.</Empty> : (
           <div className="overflow-x-auto">
             <table className="dt">
@@ -232,7 +232,7 @@ async function Sources({ saved }: { saved: Record<string, Saved> }) {
   const statOf = (s: Source): Saved => (s.key === 'lark' ? lark : s.key === 'marketplace' ? market : saved[s.key]);
   return (
     <div className="grid gap-5">
-      <Panel flush title="Nguồn dữ liệu" meta="Các bảng chồng lấn (đơn từ video, LIVE cũng nằm trong Đơn affiliate của shop), nên không cộng số giữa các bảng. Creator khớp Danh bạ theo username TikTok">
+      <Panel flush title="Nguồn dữ liệu" meta="Không cộng số giữa các bảng: đơn từ video, LIVE đã nằm trong Đơn affiliate của shop. Creator khớp Danh bạ theo username TikTok">
         <table className="dt">
           <thead><tr><th>Nguồn</th><th>Loại số</th><th>Cập nhật</th></tr></thead>
           <tbody>
@@ -248,11 +248,11 @@ async function Sources({ saved }: { saved: Record<string, Saved> }) {
       </Panel>
 
       {AREAS.map((a) => (
-        <Panel key={a.key} id={a.key} flush title={a.title} meta={`${a.system} · ${a.question}`} actions={<KindPill k={a.key} />}>
+        <Panel key={a.key} id={a.key} flush title={a.title} meta={`${ORIGIN[a.key].name} · ${a.question}`} actions={<KindPill k={a.key} />}>
           <div className="overflow-x-auto">
             <table className="dt">
               <thead>
-                <tr><th>Bảng</th><th>Phủ dữ liệu</th><th className="text-right">Creator</th><th className="text-right">KOL Danh bạ có mặt</th><th>Hiệu quả · mọi creator</th><th>Hiệu quả · KOL Danh bạ</th></tr>
+                <tr><th>Bảng</th><th>Khoảng ngày</th><th className="text-right">Creator</th><th className="text-right">KOL Danh bạ có số</th><th>Hiệu quả · mọi creator</th><th>Hiệu quả · KOL Danh bạ</th></tr>
               </thead>
               <tbody>
                 {a.sources.map((s) => {
@@ -268,10 +268,10 @@ async function Sources({ saved }: { saved: Record<string, Saved> }) {
                         </details>
                       </td>
                       {!st || 'error' in st ? (
-                        <td colSpan={5}><Status tone={st ? 'critical' : 'neutral'}>{st ? `Lỗi: ${st.error}` : 'Chưa tổng hợp, bấm Làm mới số kho'}</Status></td>
+                        <td colSpan={5}><Status tone={st ? 'critical' : 'neutral'} title={st?.error}>{st ? 'Lần cập nhật gần nhất bị lỗi' : `Chưa có số, bấm "${REFRESH}"`}</Status></td>
                       ) : (
                         <>
-                          <td className="whitespace-nowrap">{day(st.from)} – {day(st.to)}<div className="text-2xs text-ink-3">{fmtNum(st.rows)} dòng</div>{st.lastError && <div className="text-2xs text-warning" title={st.lastError}>Lượt gần nhất lỗi (kho bận), đang giữ số lần trước</div>}</td>
+                          <td className="whitespace-nowrap">{day(st.from)} – {day(st.to)}<div className="text-2xs text-ink-3">{fmtNum(st.rows)} dòng</div>{st.lastError && <div className="text-2xs text-warning" title={st.lastError}>Lần cập nhật gần nhất bị lỗi, đang giữ số lần trước</div>}</td>
                           <td className="text-right font-medium">{fmtNum(st.creators)}</td>
                           <td className="text-right">{fmtNum(st.ours.creators)}<div className="text-2xs text-ink-3">{fmtPct(kocTotal ? st.ours.creators / kocTotal : null)} Danh bạ</div></td>
                           <td><Metrics s={s} m={st.m} /></td>

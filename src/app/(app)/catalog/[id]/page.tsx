@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 import { fmtNum, fmtPct, fmtVnd } from '@/lib/format';
 import { can, requireUser } from '@/lib/auth/session';
 import { CATEGORY } from '@/lib/koc/kocInsights';
-import { GROUP0, KL_LEVELS, KL_METRICS, parseRules, SCANDAL_LABEL } from '@/lib/matching/spec';
+import { GROUP_LABEL, GROUP0, KL_LEVELS, KL_METRICS, parseRules, SCANDAL_LABEL } from '@/lib/matching/spec';
 import { addMember, deleteBrand, removeItem, saveBrand, saveProduct, saveRules, saveStore } from '../actions';
 
 type Search = { edit?: string; store?: string; product?: string; rules?: string };
@@ -59,8 +59,8 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card title="USP"><Text v={b.usp} empty="Chưa có USP. Matching và brief dùng USP này." /></Card>
-        <Card title="Brand guideline"><Text v={b.guideline} empty="Chưa có guideline (link tài liệu + tone, từ cấm, claim được phép)." /></Card>
+        <Card title="USP"><Text v={b.usp} empty="Chưa có: brief và Creator matching sẽ thiếu điểm bán hàng của brand." /></Card>
+        <Card title="Brand guideline"><Text v={b.guideline} empty="Chưa có. Dán link tài liệu và ghi tone, từ cấm, claim được phép." /></Card>
         <Card title={`Checklist nghiệm thu${b.checklist ? '' : ' (mặc định)'}`}>
           <ol className="list-decimal space-y-0.5 pl-5 text-[13px]">{checklist.map((c) => <li key={c}>{c}</li>)}</ol>
         </Card>
@@ -68,14 +68,14 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
 
       <Section title="Thông tin brand dùng để tìm KOC" action={canEdit && <Link href="?edit=1" className="btn h-8 px-3 text-xs">Sửa</Link>}>
         <dl className="grid gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
-          <Info k="Ngành hàng" v={b.category} hint="Thiếu thì không lọc được KOC theo ngành" />
-          <Info k="Ngành con" v={b.subCategory} hint="Để tránh book KOC đang làm cho brand cùng ngành con" />
-          <Info k="Tập đoàn" v={b.group} hint="Để tránh book KOC đang làm cho brand cùng tập đoàn" />
+          <Info k="Ngành hàng" v={b.category} hint="không lọc được KOC theo ngành" />
+          <Info k="Ngành con" v={b.subCategory} hint="không chặn được KOC đang làm cho brand cùng ngành con" />
+          <Info k="Tập đoàn" v={b.group} hint="không chặn được KOC đang làm cho brand cùng tập đoàn" />
           <Info k="Khách hàng mục tiêu" v={b.audience} />
           <Info k="Tone" v={b.tone} />
           <Info k="Claim được phép" v={b.rtb} />
-          <Info k="Từ / claim bị cấm" v={b.bannedClaims.join(', ')} hint="Hệ thống cảnh báo KOC dùng các từ này" />
-          <Info k="Đối thủ" v={b.competitors.join(', ')} hint="Hệ thống cảnh báo KOC đăng sản phẩm đối thủ" />
+          <Info k="Từ / claim bị cấm" v={b.bannedClaims.join(', ')} hint="không cảnh báo được KOC dùng từ cấm" />
+          <Info k="Đối thủ" v={b.competitors.join(', ')} hint="không cảnh báo được KOC đăng sản phẩm đối thủ" />
         </dl>
       </Section>
 
@@ -90,10 +90,10 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
           <Info k="Xét phốt trong" v={SCANDAL_LABEL[rules.scandal]} />
           <Info k="Kiểm uy tín brand KOC từng làm" v={rules.k3 ? 'Bật' : 'Tắt'} />
           <Info k="Coi là đối thủ khi giá chênh trong" v={`±${rules.priceBand}%`} />
-          <Info k="Ads code, đăng lại mặc định" v={`${rules.adsCodeDays} ngày${rules.reupChannels.length ? ` · reup ${rules.reupChannels.join(', ')}` : ''}`} />
+          <Info k="Ads code, đăng lại mặc định" v={`${rules.adsCodeDays} ngày${rules.reupChannels.length ? ` · đăng lại ${rules.reupChannels.join(', ')}` : ''}`} />
           <Info k="Người duyệt giữ lại KOC bị loại" v={`${rules.exceptionApprover ? userName.get(rules.exceptionApprover) : 'Trưởng nhóm (quyền duyệt list)'} · giữ chỗ ${rules.holdDays} ngày`} />
           <Info k="KOC không đăng đối thủ trong" v={`${rules.competitorDays} ngày trước air`} />
-          <Info k="Yêu cầu riêng của brand" v={rules.group0.length ? rules.group0.map((g) => `${GROUP0.find((c) => c.id === g.id)?.label} (${g.mode === 'must' ? 'Bắt buộc' : 'Cộng điểm'})`).join(', ') : 'Chưa chọn: lấy điểm trung bình nhóm A'} />
+          <Info k="Yêu cầu riêng của brand" v={rules.group0.length ? rules.group0.map((g) => `${GROUP0.find((c) => c.id === g.id)?.label} (${g.mode === 'must' ? 'Bắt buộc' : 'Cộng điểm'})`).join(', ') : `Chưa chọn: dùng điểm nhóm "${GROUP_LABEL.A}"`} />
         </dl>
         <div className="mt-3 overflow-x-auto">
           <table className="tbl">
@@ -105,20 +105,20 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
                 return (
                   <tr key={lv}>
                     <td className="font-medium">{lv}</td>
-                    {KL_METRICS.map(([k]) => <td key={k} className="text-right tabular-nums">{r?.[k] != null ? <>{fmtNum(r[k] as number)} <span className="text-[11px] text-ink-3">{must.has(k) ? 'Must' : 'Nice'}</span></> : '—'}</td>)}
+                    {KL_METRICS.map(([k]) => <td key={k} className="text-right tabular-nums">{r?.[k] != null ? <>{fmtNum(r[k] as number)} <span className="text-[11px] text-ink-3">{must.has(k) ? 'Bắt buộc' : 'Nên có'}</span></> : '—'}</td>)}
                     <td className="text-xs">{r?.approver ? userName.get(r.approver) : '—'}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          <p className="mt-1.5 text-xs text-ink-3">Chỉ số đánh dấu bắt buộc mà KOC dưới mức thì bị loại; không bắt buộc thì chỉ cảnh báo. Cấp không đặt ngưỡng thì không lọc. KOC chưa có cấp ở Danh bạ được xếp cấp theo follower tối thiểu.</p>
+          <p className="mt-1.5 text-xs text-ink-3">Bắt buộc: KOC dưới mức bị loại. Nên có: chỉ cảnh báo. Cấp để trống thì không lọc; KOC chưa có cấp thì xếp theo follower.</p>
         </div>
       </section>
 
       <Section title="Gian hàng" action={canEdit && <Link href="?store=new" className="btn h-8 px-3 text-xs">Thêm gian hàng</Link>}>
         <table className="tbl">
-          <thead><tr><th>Gian hàng</th><th>Sàn</th><th className="text-right">CR</th><th className="text-right">AOV</th><th /></tr></thead>
+          <thead><tr><th>Gian hàng</th><th>Sàn</th><th className="text-right">Tỉ lệ chuyển đổi</th><th className="text-right">Giá trị 1 đơn</th><th /></tr></thead>
           <tbody>
             {b.stores.map((s) => (
               <tr key={s.id}>
@@ -152,13 +152,13 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
                 <td className="max-w-80 text-xs">
                   {[
                     p.sku && `Mã ${p.sku}${p.line ? ` · ${p.line}` : ''}`,
-                    (p.targetGender || p.ageMin != null || p.ageMax != null) && `TA ${[p.targetGender, (p.ageMin != null || p.ageMax != null) && `${p.ageMin ?? '?'}–${p.ageMax ?? '?'} tuổi`].filter(Boolean).join(' ')}`,
-                    (p.femaleMin != null || p.age18_34Min != null || p.regionMin != null) && `K10: ${[p.femaleMin != null && `nữ ≥ ${p.femaleMin}%`, p.age18_34Min != null && `18–34 ≥ ${p.age18_34Min}%`, p.regionMin != null && `${p.regions.join(', ')} ≥ ${p.regionMin}%`].filter(Boolean).join(', ')}`,
+                    (p.targetGender || p.ageMin != null || p.ageMax != null) && `Khách ${[p.targetGender, (p.ageMin != null || p.ageMax != null) && `${p.ageMin ?? '?'}–${p.ageMax ?? '?'} tuổi`].filter(Boolean).join(' ')}`,
+                    (p.femaleMin != null || p.age18_34Min != null || p.regionMin != null) && `Tệp follower: ${[p.femaleMin != null && `nữ ≥ ${p.femaleMin}%`, p.age18_34Min != null && `18–34 ≥ ${p.age18_34Min}%`, p.regionMin != null && `${p.regions.join(', ')} ≥ ${p.regionMin}%`].filter(Boolean).join(', ')}`,
                     p.channelTypes.length > 0 && `Tệp kênh: ${p.channelTypes.join(', ')}`,
-                    p.exclusions.length > 0 && `TH loại: ${p.exclusions.length}`,
+                    p.exclusions.length > 0 && `Kiểu KOC không dùng: ${p.exclusions.length}`,
                     p.bannedWords.length > 0 && `Từ cấm: ${p.bannedWords.length}`,
-                    p.reviewerId && `PIC duyệt: ${userName.get(p.reviewerId) ?? '—'}`,
-                  ].filter(Boolean).join(' · ') || <span className="text-warning">Chưa cấu hình</span>}
+                    p.reviewerId && `Người duyệt nội dung: ${userName.get(p.reviewerId) ?? '—'}`,
+                  ].filter(Boolean).join(' · ') || <span className="text-warning">Chưa điền</span>}
                 </td>
                 <td className="text-right">{canEdit && <Link href={`?product=${p.id}`} className="link">Sửa</Link>}</td>
               </tr>
@@ -245,8 +245,8 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
             <F label="Tên gian hàng" wide><input name="name" required defaultValue={editingStore.name ?? ''} className="input" /></F>
             <F label="Sàn"><input name="platform" defaultValue={editingStore.platform ?? 'TikTok Shop'} className="input" /></F>
             <F label="Link gian hàng"><input name="url" type="url" defaultValue={editingStore.url ?? ''} className="input" /></F>
-            <F label="CR (%)"><input name="cr" inputMode="decimal" defaultValue={editingStore.cr != null ? String(+(editingStore.cr * 100).toFixed(4)) : ''} className="input" /></F>
-            <F label="AOV (₫)"><input name="aov" inputMode="numeric" defaultValue={editingStore.aov ?? ''} className="input" /></F>
+            <F label="Tỉ lệ chuyển đổi (%)"><input name="cr" inputMode="decimal" defaultValue={editingStore.cr != null ? String(+(editingStore.cr * 100).toFixed(4)) : ''} className="input" /></F>
+            <F label="Giá trị 1 đơn (₫)"><input name="aov" inputMode="numeric" defaultValue={editingStore.aov ?? ''} className="input" /></F>
             <div className="col-span-full flex justify-end gap-2"><Link href={close} className="btn">Hủy</Link><button className="btn btn-primary">Lưu</button></div>
           </ActionForm>
           {editingStore.id && (
@@ -293,7 +293,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
             <F label="Kiểu KOC không dùng (mỗi dòng một ý)" wide><textarea name="exclusions" rows={2} defaultValue={editingProduct.exclusions?.join('\n') ?? ''} placeholder="Tay khô ráp, tróc da" className="input" /></F>
             <F label="Từ cấm riêng của sản phẩm (mỗi dòng một cụm)" wide><textarea name="bannedWords" rows={2} defaultValue={editingProduct.bannedWords?.join('\n') ?? ''} placeholder="bản dupe" className="input" /></F>
             <fieldset className="col-span-full">
-              <legend className="label">Kiểu kênh ưu tiên</legend>
+              <legend className="label">Tệp kênh ưu tiên</legend>
               <div className="flex max-h-40 flex-wrap gap-x-4 gap-y-1 overflow-y-auto text-[13px]">
                 {niches.map((n) => <label key={n.niche} className="flex items-center gap-1.5"><input type="checkbox" name="channelTypes" value={n.niche!} defaultChecked={editingProduct.channelTypes?.includes(n.niche!)} />{n.niche}</label>)}
               </div>
@@ -329,7 +329,7 @@ function RulesDialog({ brandId, rules, users, close }: { brandId: string; rules:
         <input type="hidden" name="brandId" value={brandId} />
         <div className="overflow-x-auto">
           <table className="tbl">
-            <thead><tr><th>KL</th>{KL_METRICS.map(([k, l]) => <th key={k}>{l}<div className="font-normal text-ink-3">tick = bắt buộc</div></th>)}<th>Người chốt</th></tr></thead>
+            <thead><tr><th>Cấp KOC</th>{KL_METRICS.map(([k, l]) => <th key={k}>{l}<div className="font-normal text-ink-3">tick = bắt buộc</div></th>)}<th>Người chốt</th></tr></thead>
             <tbody>
               {KL_LEVELS.map((lv) => {
                 const r = rules.kl[lv];
@@ -354,7 +354,7 @@ function RulesDialog({ brandId, rules, users, close }: { brandId: string; rules:
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <F label="Bán hàng ngành tối thiểu (% GMV)"><input name="industryGmvMin" inputMode="numeric" defaultValue={rules.industryGmvMin} className="input" /></F>
-          <F label="Video cùng ngành tối thiểu (%, kho chưa có)"><input name="industryContentMin" inputMode="numeric" defaultValue={rules.industryContentMin} className="input" /></F>
+          <F label="Video cùng ngành tối thiểu (%, chưa có số để lọc)"><input name="industryContentMin" inputMode="numeric" defaultValue={rules.industryContentMin} className="input" /></F>
           <F label="Không book lại trong (ngày)"><input name="cooldownDays" inputMode="numeric" defaultValue={rules.cooldownDays} list="cooldown" className="input" /><datalist id="cooldown"><option value="30" /><option value="60" /><option value="90" /></datalist></F>
           <F label="Xét phốt trong">
             <select name="scandal" defaultValue={rules.scandal} className="input">{Object.entries(SCANDAL_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
@@ -393,7 +393,7 @@ function Info({ k, v, hint }: { k: string; v: string | null | undefined; hint?: 
   return (
     <div>
       <dt className="text-xs text-ink-3">{k}</dt>
-      <dd className="whitespace-pre-line">{v || <span className="text-warning">Chưa có{hint ? ` · ${hint}` : ''}</span>}</dd>
+      <dd className="whitespace-pre-line">{v || <span className="text-warning">Chưa có{hint ? `: ${hint}` : ''}</span>}</dd>
     </div>
   );
 }

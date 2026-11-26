@@ -4,7 +4,7 @@ import { Avatar } from '@/components/ui';
 import { db } from '@/lib/db';
 import { byShop, originOf, placesOf, topCreators, type ShopRow, type Source, type SourceStats, type TopRow } from '@/lib/koc/dataSources';
 import { fmtNum, fmtShort } from '@/lib/format';
-import { areaOf, day, Empty, fmtTime, KindPill, MetricNotes, Panel, Segmented, SourcePicker, Status } from './ui';
+import { areaOf, day, Empty, fmtWhen, KindPill, MetricNotes, Panel, Segmented, SourcePicker, Status } from './ui';
 
 type Saved = SourceStats | { error: string } | undefined;
 const localOnly = (s: Source) => s.group === 'lark'; // nguồn chỉ gồm KOL Danh bạ (mọi kênh trong booking đều vào Danh bạ)
@@ -17,9 +17,9 @@ function SourceInfo({ s, st, at, ours }: { s: Source; st: Saved; at: Date | null
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-2xs text-ink-3">
       <KindPill k={areaOf(s)} />
       <span>Nguồn <b className="font-medium text-ink-2">{placesOf(s)}</b></span>
-      <span>Phủ dữ liệu <b className="font-medium text-ink-2">{st && !('error' in st) ? `${day(st.from)} – ${day(st.to)}` : '—'}</b></span>
-      {st && !('error' in st) && st.lastError && <span className="text-warning" title={st.lastError}>Lượt tổng hợp gần nhất lỗi (kho bận), đang hiện số lần trước</span>}
-      <span>Số trên trang <b className="font-medium text-ink-2">{at ? `tổng hợp từ kho lúc ${fmtTime(at)}` : 'lưu trong Booking Hub'}</b> · cập nhật {o.schedule}</span>
+      <span>Khoảng ngày <b className="font-medium text-ink-2">{st && !('error' in st) ? `${day(st.from)} – ${day(st.to)}` : '—'}</b></span>
+      {st && !('error' in st) && st.lastError && <span className="text-warning" title={st.lastError}>Lần cập nhật gần nhất bị lỗi, đang hiện số lần trước</span>}
+      <span>{at ? <>Cập nhật <b className="font-medium text-ink-2">{fmtWhen(at)}</b> · {o.schedule}</> : `Cập nhật ${o.schedule}`}</span>
     </div>
   );
 }
@@ -65,7 +65,7 @@ export async function RankView({ s, st, ours, shop, by }: { s: Source; st: Saved
       <Panel
         flush
         title={s.name}
-        meta={<>{s.note} · {ours || local ? 'KOL trong Danh bạ' : 'top 100 creator'} xếp theo <b className="font-medium text-ink-2">{s.metrics[by].label}</b>, bấm tiêu đề cột để đổi</>}
+        meta={<>{s.note} · {ours || local ? 'KOL trong Danh bạ' : '100 creator đầu'} xếp theo <b className="font-medium text-ink-2">{s.metrics[by].label}</b>, bấm tiêu đề cột để đổi</>}
         actions={!local && <Segmented items={[{ href: href({ ours: false }), label: 'Mọi creator', active: !ours }, { href: href({ ours: true }), label: 'Chỉ KOL Danh bạ', active: ours }]} />}
       >
         <div className="grid gap-2.5 border-b border-line px-4 py-3">
@@ -79,11 +79,9 @@ export async function RankView({ s, st, ours, shop, by }: { s: Source; st: Saved
           )}
         </div>
         {error ? (
-          <Empty tone="critical">
-            Không đọc được số đã tổng hợp: {error}.
-          </Empty>
+          <Empty tone="critical"><span title={error}>Không đọc được số liệu. Tải lại trang sau ít phút.</span></Empty>
         ) : !rows.length ? (
-          <Empty>{st ? 'Không có creator nào.' : 'Chưa tổng hợp số từ kho: bấm Làm mới số kho (~2 phút).'}</Empty>
+          <Empty>{st ? 'Chưa có creator nào.' : 'Chưa có số liệu. Bấm "Cập nhật số liệu ngay" rồi tải lại trang sau vài phút.'}</Empty>
         ) : (
           <div className="overflow-x-auto">
             <table className="dt">
@@ -118,7 +116,7 @@ export async function RankView({ s, st, ours, shop, by }: { s: Source; st: Saved
           </div>
         )}
         {s.shop && !error && rows.length > 0 && (
-          <p className="border-t border-line px-4 py-2 text-2xs text-ink-3">Cột {s.shop.label.toLowerCase()}: tối đa 20 {s.shop.label.toLowerCase()} lớn nhất mỗi creator, theo {s.metrics[0].label}; bấm để lọc.</p>
+          <p className="border-t border-line px-4 py-2 text-2xs text-ink-3">Cột {s.shop.label.toLowerCase()}: 20 {s.shop.label.toLowerCase()} lớn nhất của mỗi creator theo {s.metrics[0].label}; bấm tên để lọc.</p>
         )}
       </Panel>
       <MetricNotes s={s} />
@@ -148,9 +146,9 @@ export async function ShopView({ s, st, by }: { s: Source; st: Saved; by: number
       <Panel flush title={`${s.name} · theo ${label.toLowerCase()}`} meta={`Mỗi ${label.toLowerCase()} có bao nhiêu creator và hiệu quả; bấm tên để xem creator của ${label.toLowerCase()} đó`}>
         <div className="border-b border-line px-4 py-3"><SourceInfo s={s} st={st} at={data.at} ours={false} /></div>
         {error ? (
-          <Empty tone="critical">Không đọc được số đã tổng hợp: {error}.</Empty>
+          <Empty tone="critical"><span title={error}>Không đọc được số liệu. Tải lại trang sau ít phút.</span></Empty>
         ) : !data.rows.length ? (
-          <Empty>Không có dữ liệu.</Empty>
+          <Empty>Chưa có số liệu theo {label.toLowerCase()}.</Empty>
         ) : (
           <div className="overflow-x-auto">
             <table className="dt">

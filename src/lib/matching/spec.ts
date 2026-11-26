@@ -193,7 +193,7 @@ export const KL_LEVELS = ['KL1', 'KL2', 'KL3', 'KL4', 'KL5', 'KL6', 'KL7'] as co
 export type KlRule = { followersMin?: number; viewsMin?: number; unitsSoldMin?: number; cpvMax?: number; castMax?: number; must?: string[]; approver?: string };
 export const KL_METRICS = [
   ['followersMin', 'Follower tối thiểu'], ['viewsMin', 'View trung vị tối thiểu'], ['unitsSoldMin', 'Lượt bán 30 ngày tối thiểu'],
-  ['cpvMax', 'CPV tối đa (₫)'], ['castMax', 'Cast tối đa (₫)'],
+  ['cpvMax', 'Chi phí / view tối đa (₫)'], ['castMax', 'Cát-xê tối đa (₫)'],
 ] as const satisfies readonly (readonly [keyof KlRule, string])[];
 export type BrandRules = {
   kl: Partial<Record<string, KlRule>>; // I-19, I-20

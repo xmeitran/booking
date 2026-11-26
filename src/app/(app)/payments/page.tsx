@@ -27,16 +27,16 @@ export default async function PaymentsPage() {
     <>
       <div className="mb-4">
         <h1 className="text-xl font-semibold">Thanh toán</h1>
-        <p className="mt-1 text-[13px] text-ink-2">Job nghiệm thu Đạt được gom thành đề nghị thanh toán (ĐNTT), tải file gửi kế toán và theo dõi trạng thái.</p>
+        <p className="mt-1 text-[13px] text-ink-2">Gom job nghiệm thu Đạt thành đề nghị thanh toán (ĐNTT), tải file gửi kế toán, theo dõi tới khi đã trả tiền.</p>
         <ScopeNote scope={scope} />
       </div>
 
       <section className="mb-6 rounded-lg border border-line bg-surface px-5 py-4">
-        <h2 className="mb-2 text-base font-semibold">Job chờ đề nghị thanh toán · {ready.length}</h2>
+        <h2 className="mb-2 text-base font-semibold">Job chờ đưa vào ĐNTT · {ready.length}</h2>
         {ready.length ? (
           <ActionForm action={createPayment} className="grid gap-3">
             <table className="tbl">
-              <thead><tr><th className="w-8" /><th>Job</th><th>KOC</th><th>Brand</th><th>Nghiệm thu</th><th className="text-right">Giá net</th><th className="text-right">Kèm TNCN</th><th>Tài khoản</th></tr></thead>
+              <thead><tr><th className="w-8" /><th>Job</th><th>KOC</th><th>Brand</th><th>Ngày nghiệm thu</th><th className="text-right">Giá KOC nhận</th><th className="text-right">Gồm thuế TNCN</th><th>Số tài khoản</th></tr></thead>
               <tbody>
                 {ready.map((j) => (
                   <tr key={j.id}>
@@ -47,23 +47,23 @@ export default async function PaymentsPage() {
                     <td className="text-xs">{fmtDate(j.reviewedAt)}</td>
                     <td className="text-right tabular-nums">{fmtNum(j.price)}</td>
                     <td className="text-right tabular-nums">{j.price == null ? '—' : fmtNum(Math.round(j.price / FEE_DIVISOR))}</td>
-                    <td className="text-xs">{j.koc.bankAccount ? 'Có' : <span className="text-warning">Thiếu, bổ sung ở Danh bạ</span>}</td>
+                    <td className="text-xs">{j.koc.bankAccount ? 'Có' : <span className="text-warning">Chưa có: bổ sung ở Danh bạ trước khi gửi duyệt</span>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="flex flex-wrap items-end justify-end gap-2">
               <input name="note" placeholder="Ghi chú ĐNTT (VD: đợt 1 tháng 12, brand pH Care)" aria-label="Ghi chú ĐNTT" className="input h-9 max-w-md text-[13px]" />
-              <button className="btn btn-primary">Tạo đề nghị thanh toán</button>
+              <button className="btn btn-primary">Tạo ĐNTT cho job đã tick</button>
             </div>
           </ActionForm>
-        ) : <p className="text-[13px] text-ink-3">Chưa có job nghiệm thu Đạt chờ thanh toán.</p>}
+        ) : <p className="text-[13px] text-ink-3">Chưa có job nào chờ thanh toán. Job hiện ở đây khi nghiệm thu Đạt.</p>}
       </section>
 
       <h2 className="mb-2 text-base font-semibold">Đề nghị thanh toán</h2>
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">
-          <thead><tr><th>ĐNTT</th><th>Trạng thái</th><th className="text-right">Job</th><th className="text-right">Tổng giá net</th><th className="text-right">Tổng kèm TNCN</th><th>Tạo bởi</th></tr></thead>
+          <thead><tr><th>ĐNTT</th><th>Trạng thái</th><th className="text-right">Job</th><th className="text-right">Tổng KOC nhận</th><th className="text-right">Tổng gồm thuế TNCN</th><th>Người tạo</th></tr></thead>
           <tbody>
             {payments.map((p) => {
               const net = p.jobs.reduce((s, j) => s + (j.price ?? 0), 0);
@@ -78,7 +78,7 @@ export default async function PaymentsPage() {
                 </tr>
               );
             })}
-            {!payments.length && <tr><td colSpan={6} className="py-10 text-center text-ink-3">Chưa có đề nghị thanh toán.</td></tr>}
+            {!payments.length && <tr><td colSpan={6} className="py-10 text-center text-ink-3">Chưa có ĐNTT nào. Tick job ở khung trên rồi bấm &quot;Tạo ĐNTT cho job đã tick&quot;.</td></tr>}
           </tbody>
         </table>
       </div>

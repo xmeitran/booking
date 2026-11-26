@@ -54,26 +54,26 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Job</h1>
-          <p className="mt-1 text-[13px] text-ink-2">Mỗi KOC Brand chọn &quot;Yes&quot; ở Listing thành một job: chốt giá, gửi hàng, brief, KOC nộp video, nghiệm thu, đề nghị thanh toán.</p>
+          <p className="mt-1 text-[13px] text-ink-2">Theo dõi từng video từ lúc brand chọn KOC tới khi trả tiền: chốt giá → gửi hàng → KOC nộp video → nghiệm thu → đề nghị thanh toán (ĐNTT).</p>
           <ScopeNote scope={scope} />
         </div>
         <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
-          <Link href={withParam('view', '')} className={tab(!list)}>Kanban</Link>
+          <Link href={withParam('view', '')} className={tab(!list)}>Theo bước</Link>
           <Link href={withParam('view', 'list')} className={tab(list)}>Danh sách</Link>
         </div>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Link href={withParam('mine', sp.mine ? '' : '1')} className={`pill px-2.5 py-1 ${sp.mine ? 'bg-ink text-white' : 'bg-surface text-ink-2 ring-1 ring-line'}`}>Job của tôi</Link>
-        <Link href={withParam('late', sp.late ? '' : '1')} className={`pill px-2.5 py-1 ${sp.late ? 'bg-ink text-white' : lateCount ? 'bg-critical-soft text-critical' : 'bg-surface text-ink-3 ring-1 ring-line'}`}>Trễ deadline · {lateCount}</Link>
+        <Link href={withParam('late', sp.late ? '' : '1')} className={`pill px-2.5 py-1 ${sp.late ? 'bg-ink text-white' : lateCount ? 'bg-critical-soft text-critical' : 'bg-surface text-ink-3 ring-1 ring-line'}`}>Trễ hạn air · {lateCount}</Link>
         <span className={`pill px-2.5 py-1 ${waitingReview ? 'bg-warning-soft text-warning' : 'bg-surface text-ink-3 ring-1 ring-line'}`}>Chờ nghiệm thu · {waitingReview}</span>
         <form className="flex gap-2">
           {[...params].filter(([k]) => k !== 'brand' && k !== 'pic').map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
           <select name="brand" defaultValue={sp.brand ?? ''} aria-label="Brand" className="input h-8 w-auto text-xs">
             <option value="">Mọi brand</option>{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
-          <select name="pic" defaultValue={sp.pic ?? ''} aria-label="Nhân sự" className="input h-8 w-auto text-xs">
-            <option value="">Mọi nhân sự</option>{pics.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          <select name="pic" defaultValue={sp.pic ?? ''} aria-label="Người phụ trách" className="input h-8 w-auto text-xs">
+            <option value="">Mọi người phụ trách</option>{pics.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
           <button className="btn h-8 px-2.5 text-xs">Lọc</button>
         </form>
@@ -83,7 +83,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       {list ? (
         <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="tbl">
-            <thead><tr><th>Job</th><th>KOC</th><th>Brand</th><th>PIC</th><th>Chặng</th><th>Deadline</th><th className="text-right">Giá</th><th>Nghiệm thu</th></tr></thead>
+            <thead><tr><th>Job</th><th>KOC</th><th>Brand</th><th>Người phụ trách</th><th>Trạng thái</th><th>Hạn air</th><th className="text-right">Giá</th><th>Nghiệm thu</th></tr></thead>
             <tbody>
               {jobs.map((j) => (
                 <tr key={j.id}>
@@ -97,7 +97,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
                   <td>{j.reviewResult ?? '—'}</td>
                 </tr>
               ))}
-              {!jobs.length && <tr><td colSpan={8} className="py-12 text-center text-ink-3">Chưa có job. Ở Listing, bấm &quot;Tạo job cho KOC Brand chọn Yes&quot;.</td></tr>}
+              {!jobs.length && <tr><td colSpan={8} className="py-12 text-center text-ink-3">{params.size > 1 ? 'Không có job nào khớp bộ lọc.' : 'Chưa có job. Mở một đợt ở Listing rồi bấm nút tạo job cho KOC brand chọn Yes.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -125,11 +125,11 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
                         <Avatar src={j.koc.avatarUrl} name={j.koc.nickname ?? j.koc.name} size={20} />
                         <span className="truncate text-[13px] font-medium">{j.koc.nickname ?? j.koc.name}</span>
                       </div>
-                      <div className="mt-0.5 truncate text-ink-3">{j.brand?.name ?? '—'} · {j.pic?.name ?? 'chưa giao'}</div>
+                      <div className="mt-0.5 truncate text-ink-3">{j.brand?.name ?? '—'} · {j.pic?.name ?? 'chưa có người phụ trách'}</div>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {j.deadline && <span className={`pill ${late(j) ? 'bg-critical-soft text-critical' : 'bg-sunken text-ink-2'}`}>Air {fmtDate(j.deadline)}</span>}
-                        {j.sample && j.sample !== 'Không cần' && BEFORE_SUBMIT.includes(j.stage) && <span className="pill bg-sunken text-ink-2">Mẫu: {j.sample}</span>}
-                        {j.reviewResult && j.reviewResult !== 'Đạt' && <span className="pill bg-warning-soft text-warning">Lần trước: {j.reviewResult}</span>}
+                        {j.deadline && <span className={`pill ${late(j) ? 'bg-critical-soft text-critical' : 'bg-sunken text-ink-2'}`}>Hạn air {fmtDate(j.deadline)}</span>}
+                        {j.sample && j.sample !== 'Không cần' && BEFORE_SUBMIT.includes(j.stage) && <span className="pill bg-sunken text-ink-2">Hàng mẫu: {j.sample}</span>}
+                        {j.reviewResult && j.reviewResult !== 'Đạt' && <span className="pill bg-warning-soft text-warning">Nghiệm thu: {j.reviewResult}</span>}
                       </div>
                     </Link>
                   ))}

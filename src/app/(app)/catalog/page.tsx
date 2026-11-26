@@ -32,11 +32,11 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Danh mục</h1>
-          <p className="mt-1 text-[13px] text-ink-2">Brand, gian hàng, sản phẩm (USP, guideline, checklist nghiệm thu), nhân sự phụ trách và bảng giá theo tier KOC. Plan, matching, job đều lấy từ đây.</p>
+          <p className="mt-1 text-[13px] text-ink-2">Thông tin brand, sản phẩm và bảng giá KOC mà Plan, Creator matching, Job dùng chung.</p>
         </div>
         <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
           <Link href="/catalog" className={tabCls(tab === 'brands')}>Brand · {brands.length}</Link>
-          <Link href="/catalog?tab=prices" className={tabCls(tab === 'prices')}>Bảng giá theo tier</Link>
+          <Link href="/catalog?tab=prices" className={tabCls(tab === 'prices')}>Bảng giá theo cấp KOC</Link>
         </div>
       </div>
 
@@ -58,7 +58,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
           </div>
           <div className="overflow-x-auto rounded-lg border border-line bg-surface">
             <table className="tbl">
-              <thead><tr><th>Brand</th><th className="text-right">Gian hàng</th><th className="text-right">Sản phẩm</th><th>Phụ trách</th><th className="text-right">Job</th><th>Hồ sơ</th></tr></thead>
+              <thead><tr><th>Brand</th><th className="text-right">Gian hàng</th><th className="text-right">Sản phẩm</th><th>Người phụ trách</th><th className="text-right">Job</th><th>Thông tin đã có</th></tr></thead>
               <tbody>
                 {brands.map((b) => (
                   <tr key={b.id}>
@@ -87,7 +87,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
           <div className="overflow-x-auto rounded-lg border border-line bg-surface">
             <table className="tbl">
               <thead>
-                <tr><th>Tier KOC</th>{PRICE_COLS.map((c) => <th key={c} className="text-center">{c} (₫, từ – đến)</th>)}</tr>
+                <tr><th>Cấp KOC</th>{PRICE_COLS.map((c) => <th key={c} className="text-center">{c} (₫, từ – đến)</th>)}</tr>
               </thead>
               <tbody>
                 {KL_LEVELS.map((tier) => (
@@ -121,7 +121,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
         <Dialog title="Thêm brand" closeHref="/catalog">
           <ActionForm action={saveBrand} className="grid gap-4">
             <label className="block"><span className="label">Tên brand</span><input name="name" required className="input" /></label>
-            <div className="flex justify-end gap-2"><Link href="/catalog" className="btn">Hủy</Link><button className="btn btn-primary">Tạo</button></div>
+            <div className="flex justify-end gap-2"><Link href="/catalog" className="btn">Hủy</Link><button className="btn btn-primary">Tạo brand</button></div>
           </ActionForm>
         </Dialog>
       )}

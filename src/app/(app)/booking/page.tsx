@@ -73,21 +73,23 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Booking</h1>
+          <p className="mt-1 text-[13px] text-ink-2">Booking trên Lark Base, chỉ để xem. Muốn sửa thì sửa trên Lark.</p>
           <p className="text-xs text-ink-3">
-            {sync?.startedAt && !sync.finishedAt ? 'Đang đồng bộ từ Lark Base, tải lại trang sau 2–3 phút'
-              : sync?.finishedAt ? `Lark Base · đồng bộ ${fmtTime(sync.finishedAt)} · ${sync.message}` : 'Chưa đồng bộ từ Lark Base'}
+            {sync?.startedAt && !sync.finishedAt ? 'Đang lấy dữ liệu mới từ Lark, tải lại trang sau 2–3 phút.'
+              : sync?.message?.startsWith('Lỗi') ? 'Lần cập nhật gần nhất bị lỗi. Bấm "Cập nhật từ Lark" để thử lại.'
+              : sync?.finishedAt ? `Cập nhật lúc ${fmtTime(sync.finishedAt)} · tự cập nhật mỗi giờ` : 'Chưa có dữ liệu từ Lark.'}
           </p>
           <ScopeNote scope={scope} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
             <Link href={withParam('view', '')} className={`rounded px-3 py-1 ${!kanban ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Danh sách</Link>
-            <Link href={withParam('view', 'kanban')} className={`rounded px-3 py-1 ${kanban ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Kanban</Link>
+            <Link href={withParam('view', 'kanban')} className={`rounded px-3 py-1 ${kanban ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Theo pipeline</Link>
           </div>
           {/* Dữ liệu chỉ cập nhật khi bấm nút này (đã tắt Lark automation vì tốn hạn mức) hoặc khi lịch GitHub chạy. */}
           <form action={syncNow}>
             <button className="btn btn-primary" disabled={Boolean(sync?.startedAt && !sync.finishedAt)}>
-              {sync?.startedAt && !sync.finishedAt ? 'Đang đồng bộ…' : 'Đồng bộ ngay từ Lark'}
+              {sync?.startedAt && !sync.finishedAt ? 'Đang cập nhật…' : 'Cập nhật từ Lark'}
             </button>
           </form>
         </div>
@@ -128,7 +130,7 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
                 {col.cards.map((b) => <Card key={b.id} b={b} />)}
                 {col.count > col.cards.length && (
                   <Link href={`/booking?${new URLSearchParams([...[...params].filter(([k]) => k !== 'view' && k !== 'pipeline'), ['pipeline', col.stage]])}`} className="block px-1 text-xs text-accent hover:underline">
-                    Xem cả {fmtNum(col.count)} booking →
+                    Xem tất cả {fmtNum(col.count)} booking →
                   </Link>
                 )}
               </div>
@@ -150,7 +152,7 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
                     <tr key={b.id}>
                       <td>
                         <Link href={`/booking/${b.id}`} className="font-mono text-xs text-accent hover:underline">{b.code}</Link>
-                        {b.planMonth && <div className="text-xs text-ink-3">Plan {b.planMonth}</div>}
+                        {b.planMonth && <div className="text-xs text-ink-3">Tháng plan {b.planMonth}</div>}
                       </td>
                       <td>
                         {b.channel ? (kid ? <Link href={`/contacts/${kid}`} className="link">{b.channel}</Link> : b.channel) : '—'}
@@ -175,7 +177,7 @@ export default async function BookingPage({ searchParams }: { searchParams: Prom
                   );
                 })}
                 {!rows.length && (
-                  <tr><td colSpan={7} className="py-12 text-center text-ink-3">{params.size ? 'Không có booking khớp bộ lọc.' : 'Chưa có booking. Dữ liệu sẽ có sau lần đồng bộ đầu tiên từ Lark Base.'}</td></tr>
+                  <tr><td colSpan={7} className="py-12 text-center text-ink-3">{params.size ? 'Không có booking khớp bộ lọc. Bấm "Xóa lọc" để xem tất cả.' : 'Chưa có booking. Bấm "Cập nhật từ Lark" để lấy dữ liệu.'}</td></tr>
                 )}
               </tbody>
             </table>

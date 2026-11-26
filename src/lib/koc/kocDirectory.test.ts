@@ -14,10 +14,10 @@ const koc = (o: Partial<DirKoc> & { id: string; handle: string }): DirKoc => ({
   reviews: [], ratings: [], lark: null, followUp: false, ...o,
 });
 
-test('channelSummary: @handle (+N TikTok · +N MXH)', () => {
+test('channelSummary: @handle (+N TikTok · +N kênh khác)', () => {
   assert.equal(channelSummary('a', []), '@a');
   assert.equal(channelSummary('a', [{ platform: 'TikTok' }]), '@a (+1 TikTok)');
-  assert.equal(channelSummary('a', [{ platform: 'TikTok' }, { platform: 'Shopee' }, { platform: 'Threads' }]), '@a (+1 TikTok · +2 MXH)');
+  assert.equal(channelSummary('a', [{ platform: 'TikTok' }, { platform: 'Shopee' }, { platform: 'Threads' }]), '@a (+1 TikTok · +2 kênh khác)');
   assert.equal(cleanHandle('https://www.instagram.com/Abc.Xyz/?hl=vi'), 'abc.xyz');
   assert.equal(cleanHandle('@Mai_Ha'), 'mai_ha');
 });

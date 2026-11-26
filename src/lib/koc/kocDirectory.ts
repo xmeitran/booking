@@ -29,14 +29,14 @@ export const TIKTOK_ROLES = [
   ['Kênh TikTok phụ (Cùng chủ sở hữu)', 'Kênh phụ · Cùng chủ sở hữu'],
 ] as const;
 
-/** "@handle (+1 TikTok · +4 MXH)" như formatKocPrimaryChannelSummary. */
+/** "@handle (+1 TikTok · +4 kênh khác)" như formatKocPrimaryChannelSummary. */
 export function channelSummary(handle: string, channels: { platform: string }[]) {
   const tt = channels.filter((c) => c.platform === 'TikTok').length;
   const other = channels.length - tt;
   const base = `@${handle}`;
-  if (tt && other) return `${base} (+${tt} TikTok · +${other} MXH)`;
+  if (tt && other) return `${base} (+${tt} TikTok · +${other} kênh khác)`;
   if (tt) return `${base} (+${tt} TikTok)`;
-  if (other) return `${base} (+${other} MXH)`;
+  if (other) return `${base} (+${other} kênh khác)`;
   return base;
 }
 
@@ -50,20 +50,20 @@ export function cleanHandle(raw: string) {
 // Tab KOC mới / tiềm năng
 export const READINESS: Record<string, { label: string; chip: string; tone: string }> = {
   'SẴN_SÀNG_BOOKING': { label: 'Sẵn sàng booking', chip: 'Sẵn sàng booking', tone: 'bg-positive-soft text-positive' },
-  'TIẾP_CẬN_BỔ_SUNG_PHÁP_LÝ': { label: 'Có liên hệ · Bổ sung pháp lý', chip: 'Bổ sung pháp lý', tone: 'bg-accent-soft text-accent' },
-  'CẦN_XIN_LIÊN_HỆ': { label: 'Cần xin SĐT/Zalo', chip: 'Cần xin SĐT', tone: 'bg-warning-soft text-warning' },
-  'CHỜ_TIẾP_CẬN': { label: 'Chờ tiếp cận', chip: 'Chờ tiếp cận', tone: 'bg-sunken text-ink-2' },
+  'TIẾP_CẬN_BỔ_SUNG_PHÁP_LÝ': { label: 'Có SĐT / email, thiếu giấy tờ', chip: 'Thiếu giấy tờ', tone: 'bg-accent-soft text-accent' },
+  'CẦN_XIN_LIÊN_HỆ': { label: 'Cần xin SĐT / Zalo', chip: 'Cần xin SĐT', tone: 'bg-warning-soft text-warning' },
+  'CHỜ_TIẾP_CẬN': { label: 'Chờ liên hệ', chip: 'Chờ liên hệ', tone: 'bg-sunken text-ink-2' },
 };
 export const READINESS_OPTIONS = [
   ['SẴN_SÀNG_BOOKING', 'Sẵn sàng booking ngay'],
-  ['TIẾP_CẬN_BỔ_SUNG_PHÁP_LÝ', 'Có liên hệ · Bổ sung pháp lý'],
-  ['CẦN_XIN_LIÊN_HỆ', 'Cần xin SĐT/Zalo'],
-  ['CHỜ_TIẾP_CẬN', 'Chờ tiếp cận'],
+  ['TIẾP_CẬN_BỔ_SUNG_PHÁP_LÝ', 'Có SĐT / email, thiếu giấy tờ'],
+  ['CẦN_XIN_LIÊN_HỆ', 'Cần xin SĐT / Zalo'],
+  ['CHỜ_TIẾP_CẬN', 'Chờ liên hệ'],
 ] as const;
 export const CONTACT_STATUS = [
   ['CHƯA_LIÊN_HỆ', 'Chưa liên hệ'],
   ['ĐÃ_LIÊN_HỆ', 'Đã liên hệ'],
-  ['ĐANG_THƯƠNG_LƯỢNG', 'Đang thương lượng báo giá'],
+  ['ĐANG_THƯƠNG_LƯỢNG', 'Đang thương lượng giá'],
   ['TỪ_CHỐI', 'KOC từ chối'],
 ] as const;
 export const CONTACT_CHANNELS = ['Zalo', 'TikTok DM', 'Email', 'Điện thoại', 'Lark'];
@@ -76,9 +76,9 @@ export const initialReadiness = (k: { idNumber?: string | null; bankAccount?: st
 // Đánh giá kênh theo brand (KocChannelReview): nhật ký chỉ thêm, nhiều lượt / brand.
 export const ALL_BRANDS_SCOPE = 'Toàn hệ thống B2C';
 export const VERDICTS: Record<string, { label: string; short: string; tone: string; button: string; placeholder: string }> = {
-  SUITABLE: { label: 'Phù hợp', short: 'Phù hợp', tone: 'bg-positive-soft text-positive', button: '✓ Phù hợp', placeholder: 'Ghi rõ ý kiến vì sao kênh phù hợp với Brand này (VD: Tệp mẹ bỉm tương tác hỏi mua tốt, hình ảnh hợp nhãn, đơn giá hợp lý)...' },
-  CAUTION: { label: 'Cân nhắc / Lưu ý', short: 'Cân nhắc', tone: 'bg-warning-soft text-warning', button: 'Cân nhắc', placeholder: 'Ghi rõ điểm cần lưu ý khi book kênh này cho Brand (VD: Cần deal lại giá hoặc duyệt kỹ kịch bản trước khi quay)...' },
-  NOT_SUITABLE: { label: 'Không phù hợp', short: 'K.Phù hợp', tone: 'bg-critical-soft text-critical', button: '✕ Không phù hợp', placeholder: 'Ghi rõ ý kiến vì sao kênh không phù hợp với Brand này (VD: Đã liên hệ báo giá quá cao so với view thực tế, kênh đang gắn giỏ độc quyền đối thủ)...' },
+  SUITABLE: { label: 'Phù hợp', short: 'Phù hợp', tone: 'bg-positive-soft text-positive', button: '✓ Phù hợp', placeholder: 'Vì sao hợp brand này? VD: tệp mẹ bỉm hỏi mua nhiều, hình ảnh hợp brand, giá hợp lý' },
+  CAUTION: { label: 'Cần cân nhắc', short: 'Cân nhắc', tone: 'bg-warning-soft text-warning', button: 'Cân nhắc', placeholder: 'Cần lưu ý gì khi book cho brand này? VD: cần deal lại giá, duyệt kỹ kịch bản' },
+  NOT_SUITABLE: { label: 'Không phù hợp', short: 'Không phù hợp', tone: 'bg-critical-soft text-critical', button: '✕ Không phù hợp', placeholder: 'Vì sao không hợp brand này? VD: giá quá cao so với view, đang làm độc quyền cho đối thủ' },
 };
 export const REVIEW_REASONS: Record<string, string[]> = {
   SUITABLE: [
@@ -142,8 +142,8 @@ export function ratingSummary(ratings: { stars: number; tags: string[] }[]) {
 export type LegalType = 'INDIVIDUAL' | 'HOUSEHOLD' | 'COMPANY';
 export const LEGAL_TYPES: LegalType[] = ['INDIVIDUAL', 'HOUSEHOLD', 'COMPANY'];
 export const LEGAL_TYPE_LABEL: Record<LegalType, string> = { INDIVIDUAL: 'Cá nhân', HOUSEHOLD: 'Hộ kinh doanh', COMPANY: 'Công ty' };
-export const LEGAL_FILTER_LABEL: Record<LegalType | 'MULTI', string> = { INDIVIDUAL: 'Cá nhân', HOUSEHOLD: 'Hộ kinh doanh', COMPANY: 'Công ty / MCN', MULTI: 'Từ 2 hồ sơ' };
-export const LEGAL_FORM_LABEL: Record<LegalType, string> = { INDIVIDUAL: 'Cá nhân (CCCD - TNCN 10%)', HOUSEHOLD: 'Hộ kinh doanh (HKD)', COMPANY: 'Công ty / MCN (VAT 8%/10%)' };
+export const LEGAL_FILTER_LABEL: Record<LegalType | 'MULTI', string> = { INDIVIDUAL: 'Cá nhân', HOUSEHOLD: 'Hộ kinh doanh', COMPANY: 'Công ty / công ty quản lý (MCN)', MULTI: 'Có từ 2 hồ sơ' };
+export const LEGAL_FORM_LABEL: Record<LegalType, string> = { INDIVIDUAL: 'Cá nhân (CCCD, thuế TNCN 10%)', HOUSEHOLD: 'Hộ kinh doanh', COMPANY: 'Công ty / công ty quản lý (MCN)' };
 export const TAX_ACCOUNT_OPTIONS: Record<LegalType, string[]> = {
   INDIVIDUAL: ['(Thuế TNCN 10%) Tài khoản cá nhân', 'TK cá nhân tính thuế TNCN 10%', 'Không tính thuế TNCN (Chưa đến ngưỡng)', 'Người thân nhận ủy quyền (Khấu trừ TNCN 10%)'],
   HOUSEHOLD: ['HKD xuất hóa đơn (Thuế 7%: 5% VAT + 2% TNCN)', 'Hộ kinh doanh cá thể'],
@@ -154,7 +154,7 @@ export const SIGN_ROLES = ['Chính chủ KOC', 'Hộ kinh doanh cá thể', 'Ph�
 export const DEFAULT_SIGN_ROLE: Record<LegalType, string> = { INDIVIDUAL: 'Chính chủ KOC', HOUSEHOLD: 'Hộ kinh doanh cá thể', COMPANY: 'Pháp nhân Công ty / MCN đại diện' };
 export const VAT_OPTIONS: Record<Exclude<LegalType, 'INDIVIDUAL'>, [number, string][]> = {
   COMPANY: [[8, 'VAT 8% (Doanh nghiệp)'], [10, 'VAT 10% (Doanh nghiệp)'], [0, '0% (Không chịu VAT)']],
-  HOUSEHOLD: [[5, 'HKD xuất hóa đơn (5% VAT + 2% TNCN)'], [0, 'HKD không xuất hóa đơn']],
+  HOUSEHOLD: [[5, 'Có xuất hóa đơn (5% VAT + 2% TNCN)'], [0, 'Không xuất hóa đơn']],
 };
 export const DEFAULT_VAT: Record<LegalType, number> = { INDIVIDUAL: 0, HOUSEHOLD: 5, COMPANY: 8 };
 export const CONTRACT_STATUS: Record<string, string> = { 'CHƯA_KÝ': 'Chưa ký', 'ĐANG_TRÌNH_KÝ': 'Đang trình ký', 'ĐÃ_KÝ': 'Đã ký', 'HẾT_HẠN': 'Hết hạn' };
@@ -206,20 +206,20 @@ export const hasLegalId = (p?: LegalProfileView) => Boolean(p && (p.legalType ==
 /** evaluateLegalProfileContractReadiness: các trường bắt buộc để ký hợp đồng theo loại pháp nhân. */
 export function contractReadiness(p: LegalProfileView, koc: { phone?: string | null; address?: string | null }) {
   const t = p.legalType;
-  const checks: [boolean, string][] = [[Boolean(p.holderName?.trim()), t === 'INDIVIDUAL' ? 'Họ tên pháp lý' : 'Tên đơn vị pháp nhân']];
+  const checks: [boolean, string][] = [[Boolean(p.holderName?.trim()), t === 'INDIVIDUAL' ? 'Họ tên trên CCCD' : 'Tên công ty / hộ kinh doanh']];
   if (t === 'INDIVIDUAL') {
-    checks.push([cccdError(p.cccd ?? '') === null && Boolean(p.cccd), 'Số CCCD (12 số)'], [dateError(p.cccdIssueDate ?? '') === null && Boolean(p.cccdIssueDate), 'Ngày cấp CCCD (DD/MM/YYYY)'], [placeError(p.cccdIssuePlace ?? '') === null && Boolean(p.cccdIssuePlace), 'Nơi cấp CCCD (phải là chữ)']);
+    checks.push([cccdError(p.cccd ?? '') === null && Boolean(p.cccd), 'Số CCCD (12 số)'], [dateError(p.cccdIssueDate ?? '') === null && Boolean(p.cccdIssueDate), 'Ngày cấp CCCD'], [placeError(p.cccdIssuePlace ?? '') === null && Boolean(p.cccdIssuePlace), 'Nơi cấp CCCD']);
   } else if (t === 'HOUSEHOLD') {
-    checks.push([Boolean(p.taxCode?.trim() || p.businessLicenseNo?.trim()), 'Mã số thuế / ĐKKD HKD'], [Boolean(p.representativeName?.trim()), 'Chủ hộ kinh doanh']);
+    checks.push([Boolean(p.taxCode?.trim() || p.businessLicenseNo?.trim()), 'MST / số đăng ký kinh doanh'], [Boolean(p.representativeName?.trim()), 'Chủ hộ kinh doanh']);
   } else {
-    checks.push([(p.taxCode?.trim() || p.businessLicenseNo?.trim() || '').length >= 7, 'Mã số thuế Công ty'], [Boolean(p.representativeName?.trim()), 'Người đại diện pháp luật'], [Boolean(p.representativeTitle?.trim()), 'Chức vụ người đại diện']);
+    checks.push([(p.taxCode?.trim() || p.businessLicenseNo?.trim() || '').length >= 7, 'MST công ty'], [Boolean(p.representativeName?.trim()), 'Người đại diện pháp luật'], [Boolean(p.representativeTitle?.trim()), 'Chức vụ người đại diện']);
   }
   checks.push(
-    [Boolean(p.address?.trim() || koc.address?.trim()), 'Địa chỉ pháp lý'],
+    [Boolean(p.address?.trim() || koc.address?.trim()), 'Địa chỉ'],
     [Boolean(p.bankName?.trim()), 'Tên ngân hàng'],
     [Boolean(p.bankAccount?.trim()), 'Số tài khoản'],
-    [Boolean((p.bankHolderName || p.holderName)?.trim()), 'Chủ tài khoản (IN HOA KHÔNG DẤU)'],
-    [Boolean(p.contactPhone?.trim() || koc.phone?.trim()), 'SĐT hợp đồng'],
+    [Boolean((p.bankHolderName || p.holderName)?.trim()), 'Chủ tài khoản'],
+    [Boolean(p.contactPhone?.trim() || koc.phone?.trim()), 'SĐT trên hợp đồng'],
   );
   const missing = checks.filter(([ok]) => !ok).map(([, label]) => label);
   return { ready: !missing.length, missing, filled: checks.length - missing.length, total: checks.length };
@@ -331,13 +331,13 @@ export function findDuplicates(kocs: Pick<DirKoc, 'id' | 'handle' | 'phone' | 'e
 
 export const EXTRA_FLAGS: Record<string, { label: string; test: (k: DirKoc) => boolean }> = {
   followUp: { label: 'Đến hẹn liên hệ', test: (k) => k.followUp },
-  noPic: { label: 'Chưa có PIC', test: (k) => !picOf(k) },
+  noPic: { label: 'Chưa có người phụ trách', test: (k) => !picOf(k) },
   noStats: { label: 'Chưa có số TikTok', test: (k) => !k.statsAt },
   noShip: { label: 'Thiếu địa chỉ nhận hàng', test: (k) => !k.receiverName || !k.address },
   blacklist: { label: 'Blacklist', test: (k) => k.blacklisted },
 };
-export const ISSUES = { MISSING: 'Thiếu giấy tờ', NO_CONTACT: 'Thiếu Email/SĐT', DUPLICATE: 'Trùng kênh', SHARED_OWNER: 'Chung chủ / MCN', SUITABLE: 'Phù hợp', NOT_SUITABLE: 'Không phù hợp' } as const;
-export const CONTACT_FILTERS = { CONTACTED: 'Đã liên hệ', NOT_CONTACTED: 'Chưa liên hệ', HAS_PHONE: 'Có SĐT/Email', SUITABLE: 'Phù hợp', NOT_SUITABLE: 'Không phù hợp' } as const;
+export const ISSUES = { MISSING: 'Thiếu giấy tờ', NO_CONTACT: 'Thiếu SĐT / email', DUPLICATE: 'Trùng kênh', SHARED_OWNER: 'Cùng chủ / công ty quản lý (MCN)', SUITABLE: 'Đánh giá: phù hợp', NOT_SUITABLE: 'Đánh giá: không phù hợp' } as const;
+export const CONTACT_FILTERS = { CONTACTED: 'Đã liên hệ', NOT_CONTACTED: 'Chưa liên hệ', HAS_PHONE: 'Có SĐT / email', SUITABLE: 'Đánh giá: phù hợp', NOT_SUITABLE: 'Đánh giá: không phù hợp' } as const;
 export const PLATFORM_FILTERS = ['TikTok', 'Shopee', 'Facebook', 'Instagram', 'Threads'];
 
 /** Toàn bộ logic lọc / đếm của màn danh sách; boHandles = ID kênh có mã BO khớp ô tìm. */

@@ -50,7 +50,7 @@ export async function setPaymentStatus(fd: FormData) {
   const p = await db.paymentRequest.findUniqueOrThrow({ where: { id } });
   if (PAY_STATUS.indexOf(status) !== PAY_STATUS.indexOf(p.status) + 1) redirect(`/payments/${id}?err=${encodeURIComponent(`ĐNTT đang "${p.status}", không chuyển sang "${status}" được`)}`);
   // Duyệt / xác nhận đã trả: chỉ Admin, Leader.
-  if ((status === 'Đã duyệt' || status === 'Đã thanh toán') && !can(me, 'payment.approve')) redirect(`/payments/${id}?err=${encodeURIComponent('Bạn chưa có quyền duyệt / xác nhận đã thanh toán (Phân quyền)')}`);
+  if ((status === 'Đã duyệt' || status === 'Đã thanh toán') && !can(me, 'payment.approve')) redirect(`/payments/${id}?err=${encodeURIComponent('Bạn chưa có quyền duyệt hoặc xác nhận đã thanh toán. Nhờ Admin cấp quyền ở Phân quyền.')}`);
   await db.paymentRequest.update({ where: { id }, data: { status } });
   await audit(me.id, 'PaymentRequest', id, `Trạng thái: ${status}`);
   revalidatePath(`/payments/${id}`);
@@ -83,7 +83,7 @@ export async function deletePayment(fd: FormData) {
   redirect('/payments');
 }
 
-const fail = (id: string, e: unknown): never => redirect(`/payments/${id}?err=${encodeURIComponent(e instanceof Error ? e.message : 'Lỗi không rõ')}`);
+const fail = (id: string, e: unknown): never => redirect(`/payments/${id}?err=${encodeURIComponent(e instanceof Error ? e.message : 'Có lỗi, thử lại sau')}`);
 
 /** L4: gửi ĐNTT còn Nháp sang Lark Approval, đứng tên người bấm. Thành công thì ĐNTT sang "Đã gửi duyệt". */
 export async function sendToApproval(fd: FormData) {
@@ -108,7 +108,7 @@ export async function sendToApproval(fd: FormData) {
   } catch (e) { fail(id, e); }
   // Chỉ ghi khi ĐNTT vẫn còn Nháp và chưa có mã: hai người bấm cùng lúc thì một đơn Lark bị thừa, báo để huỷ tay.
   const { count } = await db.paymentRequest.updateMany({ where: { id, status: 'Nháp', approvalCode: null }, data: { status: 'Đã gửi duyệt', approvalCode: code, approvalStatus: 'PENDING' } });
-  if (!count) fail(id, new Error(`ĐNTT vừa được người khác gửi duyệt. Đơn Lark ${code} vừa tạo bị thừa, huỷ trên Lark Approval.`));
+  if (!count) fail(id, new Error(`ĐNTT vừa được người khác gửi duyệt. Đơn ${code} bạn vừa tạo trên Lark bị thừa, vào Lark huỷ đơn này.`));
   await audit(me.id, 'PaymentRequest', id, 'Gửi Lark Approval', { instance: code });
   revalidatePath(`/payments/${id}`);
   redirect(`/payments/${id}`);
@@ -120,7 +120,7 @@ export async function syncApproval(fd: FormData) {
   const id = str(fd, 'id');
   await guard(me, 'payment', id);
   const p = await db.paymentRequest.findUniqueOrThrow({ where: { id } });
-  if (!p.approvalCode) fail(id, new Error('ĐNTT này chưa gửi qua Lark Approval.'));
+  if (!p.approvalCode) fail(id, new Error('ĐNTT này chưa gửi duyệt trên Lark.'));
   let st = '';
   try { st = await approvalStatus(p.approvalCode!); } catch (e) { fail(id, e); }
   const data = st === 'APPROVED' && p.status === 'Đã gửi duyệt' ? { status: 'Đã duyệt', approvalStatus: st }

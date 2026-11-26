@@ -5,7 +5,7 @@ import { requireUser, ROLE_LABEL } from '@/lib/auth/session';
 import { savePerms } from '../actions';
 import { UsersTabs } from '../Tabs';
 
-const ROLE_HINT = { ADMIN: 'Mọi quyền, quản lý user và phân quyền.', LEADER: 'Trưởng nhóm.', STAFF: 'Booking PIC / Support.' };
+const ROLE_HINT = { ADMIN: 'Mọi quyền', LEADER: 'Trưởng nhóm', STAFF: 'Booking PIC, Support' };
 
 // Ma trận vai trò × quyền (như "Ma trận chức năng" của app b2c, nhưng mọi ô đều được kiểm tra thật trên server).
 export default async function RolesPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
@@ -17,10 +17,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <UsersTabs me={me} active="/users/roles" />
-      <p className="mb-3 text-[13px] text-ink-2">
-        Tick để cấp quyền cho cả vai trò; đổi vai trò từng người ở tab Người dùng. Quyền có hiệu lực ngay ở lần tải trang kế tiếp của người đó.
-      </p>
-      {saved && <p role="status" className="mb-3 rounded-md bg-positive-soft px-3 py-2 text-positive">Đã lưu ma trận quyền.</p>}
+      {saved && <p role="status" className="mb-3 rounded-md bg-positive-soft px-3 py-2 text-positive">Đã lưu quyền.</p>}
       <ActionForm action={savePerms} className="grid gap-3">
         <div className="overflow-x-auto rounded-lg border border-line bg-surface">
           <table className="tbl">
@@ -30,7 +27,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
                 {(['ADMIN', ...EDITABLE_ROLES] as const).map((r) => (
                   <th key={r} className="w-32 text-center">
                     <div>{ROLE_LABEL[r]}</div>
-                    <div className="text-xs font-normal text-ink-3">{count[r] ?? 0} user · {ROLE_HINT[r]}</div>
+                    <div className="text-xs font-normal text-ink-3">{count[r] ?? 0} người · {ROLE_HINT[r]}</div>
                   </th>
                 ))}
               </tr>
@@ -54,9 +51,9 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
           </table>
         </div>
         <p className="text-xs text-ink-3">
-          Luôn mở cho mọi người: xem Danh bạ KOC, Dữ liệu, Danh mục, Creator matching; tạo listing, job, ĐNTT trong phạm vi được xem. Chỉ Admin: quản lý user, phân quyền, xoá brand.
+          Ai cũng được: xem Danh bạ, Dữ liệu, Danh mục, Creator matching; tạo listing, job, ĐNTT với brand mình xem được. Chỉ Admin: quản lý người dùng, phân quyền, xoá brand. Đổi vai trò từng người ở tab Người dùng &amp; đăng nhập.
         </p>
-        <div className="flex justify-end"><button className="btn btn-primary">Lưu ma trận quyền</button></div>
+        <div className="flex justify-end"><button className="btn btn-primary">Lưu quyền</button></div>
       </ActionForm>
     </>
   );

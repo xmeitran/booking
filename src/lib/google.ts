@@ -19,7 +19,7 @@ async function token() {
     body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${head}.${sig}` }),
   });
   const j = await res.json();
-  if (!j.access_token) throw new Error(`Google từ chối service account: ${j.error_description ?? j.error ?? res.status}`);
+  if (!j.access_token) throw new Error(`Chưa kết nối được Google Sheet, báo Admin kiểm tra cài đặt (${j.error_description ?? j.error ?? res.status}).`);
   return j.access_token as string;
 }
 
@@ -30,7 +30,7 @@ async function call(path: string, init: RequestInit = {}) {
   const j = await res.json();
   if (!res.ok) {
     const m = j.error?.message ?? res.status;
-    throw new Error(res.status === 403 || res.status === 404 ? `Không mở được Google Sheet (${m}). Chia sẻ sheet cho email service account với quyền Editor.` : `Google Sheets: ${m}`);
+    throw new Error(res.status === 403 || res.status === 404 ? 'Không mở được Google Sheet. Nhờ brand chia sẻ sheet (quyền chỉnh sửa) cho email ghi ở khung Google Sheet.' : `Google Sheet báo lỗi: ${m}`);
   }
   return j;
 }

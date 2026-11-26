@@ -13,6 +13,7 @@ import { deleteReview, logContact, saveChannels, saveReview } from './actions';
 type Base = { close: string; next: string };
 // id ô chọn kết luận (không dùng "_": Tailwind đổi "_" thành dấu cách trong selector group-has-[...]).
 const VERDICT_ID: Record<string, string> = { SUITABLE: 'v-ok', CAUTION: 'v-caution', NOT_SUITABLE: 'v-no' };
+const brandName = (b: string) => (b === ALL_BRANDS_SCOPE ? 'Mọi brand' : b);
 const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' });
 
 /** Quản lý tài khoản & kênh kết nối (KocSocialChannelsModal). Kênh TikTok chính khớp booking Lark nên không đổi ở đây. */
@@ -21,26 +22,25 @@ export function ChannelsDialog({ koc, channels, close, next }: Base & { koc: { i
   const total = channels.length + 1;
   const platforms = 1 + OTHER_PLATFORMS.filter((p) => channels.some((c) => c.platform === p.key)).length;
   return (
-    <Dialog title={`Quản lý tài khoản & kênh kết nối · ${koc.name}`} closeHref={close} wide>
+    <Dialog title={`Kênh của ${koc.name}`} closeHref={close} wide>
       <ActionForm action={saveChannels} className="grid gap-5 text-[13px]">
         <input type="hidden" name="kocId" value={koc.id} />
         <input type="hidden" name="next" value={next} />
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="pill bg-sunken text-ink-2">{total} tài khoản</span>
           <span className="pill bg-sunken text-ink-2">{platforms}/5 nền tảng</span>
-          <span className="pill bg-sunken text-ink-3" title="Lưu nội bộ B2C, chưa đồng bộ lên KOC Hub">Chưa đồng bộ Hub</span>
         </div>
 
         <section>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="font-semibold">Hệ thống tài khoản TikTok ({tiktok.length + 1} kênh)</h3>
-            <span className="text-xs text-ink-3">{tiktok.length ? `1 Kênh chính · ${tiktok.length} Kênh phụ` : '1 Kênh TikTok chính'}</span>
+            <h3 className="font-semibold">Kênh TikTok ({tiktok.length + 1})</h3>
+            <span className="text-xs text-ink-3">{tiktok.length ? `1 kênh chính · ${tiktok.length} kênh phụ` : 'Chưa có kênh phụ'}</span>
           </div>
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-line px-3 py-2">
               <span className="font-medium">@{koc.handle}</span>
               <span className="pill bg-accent-soft text-accent">Kênh TikTok chính</span>
-              <span className="text-xs text-ink-3">Khớp booking trên Lark; đổi ID kênh ở Chỉnh sửa thông tin KOC.</span>
+              <span className="text-xs text-ink-3">Đổi kênh chính ở "Sửa thông tin KOC".</span>
             </div>
             {tiktok.map((c) => (
               <div key={c.handle} className="flex flex-wrap items-center gap-2 rounded-md border border-line px-3 py-2">
@@ -55,7 +55,7 @@ export function ChannelsDialog({ koc, channels, close, next }: Base & { koc: { i
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-2">
-              <input name="newTt" placeholder="Nhập @handle hoặc link TikTok thứ 2, 3..." aria-label="Thêm kênh TikTok phụ" className="input max-w-xs" />
+              <input name="newTt" placeholder="Thêm kênh phụ: @tenkenh hoặc link TikTok" aria-label="Thêm kênh TikTok phụ" className="input max-w-xs" />
               <select name="newRole" aria-label="Vai trò kênh mới" className="input w-auto">
                 {TIKTOK_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
@@ -64,7 +64,7 @@ export function ChannelsDialog({ koc, channels, close, next }: Base & { koc: { i
         </section>
 
         <section>
-          <h3 className="mb-2 font-semibold">Tài khoản các nền tảng khác (Shopee · Facebook · Instagram · Threads)</h3>
+          <h3 className="mb-2 font-semibold">Nền tảng khác</h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {OTHER_PLATFORMS.map((p) => {
               const value = channels.filter((c) => c.platform === p.key).map((c) => c.handle).join(', ');
@@ -72,7 +72,7 @@ export function ChannelsDialog({ koc, channels, close, next }: Base & { koc: { i
                 <div key={p.key}>
                   <label className="label flex items-center justify-between" htmlFor={`ch-${p.key}`}>
                     {p.label}
-                    <span className={`pill ${value ? 'bg-positive-soft text-positive' : 'bg-sunken text-ink-3'}`}>{value ? 'Đã kết nối' : 'Chưa kết nối'}</span>
+                    <span className={`pill ${value ? 'bg-positive-soft text-positive' : 'bg-sunken text-ink-3'}`}>{value ? 'Đã có' : 'Chưa có'}</span>
                   </label>
                   <input id={`ch-${p.key}`} name={p.key} defaultValue={value} placeholder={p.placeholder} className="input" />
                 </div>
@@ -84,7 +84,7 @@ export function ChannelsDialog({ koc, channels, close, next }: Base & { koc: { i
 
         <div className="flex justify-end gap-2">
           <Link href={close} className="btn">Đóng</Link>
-          <button className="btn btn-primary">Lưu cấu hình ({total} tài khoản)</button>
+          <button className="btn btn-primary">Lưu kênh</button>
         </div>
       </ActionForm>
     </Dialog>
@@ -99,19 +99,19 @@ export function BookDialog({ koc, ratings, batches, close }: Omit<Base, 'next'> 
 }) {
   const r = ratingSummary(ratings);
   return (
-    <Dialog title={`Tạo booking · ${koc.name}`} closeHref={close}>
+    <Dialog title={`Thêm vào listing · ${koc.name}`} closeHref={close}>
       {r.isLow && (
         <div role="alert" className="mb-4 rounded-md bg-critical-soft px-3 py-2.5 text-[13px] text-critical">
           <p className="font-semibold">KOC có đánh giá thấp</p>
           <p className="mt-1">
-            Nhân viên đã chấm điểm thấp cho: {koc.name} ({r.average.toLocaleString('vi-VN')} sao, {r.count} lượt{r.negativeTags.length ? `; hay gặp: ${r.negativeTags.join(', ')}` : ''}). Vẫn tạo booking?
+            {koc.name} bị chấm {r.average.toLocaleString('vi-VN')} sao ({r.count} lượt{r.negativeTags.length ? `; hay bị nhắc: ${r.negativeTags.join(', ')}` : ''}). Vẫn thêm vào listing?
           </p>
         </div>
       )}
       {batches.length ? (
         <ActionForm action={addKocs} className="grid gap-4">
           <input type="hidden" name="ids" value={koc.handle} />
-          <p className="text-[13px] text-ink-2">{channelSummary(koc.handle, koc.channels)} sẽ được thêm vào đợt listing đã chọn để gửi Brand duyệt.</p>
+          <p className="text-[13px] text-ink-2">{channelSummary(koc.handle, koc.channels)} sẽ vào đợt listing bạn chọn để brand duyệt.</p>
           <div>
             <label className="label" htmlFor="batchId">Đợt listing</label>
             <select id="batchId" name="batchId" required className="input">
@@ -126,7 +126,7 @@ export function BookDialog({ koc, ratings, batches, close }: Omit<Base, 'next'> 
           </div>
           <div className="flex justify-end gap-2">
             <Link href={close} className="btn">Hủy</Link>
-            <button className={`btn ${r.isLow ? 'btn-danger' : 'btn-primary'}`}>{r.isLow ? 'Vẫn tạo booking' : 'Đẩy vào Listing'}</button>
+            <button className={`btn ${r.isLow ? 'btn-danger' : 'btn-primary'}`}>{r.isLow ? 'Vẫn thêm vào listing' : 'Thêm vào listing'}</button>
           </div>
         </ActionForm>
       ) : (
@@ -143,7 +143,7 @@ export function ContactDialog({ koc, notes, coop, close, next }: Base & {
   coop: boolean;
 }) {
   return (
-    <Dialog title={`Ghi lịch sử liên hệ & Tiếp cận KOC mới — @${koc.handle}`} closeHref={close} wide>
+    <Dialog title={`Ghi liên hệ · @${koc.handle}`} closeHref={close} wide>
       <ActionForm action={logContact} className="grid gap-4 sm:grid-cols-2">
         <input type="hidden" name="kocId" value={koc.id} />
         <input type="hidden" name="next" value={next} />
@@ -154,45 +154,45 @@ export function ContactDialog({ koc, notes, coop, close, next }: Base & {
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="readiness">Độ sẵn sàng Booking</label>
+          <label className="label" htmlFor="readiness">Mức sẵn sàng booking</label>
           <select id="readiness" name="readiness" defaultValue={koc.readiness ?? 'TIẾP_CẬN_BỔ_SUNG_PHÁP_LÝ'} className="input">
             {READINESS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="channel">Kênh liên hệ</label>
+          <label className="label" htmlFor="channel">Liên hệ qua</label>
           <select id="channel" name="channel" className="input">
             {CONTACT_CHANNELS.map((c) => <option key={c}>{c}</option>)}
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="phone">SĐT / Zalo thu thập được</label>
+          <label className="label" htmlFor="phone">SĐT / Zalo</label>
           <input id="phone" name="phone" type="tel" defaultValue={koc.phone ?? koc.zalo ?? ''} className="input" />
         </div>
         <div>
-          <label className="label" htmlFor="email">Email làm việc</label>
+          <label className="label" htmlFor="email">Email</label>
           <input id="email" name="email" type="email" defaultValue={koc.email ?? ''} className="input" />
         </div>
         <div>
-          <label className="label" htmlFor="rateCard">Báo giá 1 Video KOC phản hồi (VNĐ)</label>
+          <label className="label" htmlFor="rateCard">Giá KOC báo / 1 video (₫)</label>
           <input id="rateCard" name="rateCard" type="number" min={0} step={1000} defaultValue={koc.rateCard ?? ''} className="input" />
         </div>
         <div className="col-span-full">
-          <label className="label" htmlFor="address">Địa chỉ nhận mẫu sản phẩm (nếu đã xin được)</label>
+          <label className="label" htmlFor="address">Địa chỉ nhận hàng mẫu (nếu có)</label>
           <input id="address" name="address" defaultValue={koc.address ?? ''} className="input" />
         </div>
         <div className="col-span-full">
-          <label className="label" htmlFor="note">Nội dung ghi chú lần liên hệ này</label>
+          <label className="label" htmlFor="note">Ghi chú lần liên hệ này</label>
           <textarea id="note" name="note" rows={3} className="input" />
         </div>
         {!coop && (
           <label className="col-span-full flex items-center gap-2 text-[13px]">
             <input type="checkbox" name="close" className="size-4" />
-            Chốt hợp tác — Chuyển sang Bảng 1 (KOC Cũ kèm lịch sử)
+            Chốt hợp tác: chuyển KOC sang tab "KOC đã hợp tác"
           </label>
         )}
         <div className="col-span-full">
-          <p className="mb-1.5 text-xs font-semibold text-ink-2">Lịch sử liên hệ trước đó ({notes.length})</p>
+          <p className="mb-1.5 text-xs font-semibold text-ink-2">Các lần liên hệ trước ({notes.length})</p>
           {notes.length ? (
             <ul className="grid max-h-48 gap-1.5 overflow-y-auto text-xs">
               {notes.map((n) => (
@@ -206,7 +206,7 @@ export function ContactDialog({ koc, notes, coop, close, next }: Base & {
         </div>
         <div className="col-span-full flex justify-end gap-2">
           <Link href={close} className="btn">Hủy</Link>
-          <button className="btn btn-primary">Lưu thông tin tiếp cận</button>
+          <button className="btn btn-primary">Lưu liên hệ</button>
         </div>
       </ActionForm>
     </Dialog>
@@ -223,21 +223,21 @@ export function ReviewDialog({ koc, reviews, brands, verdict, brand, meId, canMa
   const sorted = [...reviews].sort((a, b) => +b.createdAt - +a.createdAt);
   const keys = Object.keys(VERDICTS);
   return (
-    <Dialog title={`Đánh giá Kênh & Lịch sử đánh giá — @${koc.handle}`} closeHref={close} wide>
+    <Dialog title={`Đánh giá KOC · @${koc.handle}`} closeHref={close} wide>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <ActionForm action={saveReview} className="group/rv grid content-start gap-4 text-[13px]">
           <input type="hidden" name="kocId" value={koc.id} />
           <input type="hidden" name="next" value={next} />
-          <h3 className="font-semibold">Ghi nhận đánh giá mới</h3>
+          <h3 className="font-semibold">Đánh giá mới</h3>
           <div>
-            <label className="label" htmlFor="rv-brand">Nhãn hàng (Brand) đánh giá *</label>
+            <label className="label" htmlFor="rv-brand">Brand *</label>
             <select id="rv-brand" name="brand" defaultValue={brand} className="input">
-              <option value={ALL_BRANDS_SCOPE}>{ALL_BRANDS_SCOPE}</option>
+              <option value={ALL_BRANDS_SCOPE}>{brandName(ALL_BRANDS_SCOPE)}</option>
               {brands.map((b) => <option key={b}>{b}</option>)}
             </select>
           </div>
           <fieldset>
-            <legend className="label">Kết luận đánh giá cho Brand *</legend>
+            <legend className="label">Kết luận *</legend>
             <div className="flex flex-wrap gap-2">
               {keys.map((v) => (
                 <label key={v} className={`pill cursor-pointer px-3 py-1.5 ring-1 ring-line has-[:checked]:ring-2 has-[:checked]:ring-ink ${VERDICTS[v].tone}`}>
@@ -250,11 +250,11 @@ export function ReviewDialog({ koc, reviews, brands, verdict, brand, meId, canMa
           {keys.map((v) => (
             <div key={v} className={`hidden gap-4 ${v === 'SUITABLE' ? 'group-has-[#v-ok:checked]/rv:grid' : v === 'CAUTION' ? 'group-has-[#v-caution:checked]/rv:grid' : 'group-has-[#v-no:checked]/rv:grid'}`}>
               <div>
-                <label className="label" htmlFor={`note-${v}`}>Ý kiến đánh giá của nhân viên</label>
+                <label className="label" htmlFor={`note-${v}`}>Nhận xét</label>
                 <textarea id={`note-${v}`} name={`note-${v}`} rows={3} placeholder={VERDICTS[v].placeholder} className="input text-xs" />
               </div>
               <fieldset>
-                <legend className="label">Nhóm lý do đi kèm (chọn một hoặc nhiều)</legend>
+                <legend className="label">Lý do (chọn một hoặc nhiều)</legend>
                 <div className="flex flex-wrap gap-1.5">
                   {REVIEW_REASONS[v].map((r, i) => (
                     <label key={r} className="pill cursor-pointer bg-surface px-2.5 py-1 text-xs text-ink-2 ring-1 ring-line has-[:checked]:bg-accent-soft has-[:checked]:text-accent">
@@ -268,21 +268,21 @@ export function ReviewDialog({ koc, reviews, brands, verdict, brand, meId, canMa
           ))}
           <div className="flex justify-end gap-2">
             <Link href={close} className="btn">Đóng</Link>
-            <button className="btn btn-primary">Lưu đánh giá vào lịch sử</button>
+            <button className="btn btn-primary">Lưu đánh giá</button>
           </div>
         </ActionForm>
 
         <section id="lich-su" className="grid content-start gap-3 text-[13px]">
-          <h3 className="font-semibold">Đánh giá & Lịch sử @{koc.handle}{summary && ` (${summary.total})`}</h3>
+          <h3 className="font-semibold">Lịch sử đánh giá{summary && ` (${summary.total})`}</h3>
           {summary ? (
             <>
               <div className="overflow-x-auto rounded-md border border-line">
                 <table className="tbl text-xs">
-                  <thead><tr><th>Brand</th><th>Kết luận</th><th>Ý kiến & Lý do</th><th>Người ĐG & Thời gian</th></tr></thead>
+                  <thead><tr><th>Brand</th><th>Kết luận gần nhất</th><th>Nhận xét</th><th>Người đánh giá</th></tr></thead>
                   <tbody>
                     {summary.byBrand.map((b) => (
                       <tr key={b.brand}>
-                        <td>{b.brand}{b.count > 1 && <span className="text-ink-3"> · {b.count} lượt</span>}</td>
+                        <td>{brandName(b.brand)}{b.count > 1 && <span className="text-ink-3"> · {b.count} lượt</span>}</td>
                         <td><span className={`pill ${VERDICTS[b.latest.verdict]?.tone}`}>{VERDICTS[b.latest.verdict]?.short}</span></td>
                         <td className="max-w-[220px]"><span className="line-clamp-2" title={b.latest.note}>{b.latest.note}</span></td>
                         <td className="whitespace-nowrap text-ink-3">{b.latest.reviewer?.name ?? '—'}<br />{fmtDate(b.latest.createdAt)}</td>
@@ -296,7 +296,7 @@ export function ReviewDialog({ koc, reviews, brands, verdict, brand, meId, canMa
                   <li key={r.id} className="rounded-md border border-line px-3 py-2">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span className={`pill ${VERDICTS[r.verdict]?.tone}`}>{VERDICTS[r.verdict]?.label}</span>
-                      <span className="font-medium">{r.brand}</span>
+                      <span className="font-medium">{brandName(r.brand)}</span>
                       <span className="text-ink-3">{r.reviewer?.name ?? '—'} · {fmtTime(r.createdAt)}</span>
                       {(r.reviewerId === meId || canManage) && (
                         <form action={deleteReview} className="ml-auto">
@@ -308,12 +308,12 @@ export function ReviewDialog({ koc, reviews, brands, verdict, brand, meId, canMa
                     </div>
                     <p className="mt-1 whitespace-pre-line">{r.note}</p>
                     {r.reasons.length > 0 && <p className="mt-1 text-xs text-ink-3">{r.reasons.join(' · ')}</p>}
-                    <p className="mt-0.5 text-[11px] text-ink-3">Nguồn ghi nhận: {r.source}</p>
+                    <p className="mt-0.5 text-[11px] text-ink-3">Ghi từ: {r.source}</p>
                   </li>
                 ))}
               </ul>
             </>
-          ) : <p className="text-ink-3">Kênh chưa có lượt đánh giá nào.</p>}
+          ) : <p className="text-ink-3">Chưa có đánh giá nào.</p>}
         </section>
       </div>
     </Dialog>

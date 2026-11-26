@@ -73,7 +73,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
   // Độ đầy đủ hồ sơ: 5 nhóm thông tin theo yêu cầu chuẩn hoá KOC.
   const groups = [
     ['Số liệu TikTok', Boolean(koc.statsAt)],
-    ['Cấp KOL', Boolean(kl)],
+    ['Khung lương (KL)', Boolean(kl)],
     ['Liên hệ', Boolean(koc.phone || koc.zalo || koc.email)],
     ['Nhận hàng', Boolean(koc.receiverName && koc.address)],
     ['Thanh toán', Boolean(koc.bankAccount && koc.idNumber)],
@@ -94,27 +94,28 @@ export default async function KocPage({ params, searchParams }: { params: Promis
               <span>{koc.platform}</span>
               {kl && <span className="pill bg-accent-soft text-accent">{kl}</span>}
               {koc.niche && <span className="pill bg-sunken text-ink-2">{koc.niche}</span>}
-              {koc.pic?.name && <span>PIC {koc.pic.name}</span>}
+              {koc.pic?.name && <span>Phụ trách: {koc.pic.name}</span>}
               {nextFollow && (
                 <span className={`pill ${nextFollow.followUpAt! <= today ? 'bg-critical-soft text-critical' : 'bg-sunken text-ink-2'}`}>Hẹn liên hệ {fmtDate(nextFollow.followUpAt)}</span>
               )}
               <span className={`pill ${missing.length ? 'bg-warning-soft text-warning' : 'bg-positive-soft text-positive'}`} title={missing.length ? `Thiếu: ${missing.join(', ')}` : undefined}>
-                Hồ sơ {groups.length - missing.length}/{groups.length}
+                Đủ thông tin {groups.length - missing.length}/{groups.length}
               </span>
               {koc.category && <span className="pill bg-sunken text-ink-2">{koc.category}</span>}
               {rs?.byBrand.slice(0, 3).map((b) => (
                 <Link key={b.brand} href={`/contacts?${coop ? '' : 'tab=new&'}review=${koc.id}`} className={`pill ${VERDICTS[b.latest.verdict]?.tone}`}>
-                  {b.brand === ALL_BRANDS_SCOPE ? 'Toàn B2C' : b.brand}: {VERDICTS[b.latest.verdict]?.label}
+                  {b.brand === ALL_BRANDS_SCOPE ? 'Mọi brand' : b.brand}: {VERDICTS[b.latest.verdict]?.label}
                 </Link>
               ))}
-              {rs && rs.byBrand.length > 3 && <span className="text-ink-3">+{rs.byBrand.length - 3} Brand</span>}
-              {sharedCount > 0 && <Link href={`/contacts?${coop ? '' : 'tab=new&'}owner=${koc.id}`} className="link">Chung chủ / MCN với {sharedCount} kênh</Link>}
+              {rs && rs.byBrand.length > 3 && <span className="text-ink-3">+{rs.byBrand.length - 3} brand</span>}
+              {sharedCount > 0 && <Link href={`/contacts?${coop ? '' : 'tab=new&'}owner=${koc.id}`} className="link">Cùng chủ / công ty quản lý (MCN) với {sharedCount} kênh</Link>}
             </div>
+            <p className="mt-1 text-[13px] text-ink-2">Hồ sơ KOC: số TikTok, booking đã làm, liên hệ và giấy tờ thanh toán.</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {koc.platform === 'TikTok' && <Link href={`/creator/${koc.handle}`} className="btn">Hiệu quả ở mọi nguồn</Link>}
-          {canEdit && <Link href={`/contacts?edit=${koc.id}`} className="btn">Sửa hồ sơ</Link>}
+          {koc.platform === 'TikTok' && <Link href={`/creator/${koc.handle}`} className="btn">Xem hiệu quả bán hàng</Link>}
+          {canEdit && <Link href={`/contacts?edit=${koc.id}`} className="btn">Sửa thông tin KOC</Link>}
         </div>
       </div>
 
@@ -136,12 +137,12 @@ export default async function KocPage({ params, searchParams }: { params: Promis
           {koc.aliases.length > 0 && <p className="text-ink-2">ID kênh khác đã gộp vào hồ sơ này: {koc.aliases.map((a) => `@${a.handle}`).join(', ')}</p>}
           {twins.length > 0 && (
             <>
-              <p className="font-medium">Có thể trùng KOC: Lark ghi ID kênh khác cho cùng người</p>
+              <p className="font-medium">Có thể là cùng một KOC (ID kênh gần giống):</p>
               <ul className="mt-1 grid gap-1">
                 {twins.map((t) => (
                   <li key={t.id} className="flex flex-wrap items-center gap-2">
                     <Link href={`/contacts/${t.id}`} className="link">@{t.handle}</Link>
-                    <span className="text-xs text-ink-3">{t.name} · {t.kl ?? t.klAuto ?? 'chưa có tier'} · {t.bookingCount} booking</span>
+                    <span className="text-xs text-ink-3">{t.name} · {t.kl ?? t.klAuto ?? 'chưa có KL'} · {t.bookingCount} booking</span>
                     {canEdit && (
                       <form action={mergeKoc}>
                         <input type="hidden" name="id" value={t.id} />
@@ -158,22 +159,22 @@ export default async function KocPage({ params, searchParams }: { params: Promis
       )}
 
 
-      <Section title="Hiệu quả 30 ngày" meta={koc.statsAt ? `Kho dữ liệu UpBase · hồ sơ ${fmtDate(koc.statsAt)}, đồng bộ mỗi sáng` : 'Kho dữ liệu chưa có creator này'}>
+      <Section title="Hiệu quả 30 ngày trên TikTok" meta={koc.statsAt ? `Số ngày ${fmtDate(koc.statsAt)}, cập nhật 9:30 mỗi sáng` : 'Chưa có số TikTok của kênh này'}>
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
           <Stat label="Follower" value={fmtShort(koc.followers)} />
-          <Stat label="View TB / video bán hàng" value={fmtNum(koc.avgViews)} />
-          <Stat label="View TB / LIVE" value={fmtNum(koc.avgLiveViews)} />
+          <Stat label="View trung bình / video bán hàng" value={fmtNum(koc.avgViews)} />
+          <Stat label="View trung bình / LIVE" value={fmtNum(koc.avgLiveViews)} />
           <Stat label="Số món bán" value={fmtNum(koc.unitsSold)} />
           <Stat label="GMV" value={p.gmvExactVnd != null ? fmtShort(p.gmvExactVnd) + ' ₫' : koc.gmvRange ?? '—'} sub={p.gmvExactVnd != null ? koc.gmvRange ?? undefined : undefined} />
-          <Stat label="GPM" value={koc.gpmUsd == null ? '—' : fmtVnd(koc.gpmUsd * USD_VND)} sub={koc.gpmUsd == null ? undefined : `${koc.gpmUsd} USD`} />
-          <Stat label="GMV / khách hàng" value={p.aovText ?? (p.aovMid != null ? fmtVnd(p.aovMid) : '—')} />
+          <Stat label="GMV / 1.000 view" value={koc.gpmUsd == null ? '—' : fmtVnd(koc.gpmUsd * USD_VND)} sub={koc.gpmUsd == null ? undefined : `${koc.gpmUsd} USD`} />
+          <Stat label="Giá trị 1 đơn" value={p.aovText ?? (p.aovMid != null ? fmtVnd(p.aovMid) : '—')} />
           <Stat label="Tỷ lệ tương tác video" value={fmtPct(p.engagement, 2)} />
         </div>
         {history.length > 0 && (
           <details className="mt-4 border-t border-line pt-3" open={history.length > 1}>
-            <summary className="cursor-pointer text-[13px] font-medium">Lịch sử chỉ số ({history.length} lần ghi nhận)</summary>
+            <summary className="cursor-pointer text-[13px] font-medium">Số các lần trước ({history.length} lần)</summary>
             <table className="tbl mt-2">
-              <thead><tr><th>Ngày</th><th className="text-right">Follower</th><th className="text-right">View TB / video</th><th className="text-right">View TB / LIVE</th><th className="text-right">Số món bán</th><th>GMV</th></tr></thead>
+              <thead><tr><th>Ngày</th><th className="text-right">Follower</th><th className="text-right">View trung bình / video</th><th className="text-right">View trung bình / LIVE</th><th className="text-right">Số món bán</th><th>GMV</th></tr></thead>
               <tbody>
                 {history.map((h, i) => {
                   const prev = history[i + 1];
@@ -195,14 +196,13 @@ export default async function KocPage({ params, searchParams }: { params: Promis
       </Section>
 
       {sources.length > 0 && (
-        <Section title="Hiệu quả bán cho shop UpBase" meta={`Kho dữ liệu UpBase · tổng hợp ${fmtDate(sources[0].at)} · toàn bộ khoảng ngày của từng bảng`}>
+        <Section title="Hiệu quả bán cho shop UpBase" meta={`Số TikTok, cập nhật ${fmtDate(sources[0].at)}`}>
           <table className="tbl">
             <tbody>
               {sources.map(({ s, m, shops }) => (
                 <tr key={s.key} className="align-top">
                   <td className="whitespace-nowrap">
                     <Link href={`/data?src=${s.key}&ours=1`} className="link">{s.name}</Link>
-                    <div className="text-xs text-ink-3">Shop UpBase (kho)</div>
                   </td>
                   <td className="text-[13px]">
                     {s.metrics.map((x, i) => (
@@ -232,7 +232,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Section title="Tỷ trọng GMV">
+        <Section title="GMV đến từ đâu">
           <Bar label="Video" value={p.gmvVideo} />
           <Bar label="LIVE" value={p.gmvLive} />
           <Bar label="Thẻ sản phẩm" value={p.gmvShowcase} />
@@ -260,12 +260,12 @@ export default async function KocPage({ params, searchParams }: { params: Promis
             <div className="mb-3 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
               <Stat label="Giá booking gần nhất" value={fmtVnd(collab.lastPrice)} sub={collab.lastPriceNote ?? undefined} />
               <Stat label="Brand đã làm" value={String(collab.brands.length)} sub={collab.brands.slice(0, 3).join(', ')} />
-              <Stat label="Booking GMV tốt nhất (30 ngày)" value={collab.best ? fmtVnd(collab.best.gmv30) : '—'} sub={collab.best ? `${collab.best.code} · ${collab.best.brand ?? ''}` : undefined} />
-              <Stat label="Brand ngoài đã hợp tác (TikTok)" value={fmtNum(p.brandCount)} />
+              <Stat label="Booking có GMV cao nhất (30 ngày)" value={collab.best ? fmtVnd(collab.best.gmv30) : '—'} sub={collab.best ? `${collab.best.code} · ${collab.best.brand ?? ''}` : undefined} />
+              <Stat label="Số brand đã hợp tác trên TikTok" value={fmtNum(p.brandCount)} />
             </div>
             <div className="overflow-x-auto">
               <table className="tbl">
-                <thead><tr><th>Mã booking</th><th>Brand</th><th>Hình thức</th><th>Ngày air</th><th className="text-right">Chi phí</th><th className="text-right">View / GMV 30 ngày</th><th>Pipeline</th></tr></thead>
+                <thead><tr><th>Mã BO</th><th>Brand</th><th>Hình thức</th><th>Ngày air</th><th className="text-right">Chi phí</th><th className="text-right">View / GMV 30 ngày</th><th>Pipeline</th></tr></thead>
                 <tbody>
                   {bookings.slice(0, 30).map((b) => (
                     <tr key={b.code}>
@@ -287,12 +287,12 @@ export default async function KocPage({ params, searchParams }: { params: Promis
       </Section>
 
       <Section
-        title="Job trong app"
+        title="Job"
         meta={jobs.length ? `${jobs.length} job · nghiệm thu đạt ngay lần đầu ${firstPass}/${reviewed.length}${reviewed.length ? ` (${fmtPct(firstPass / reviewed.length, 0)})` : ''}` : undefined}
       >
         {jobs.length ? (
           <table className="tbl">
-            <thead><tr><th>Job</th><th>Brand</th><th>Chặng</th><th>Deadline</th><th className="text-right">Giá</th><th>Nghiệm thu</th></tr></thead>
+            <thead><tr><th>Job</th><th>Brand</th><th>Chặng</th><th>Hạn</th><th className="text-right">Giá</th><th>Nghiệm thu</th></tr></thead>
             <tbody>
               {jobs.map((j) => (
                 <tr key={j.id}>
@@ -306,13 +306,13 @@ export default async function KocPage({ params, searchParams }: { params: Promis
               ))}
             </tbody>
           </table>
-        ) : <Empty text="Chưa có job nào trong app (job tạo từ KOC Brand chọn Yes ở Listing)." />}
+        ) : <Empty text="Chưa có job. Job tự tạo khi brand chọn KOC này ở Listing." />}
       </Section>
 
       <Section title="Lịch sử Creator matching" meta={matches.length ? `${matches.length} đợt` : undefined}>
         {matches.length ? (
           <table className="tbl">
-            <thead><tr><th>Đợt</th><th>Brand</th><th>Trạng thái</th><th>Điểm · mức</th><th>Mã loại / lý do</th><th>Cập nhật</th></tr></thead>
+            <thead><tr><th>Đợt</th><th>Brand</th><th>Trạng thái</th><th>Điểm · kết luận</th><th>Lý do loại</th><th>Cập nhật</th></tr></thead>
             <tbody>
               {matches.map((m) => (
                 <tr key={m.id}>
@@ -329,7 +329,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
         ) : <Empty text="KOC chưa nằm trong đợt Creator matching nào." />}
       </Section>
 
-      <Section title="Nhật ký chăm sóc" meta="Ghi lại trao đổi, báo giá, hẹn liên hệ lại">
+      <Section title="Nhật ký liên hệ" meta="Ghi trao đổi, giá KOC báo, ngày hẹn liên hệ lại">
         <form action={addNote} className="mb-4 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
           <input type="hidden" name="kocId" value={koc.id} />
           <div>
@@ -340,7 +340,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
             <label htmlFor="note-follow" className="label">Hẹn liên hệ lại</label>
             <input id="note-follow" name="followUpAt" type="date" className="input" />
           </div>
-          <button className="btn btn-primary">Ghi</button>
+          <button className="btn btn-primary">Lưu ghi chú</button>
         </form>
         {notes.length ? (
           <ol className="space-y-3">
@@ -349,7 +349,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
                 <Avatar src={n.author?.avatarUrl} name={n.author?.name} size={28} />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs text-ink-3">
-                    {n.author?.name ?? 'Đã xoá'}{n.channel && ` · ${n.channel}`} · {n.createdAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}
+                    {n.author?.name ?? 'Người dùng đã xoá'}{n.channel && ` · ${n.channel}`} · {n.createdAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}
                   </div>
                   <p className="text-[13px] whitespace-pre-line">{n.body}</p>
                   {n.followUpAt && (
@@ -361,7 +361,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
                           <span className={`pill ${n.followUpAt <= today ? 'bg-critical-soft text-critical' : 'bg-warning-soft text-warning'}`}>Hẹn {fmtDate(n.followUpAt)}</span>
                           <form action={closeFollowUp}>
                             <input type="hidden" name="id" value={n.id} />
-                            <button className="link">Đã xử lý</button>
+                            <button className="link">Đánh dấu xong</button>
                           </form>
                         </>
                       )}
@@ -384,9 +384,9 @@ export default async function KocPage({ params, searchParams }: { params: Promis
       {canEdit && (
         <form action={mergeKoc} className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
           <input type="hidden" name="id" value={koc.id} />
-          <span>Hồ sơ này trùng với KOC khác? Gộp vào ID kênh</span>
+          <span>Hồ sơ này trùng với KOC khác? Gộp vào KOC có ID kênh</span>
           <input name="target" required placeholder="vd chengtom02" aria-label="ID kênh của KOC giữ lại" className="input h-8 w-48 text-[13px]" />
-          <button className="btn h-8">Gộp</button>
+          <button className="btn h-8">Gộp KOC</button>
           <span className="text-xs">Listing, job, ghi chú, booking chuyển sang KOC đó; hồ sơ này bị xoá.</span>
         </form>
       )}

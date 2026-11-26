@@ -21,23 +21,20 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <UsersTabs me={me} active="/users" action={<Link href="?edit=new" className="btn btn-primary">Thêm user</Link>} />
+      <UsersTabs me={me} active="/users" action={<Link href="?edit=new" className="btn btn-primary">Thêm người dùng</Link>} />
 
       <section className="mb-4 rounded-lg border border-line bg-surface px-5 py-4">
-        <h2 className="text-base font-semibold">Cổng đăng nhập Lark</h2>
-        <p className="mt-1 text-[13px] text-ink-2">
-          Người có trong danh sách dưới (và chưa bị khoá) đăng nhập được. Người chưa có mà thuộc phòng ban Lark khai báo ở đây sẽ tự được tạo user Nhân viên ở lần đăng nhập đầu;
-          phòng khác bị chặn, Admin thêm tay từng người. Team Booking trên Lark Base (6.2 Nhân sự Booking) vẫn được tạo tự động mỗi lượt đồng bộ.
-        </p>
+        <h2 className="text-base font-semibold">Phòng ban được tự vào</h2>
+        <p className="mt-1 text-[13px] text-ink-2">Người thuộc các phòng ban Lark này tự được thêm làm Nhân viên ở lần đăng nhập đầu. Team Booking trên Lark luôn được thêm tự động.</p>
         <ActionForm action={saveLoginDepts} className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
           <div>
-            <label className="label" htmlFor="depts">Phòng ban tự cho đăng nhập (mỗi dòng một tên, khớp nếu tên phòng ban Lark có chứa)</label>
+            <label className="label" htmlFor="depts">Tên phòng ban (mỗi dòng một tên)</label>
             <textarea id="depts" name="depts" rows={3} defaultValue={policy.loginDepts.join('\n')} placeholder={'Booking\nMarketing B2C'} className="input" />
-            {depts.length > 0 && <p className="mt-1 text-xs text-ink-3">Phòng ban của user hiện có: {depts.join(' · ')}</p>}
+            {depts.length > 0 && <p className="mt-1 text-xs text-ink-3">Phòng ban đang có: {depts.join(' · ')}</p>}
           </div>
-          <button className="btn btn-primary">Lưu cổng đăng nhập</button>
+          <button className="btn btn-primary">Lưu phòng ban</button>
         </ActionForm>
-        {!policy.loginDepts.length && <p className="mt-2 text-xs text-warning">Chưa khai báo phòng ban: chỉ người Admin thêm / đồng bộ từ Lark Base mới đăng nhập được.</p>}
+        {!policy.loginDepts.length && <p className="mt-2 text-xs text-warning">Chưa có phòng ban nào: chỉ người Admin đã thêm và team Booking trên Lark mới đăng nhập được.</p>}
       </section>
 
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
@@ -79,7 +76,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
       </div>
 
       {(edit === 'new' || editing) && (
-        <Dialog title={editing ? `Sửa ${editing.name ?? editing.larkUserId}` : 'Thêm user'} closeHref="/users">
+        <Dialog title={editing ? `Sửa ${editing.name ?? editing.larkUserId}` : 'Thêm người dùng'} closeHref="/users">
           <ActionForm action={saveUser} className="grid gap-4">
             <input type="hidden" name="id" value={editing?.id ?? ''} />
             <div>
@@ -88,18 +85,18 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
               <p className="mt-1 text-xs text-ink-3">Tên, email, avatar, phòng ban tự lấy từ Lark khi lưu.</p>
             </div>
             <div>
-              <label className="label" htmlFor="role">Quyền trong app</label>
+              <label className="label" htmlFor="role">Vai trò</label>
               <select id="role" name="role" defaultValue={editing?.role ?? 'STAFF'} className="input">
                 {Object.values(Role).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
               </select>
             </div>
             <div>
-              <label className="label" htmlFor="jobRole">Vai trò nghiệp vụ</label>
+              <label className="label" htmlFor="jobRole">Vị trí trong team</label>
               <select id="jobRole" name="jobRole" defaultValue={editing?.jobRole ?? ''} className="input">
                 <option value="">—</option>
                 {JOB_ROLES.map((r) => <option key={r}>{r}</option>)}
               </select>
-              <p className="mt-1 text-xs text-ink-3">Quyền trong app theo ô ở trên (chi tiết ở tab Vai trò &amp; quyền); brand phụ trách gán ở tab Phân công.</p>
+              <p className="mt-1 text-xs text-ink-3">Chỉ để ghi nhận. Quyền theo ô Vai trò; brand giao ở tab Phân công &amp; bàn giao.</p>
             </div>
             {editing && (
               <label className="flex items-center gap-2">

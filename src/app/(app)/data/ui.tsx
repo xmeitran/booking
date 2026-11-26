@@ -6,16 +6,20 @@ import { fmtDate, fmtShort } from '@/lib/format';
 
 export type AreaKey = keyof typeof ORIGIN;
 /** Nhóm nguồn theo việc người xem muốn biết (thay vì theo hệ thống kỹ thuật). */
-export const AREAS: { key: AreaKey; title: string; question: string; system: string; sources: Source[] }[] = [
-  { key: 'seller', title: 'Bán hàng cho shop UpBase', question: 'Creator nào bán được hàng cho các shop UpBase quản lý', system: 'Kho UpBase · TikTok Seller Center', sources: WAREHOUSE },
-  { key: 'lark', title: 'Booking UpBase', question: 'Đã book KOL nào, chi phí bao nhiêu, team ghi nhận hiệu quả ra sao', system: 'Lark Base · 3.2 List duyệt book', sources: [LARK] },
-  { key: 'marketplace', title: 'Hồ sơ creator TikTok', question: 'Follower, lượt xem, GMV 30 ngày của creator trên toàn sàn', system: 'Kho UpBase · hồ sơ creator', sources: [MARKET] },
+export const AREAS: { key: AreaKey; title: string; question: string; sources: Source[] }[] = [
+  { key: 'seller', title: 'Bán hàng cho shop UpBase', question: 'Ai bán được hàng cho shop UpBase', sources: WAREHOUSE },
+  { key: 'lark', title: 'Booking UpBase', question: 'Đã book ai, chi phí, kết quả team ghi', sources: [LARK] },
+  { key: 'marketplace', title: 'Hồ sơ creator TikTok', question: 'Follower, view, GMV 30 ngày trên toàn sàn', sources: [MARKET] },
 ];
 export const areaOf = (s: Source): AreaKey => (s.key === 'marketplace' ? 'marketplace' : s.group);
 /** Quá hạn khi lần cập nhật gần nhất cũ hơn 2 lần chu kỳ (giờ). */
 export const STALE_HOURS: Record<AreaKey, number> = { lark: 3, seller: 12, marketplace: 48 };
 
 export const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+const vnDay = (d: Date) => d.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+/** "17:42 hôm nay", ngày khác thì "17:42 25/11". */
+export const fmtWhen = (d: Date) =>
+  vnDay(d) === vnDay(new Date()) ? `${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })} hôm nay` : fmtTime(d);
 export const day = (s: string | null) => (s ? fmtDate(new Date(s)) : '—');
 export const val = (v: number, money?: boolean) => (money ? `${fmtShort(v)} ₫` : fmtShort(v));
 
@@ -136,17 +140,17 @@ export function Segmented({ items }: { items: { href: string; label: string; act
 
 export function KindPill({ k }: { k: AreaKey }) {
   const team = ORIGIN[k].kind === 'Team tự điền';
-  return <Status tone={team ? 'warning' : 'positive'} title={team ? 'Team nhập trên Lark, có thể thiếu hoặc sai' : 'API TikTok trả, không ai sửa tay'}>{ORIGIN[k].kind}</Status>;
+  return <Status tone={team ? 'warning' : 'positive'} title={team ? 'Team nhập trên Lark, có thể thiếu hoặc sai' : 'Lấy thẳng từ TikTok, không ai sửa tay'}>{ORIGIN[k].kind}</Status>;
 }
 
-/** Trạng thái cập nhật của một nhóm nguồn. */
+/** Trạng thái cập nhật của một nhóm nguồn: "Cập nhật 17:42 hôm nay · 6 giờ / lần"; chỉ gắn nhãn khi có vấn đề. */
 export function Freshness({ k, at, error }: { k: AreaKey; at: Date | null; error?: boolean }) {
   const stale = !at || Date.now() - at.getTime() > STALE_HOURS[k] * 3600_000;
-  const [tone, label]: [Tone, string] = error ? ['critical', 'Lỗi lần cập nhật gần nhất'] : !at ? ['neutral', 'Chưa cập nhật'] : stale ? ['warning', 'Quá hạn cập nhật'] : ['positive', 'Cập nhật đều'];
+  const problem: [Tone, string] | null = error ? ['critical', 'Lần cập nhật gần nhất bị lỗi'] : !at ? ['neutral', 'Chưa cập nhật lần nào'] : stale ? ['warning', 'Lâu chưa cập nhật'] : null;
   return (
     <span className="flex flex-wrap items-center gap-1.5 text-2xs text-ink-3">
-      <Status tone={tone}>{label}</Status>
-      {at ? `${fmtTime(at)} · ${ORIGIN[k].schedule}` : ORIGIN[k].schedule}
+      {at ? `Cập nhật ${fmtWhen(at)} · ${ORIGIN[k].schedule}` : `Cập nhật ${ORIGIN[k].schedule}`}
+      {problem && <Status tone={problem[0]}>{problem[1]}</Status>}
     </span>
   );
 }

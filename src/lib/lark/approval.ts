@@ -22,8 +22,8 @@ export async function sendApproval(larkUserId: string, values: FormValues): Prom
   const widgets = new Map((await approvalWidgets()).map((w) => [w.id, w]));
   const form = Object.entries(map).map(([id, field]) => {
     const w = widgets.get(id);
-    if (!w) throw new Error(`Mapping form Approval: quy trình không có ô "${id}".`);
-    if (!(field in FORM_FIELDS)) throw new Error(`Mapping form Approval: trường "${field}" không hợp lệ (dùng: ${Object.keys(FORM_FIELDS).join(', ')}).`);
+    if (!w) throw new Error(`Cài đặt gửi duyệt trên Lark bị sai (form duyệt không có ô "${id}"). Báo Admin kiểm tra ở Phân quyền → Tích hợp.`);
+    if (!(field in FORM_FIELDS)) throw new Error(`Cài đặt gửi duyệt trên Lark bị sai (trường "${field}" không có; dùng: ${Object.keys(FORM_FIELDS).join(', ')}). Báo Admin kiểm tra ở Phân quyền → Tích hợp.`);
     const v = values[field as keyof FormValues];
     return { id, type: w.type, value: w.type === 'number' || w.type === 'amount' ? Number(v) || 0 : String(v ?? '') };
   });

@@ -8,15 +8,15 @@ import { db } from '../db';
 import { CANCELLED } from '../booking/jobs';
 
 export const PERMS = {
-  'data.all': { label: 'Xem dữ liệu mọi brand', hint: 'Tắt: chỉ thấy Plan, Job, Listing, Booking, Thanh toán của brand được giao (Danh mục → nhân sự) và việc mình là PIC / người tạo.' },
-  'plan.edit': { label: 'Tạo, sửa plan', hint: 'Plan và dòng plan tạo trong app; plan từ Lark luôn chỉ đọc.' },
-  'catalog.edit': { label: 'Sửa danh mục, phân công, bàn giao', hint: 'Brand, gian hàng, sản phẩm, bảng giá tier, nhân sự phụ trách brand, bàn giao gian hàng.' },
+  'data.all': { label: 'Xem dữ liệu mọi brand', hint: 'Tắt: chỉ thấy Plan, Job, Listing, Booking, Thanh toán của brand được giao và việc mình phụ trách hoặc tự tạo.' },
+  'plan.edit': { label: 'Tạo, sửa plan', hint: 'Plan tạo trong app; plan từ Lark chỉ xem.' },
+  'catalog.edit': { label: 'Sửa danh mục, phân công, bàn giao', hint: 'Brand, gian hàng, sản phẩm, bảng giá, người phụ trách brand, bàn giao việc.' },
   'koc.edit': { label: 'Sửa danh bạ KOC', hint: 'Thêm, sửa, gộp, xoá KOC.' },
-  'koc.bank': { label: 'Xem số tài khoản, CCCD', hint: 'Ở ĐNTT và trong file xuất.' },
+  'koc.bank': { label: 'Xem số tài khoản, CCCD', hint: 'Ở ĐNTT và trong file Excel tải về.' },
   'payment.approve': { label: 'Duyệt ĐNTT, xác nhận đã thanh toán', hint: '' },
-  'data.export': { label: 'Tải file Excel', hint: 'Danh bạ KOC, listing, KOC khớp brief, ĐNTT.' },
+  'data.export': { label: 'Tải file Excel', hint: 'Danh bạ KOC, listing, KOC của đợt matching, ĐNTT.' },
   'brief.deleteAny': { label: 'Xoá đợt matching của người khác', hint: 'Người tạo luôn xoá được đợt của mình.' },
-  'match.approve': { label: 'Duyệt list KOC (Creator matching bước 8), duyệt ngoại lệ', hint: 'Duyệt / trả lại KOC đã báo giá; giữ lại KOC bị loại tự động (I-26). Người duyệt ngoại lệ ghi ở quy tắc brand cũng duyệt được ngoại lệ.' },
+  'match.approve': { label: 'Duyệt list KOC ở Creator matching', hint: 'Duyệt / trả lại KOC đã hỏi giá; giữ lại KOC bị hệ thống loại. Người duyệt ghi trong quy tắc brand cũng giữ lại được.' },
   'job.delete': { label: 'Xoá job', hint: '' },
 } as const;
 export type Perm = keyof typeof PERMS;

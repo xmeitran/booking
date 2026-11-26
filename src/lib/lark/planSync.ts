@@ -78,7 +78,7 @@ export function toLines(r: LarkRecord): LineDraft[] {
     add(k, k, 'Video', num(f[k]), null);
     cast -= num(f[k]);
   }
-  add('video', null, 'Video', cast, net(f[COL.videoCost]), note(foc > 0 && `Freecast (TAP) ${foc} video, không tính vào SL`));
+  add('video', null, 'Video', cast, net(f[COL.videoCost]), note(foc > 0 && `Freecast (TAP) ${foc} video, không tính vào số KOC cần book`));
   add('self', null, 'Video self channel', qty('selfAdj', 'self'), net(f[COL.selfCost]));
   add('live', null, 'Phiên livestream', qty('liveAdj', 'live'), net(f[COL.liveCost]));
   return out;
@@ -93,7 +93,7 @@ export async function syncPlans() {
     for (const r of page) drafts.push(...toLines(r));
   }
   // Đếm dòng plan đọc được, không phải dòng Lark: đổi định dạng cột "Tháng" trên Lark thì mọi dòng ra rỗng, không được xoá hết.
-  if (!drafts.length) throw new Error(`Đọc ${rows} dòng Lark nhưng không ra dòng plan nào (đổi tên / định dạng cột?), không đồng bộ để tránh xoá nhầm.`);
+  if (!drafts.length) throw new Error(`Đọc được ${rows} dòng trên Lark nhưng không ra dòng plan nào (có thể cột trên Lark bị đổi tên hoặc định dạng). Đã dừng để không xoá nhầm plan.`);
 
   // Brand khớp Danh mục theo tên (bỏ khoảng trắng, ký tự đặc biệt); chưa có thì thêm để "Tìm KOC" và gắn job theo brand chạy được.
   const loadBrands = async () => new Map((await db.brand.findMany({ select: { id: true, name: true, members: { where: { role: 'Booking PIC', user: { active: true } }, select: { userId: true } } } })).map((b) => [brandKey(b.name), b]));
@@ -119,7 +119,7 @@ export async function syncPlans() {
   await db.plan.createMany({
     data: months.map((m) => ({
       id: `lark-${m}`, month: m, name: `Plan order tổng ${m.split('-').reverse().join('/')}`, createdById: 'lark',
-      note: 'Đồng bộ từ Lark Base (4.1 Plan order tổng), sửa số liệu trên Lark',
+      note: 'Lấy từ Lark, sửa số liệu trên Lark',
     })),
     skipDuplicates: true,
   });

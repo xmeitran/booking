@@ -27,7 +27,7 @@ test('toLines tách video trả phí (trừ freecast), self channel, livestream;
   assert.equal(lines[0].month, '2026-11');
   assert.equal(lines[0].brand, 'EUPC');
   assert.deepEqual(lines[0].pic, { id: 'ou_1', name: 'Nhung' });
-  assert.equal(lines[0].note, 'EUPC _TikTok_E2E-C · Freecast (TAP) 290 video, không tính vào SL');
+  assert.equal(lines[0].note, 'EUPC _TikTok_E2E-C · Freecast (TAP) 290 video, không tính vào số KOC cần book');
   assert.equal(lines[1].note, 'EUPC _TikTok_E2E-C');
 });
 

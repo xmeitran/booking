@@ -17,12 +17,12 @@ export const FLAGS: Record<string, { label: string; where: () => Prisma.BookingW
     where: () => ({ airDate: null, planAirDate: { lt: startOfToday() }, pipeline: { notIn: ['Làm ĐNTT', 'Done'] } }),
   },
   noLink: {
-    label: 'Đã air thiếu link',
+    label: 'Đã air, thiếu link',
     where: () => ({ airDate: { not: null }, OR: [{ linkAir: null }, { NOT: { linkAir: { startsWith: 'http' } } }] }),
   },
-  sla: { label: 'Cảnh báo SLA', where: () => ({ slaLate: true, NOT: { pipeline: 'Done' } }) },
-  payIssue: { label: 'Phiếu TT bị trả / thu hồi', where: () => ({ OR: [{ paymentStatus: { contains: 'Rejected' } }, { paymentStatus: { contains: 'Recalled' } }], NOT: { paymentStatus: { contains: 'Approved' } } }) },
-  payment: { label: 'Chờ ĐNTT', where: () => ({ pipeline: 'Làm ĐNTT' }) },
+  sla: { label: 'Cảnh báo trễ SLA', where: () => ({ slaLate: true, NOT: { pipeline: 'Done' } }) },
+  payIssue: { label: 'Phiếu thanh toán bị trả / thu hồi', where: () => ({ OR: [{ paymentStatus: { contains: 'Rejected' } }, { paymentStatus: { contains: 'Recalled' } }], NOT: { paymentStatus: { contains: 'Approved' } } }) },
+  payment: { label: 'Chờ làm ĐNTT', where: () => ({ pipeline: 'Làm ĐNTT' }) },
 };
 
 export type BookingFilters = { q?: string; month?: string; brand?: string; pipeline?: string; owner?: string; person?: string; flag?: string };

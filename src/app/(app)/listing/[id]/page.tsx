@@ -9,7 +9,7 @@ import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { BRAND_CHOICE, COL_GROUPS, COLS, CONTACT_STATUS, fromLarkListing, loadListing, PRICE_TYPES, RECOMMEND, sameBrand, type Col, type ListingRow } from '@/lib/booking/listing';
 import { gmvLabel } from '@/lib/koc/kocInsights';
 import { guard } from '@/lib/auth/scope';
-import { configured } from '@/lib/integrations';
+import { cfg, configured } from '@/lib/integrations';
 import { can, requireUser } from '@/lib/auth/session';
 import { addKocs, createShare, deleteBatch, inviteKocs, pullFromSheet, pushToSheet, removeItem, revokeShare, saveBatch, saveItem, setItemField } from '../actions';
 import { createJobsFromListing } from '../../jobs/actions';
@@ -23,13 +23,13 @@ type Search = { msg?: string; err?: string; edit?: string; item?: string; view?:
 
 const SORTS: Record<string, { label: string; key?: (r: ListingRow) => number | null; asc?: boolean }> = {
   '': { label: 'Thứ tự thêm' },
-  fee: { label: 'Phí cao nhất', key: (r) => r.f.fee },
-  gmv: { label: 'GMV Target cao nhất', key: (r) => r.f.gmvTarget },
+  fee: { label: 'Chi phí cao nhất', key: (r) => r.f.fee },
+  gmv: { label: 'GMV mục tiêu cao nhất', key: (r) => r.f.gmvTarget },
   followers: { label: 'Follower nhiều nhất', key: (r) => r.koc.followers },
-  views: { label: 'View TB cao nhất', key: (r) => r.koc.avgViews },
-  cpv: { label: 'CPV thấp nhất', key: (r) => r.f.cpv, asc: true },
+  views: { label: 'View trung bình cao nhất', key: (r) => r.koc.avgViews },
+  cpv: { label: 'Chi phí / view thấp nhất', key: (r) => r.f.cpv, asc: true },
 };
-const CHOICES: [string, string][] = [['', 'Tất cả'], ['none', 'Brand chưa phản hồi'], ['Yes', 'Yes'], ['Cân nhắc', 'Cân nhắc'], ['No', 'No']];
+const CHOICES: [string, string][] = [['', 'Tất cả'], ['none', 'Brand chưa chọn'], ['Yes', 'Yes'], ['Cân nhắc', 'Cân nhắc'], ['No', 'No']];
 const DEFAULT_HIDE = ['meta', 'contact', 'bank'];
 // Ô sửa nhanh trong bảng Excel, theo tên cột.
 const EDIT: Record<string, { field: string; options?: string[]; type?: 'number' | 'date'; value: (r: ListingRow) => string; placeholder?: (r: ListingRow) => string }> = {
@@ -59,6 +59,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
   const editingRow = lark ? undefined : rows.find((r) => r.item.id === itemId);
   const [picker, synced] = await Promise.all([lark ? null : kocPicker(batch, rows.map((r) => r.koc.id), sp.kq ?? ''), lark ? db.syncState.findUnique({ where: { id: 'listings' } }) : null]);
   const [sheetsOn, mailOn] = await Promise.all([configured('sheets'), configured('mail')]);
+  const sheetEmail = sheetsOn ? await cfg('GOOGLE_SERVICE_ACCOUNT_EMAIL') : '';
   const canDelete = me.role !== 'STAFF' || batch.createdById === me.id;
 
   // Lọc + xếp trên bộ nhớ: một đợt chỉ vài chục KOC.
@@ -103,30 +104,33 @@ export default async function ListingBatchPage({ params, searchParams }: { param
       <div className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{batch.name}</h1>
+          <p className="mt-1 text-[13px] text-ink-2">
+            {lark ? 'Đợt lấy từ Lark: chỉ xem ở đây, muốn sửa thì sửa trên Lark.' : 'Thêm KOC → gửi brand chọn → tạo job cho KOC brand chọn Yes.'}
+          </p>
           <p className="mt-0.5 text-xs text-ink-3">
             {[batch.brand, batch.store, batch.product, `Tháng ${batch.month.split('-').reverse().join('/')}`].filter(Boolean).join(' · ')}
-            {' · '}CR {batch.cr == null ? '—' : fmtPct(batch.cr)} · AOV {fmtVnd(batch.aov)} · tạo bởi {batch.createdBy.name ?? '—'}
-            {batch.briefId && <> · từ <Link href={`/matching/${batch.briefId}?step=9`} className="link">Creator matching</Link> (điểm, mức kết luận ở bước 9)</>}
+            {' · '}tỉ lệ chuyển đổi {batch.cr == null ? '—' : fmtPct(batch.cr)} · giá trị 1 đơn {fmtVnd(batch.aov)} · tạo bởi {batch.createdBy.name ?? '—'}
+            {batch.briefId && <> · từ <Link href={`/matching/${batch.briefId}?step=9`} className="link">Creator matching</Link></>}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {can(me, 'data.export') && (
             <>
-              <a href={`/listing/${batch.id}/export?mode=brand`} className="btn">Tải file cho Brand</a>
+              <a href={`/listing/${batch.id}/export?mode=brand`} className="btn">Tải file gửi brand</a>
               <a href={`/listing/${batch.id}/export?mode=internal`} className="btn">Tải file nội bộ</a>
             </>
           )}
           {!lark && mailOn && toInvite > 0 && (
             <form action={inviteKocs}>
               <input type="hidden" name="id" value={batch.id} />
-              <button className="btn" title="Gửi cho KOC có email trong Danh bạ, chưa được mời, Brand chưa chọn No">Gửi mail mời {toInvite} KOC</button>
+              <button className="btn" title="Gửi cho KOC có email trong Danh bạ, chưa được mời và brand chưa chọn No">Gửi mail mời {toInvite} KOC</button>
             </form>
           )}
           {!lark && <Link href="?edit=1" className="btn">Sửa đợt</Link>}
           {!lark && jobsToCreate > 0 && (
             <form action={createJobsFromListing}>
               <input type="hidden" name="batchId" value={batch.id} />
-              <button className="btn btn-primary">Tạo {jobsToCreate} job cho KOC Brand chọn Yes</button>
+              <button className="btn btn-primary">Tạo {jobsToCreate} job cho KOC brand chọn Yes</button>
             </form>
           )}
         </div>
@@ -134,19 +138,19 @@ export default async function ListingBatchPage({ params, searchParams }: { param
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label="KOC trong đợt" value={String(rows.length)} sub={`${rows.filter((r) => r.item.recommendation === 'Must Have').length} Must Have`} />
-        <Kpi label="Brand chọn" value={String(chosen.length)} sub={`${rows.filter((r) => r.item.brandChoice).length}/${rows.length} đã phản hồi`} />
-        <Kpi label="Phí kèm TNCN (Brand chọn)" value={fmtShort(sum(chosen, (r) => times(r.f.fee, r)))} sub={`Toàn đợt ${fmtShort(sum(rows, (r) => times(r.f.fee, r)))}`} />
-        <Kpi label="GMV Target (Brand chọn)" value={fmtShort(sum(chosen, (r) => times(r.f.gmvTarget, r)))} sub={`Toàn đợt ${fmtShort(sum(rows, (r) => times(r.f.gmvTarget, r)))}`} />
+        <Kpi label="Brand chọn Yes" value={String(chosen.length)} sub={`Brand đã chọn ${rows.filter((r) => r.item.brandChoice).length}/${rows.length} KOC`} />
+        <Kpi label="Chi phí gồm thuế TNCN (KOC brand chọn)" value={fmtShort(sum(chosen, (r) => times(r.f.fee, r)))} sub={`Cả đợt ${fmtShort(sum(rows, (r) => times(r.f.fee, r)))}`} />
+        <Kpi label="GMV mục tiêu (KOC brand chọn)" value={fmtShort(sum(chosen, (r) => times(r.f.gmvTarget, r)))} sub={`Cả đợt ${fmtShort(sum(rows, (r) => times(r.f.gmvTarget, r)))}`} />
       </div>
 
       {lark && (
         <p className="mb-4 rounded-lg border border-line bg-accent-soft px-4 py-3 text-[13px] text-accent">
-          Đợt này đồng bộ từ Lark (bảng <b>3.1 Listing KOCs</b>){synced?.finishedAt && `, lần gần nhất ${synced.finishedAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}`}.
-          Giá, đề xuất, Brand duyệt, lý do từ chối sửa trên Lark; Booking Hub tự cập nhật mỗi giờ. Nhiều dòng cùng KOC trên Lark được gộp, số video = số dòng.
+          App tự cập nhật từ Lark mỗi giờ{synced?.finishedAt && ` (lần cuối ${synced.finishedAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })})`}.
+          Một KOC có nhiều dòng trên Lark được gộp lại, số video = số dòng.
         </p>
       )}
       {!lark && <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3 text-[13px]">
-        <span className="font-medium">Brand duyệt online</span>
+        <span className="font-medium">Link cho brand chọn KOC</span>
         {batch.shareToken ? (
           <>
             <code className="max-w-full truncate rounded bg-sunken px-2 py-1 text-xs">{shareUrl}</code>
@@ -155,14 +159,14 @@ export default async function ListingBatchPage({ params, searchParams }: { param
               <input type="hidden" name="id" value={batch.id} />
               <button className="btn h-8 px-2.5 text-xs">Thu hồi link</button>
             </form>
-            <span className="text-xs text-ink-3">Ai có link đều xem và chọn được. Trang Brand không có SĐT, địa chỉ, tài khoản ngân hàng.</span>
+            <span className="text-xs text-ink-3">Ai có link đều xem và chọn được. Brand không thấy SĐT, địa chỉ, tài khoản ngân hàng.</span>
           </>
         ) : (
           <>
-            <span className="text-ink-3">Gửi Brand một link để tự chọn Yes / No / Cân nhắc và ghi lý do, không cần tài khoản.</span>
+            <span className="text-ink-3">Brand mở link, tự chọn Yes / No / Cân nhắc cho từng KOC, không cần đăng nhập.</span>
             <form action={createShare}>
               <input type="hidden" name="id" value={batch.id} />
-              <button className="btn h-8 px-2.5 text-xs">Tạo link</button>
+              <button className="btn h-8 px-2.5 text-xs">Tạo link cho brand chọn KOC</button>
             </form>
           </>
         )}
@@ -175,19 +179,20 @@ export default async function ListingBatchPage({ params, searchParams }: { param
           <span className="font-medium">Google Sheet của brand</span>
           <form action={pushToSheet} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <input type="hidden" name="id" value={batch.id} />
-            <input name="sheetUrl" defaultValue={batch.sheetUrl ?? ''} placeholder="Dán link Google Sheet brand đã chia sẻ cho service account" aria-label="Link Google Sheet của brand" className="input h-8 min-w-64 flex-1 text-xs" />
-            <button className="btn h-8 px-2.5 text-xs">{batch.sheetUrl ? 'Đẩy lại listing' : 'Đẩy listing sang sheet'}</button>
+            <input name="sheetUrl" defaultValue={batch.sheetUrl ?? ''} placeholder="Dán link Google Sheet của brand" aria-label="Link Google Sheet của brand" className="input h-8 min-w-64 flex-1 text-xs" />
+            <button className="btn h-8 px-2.5 text-xs">{batch.sheetUrl ? 'Gửi lại listing sang sheet' : 'Gửi listing sang sheet'}</button>
           </form>
           {batch.sheetUrl && (
             <>
               <form action={pullFromSheet}>
                 <input type="hidden" name="id" value={batch.id} />
-                <button className="btn h-8 px-2.5 text-xs">Lấy kết quả duyệt</button>
+                <button className="btn h-8 px-2.5 text-xs">Lấy lựa chọn của brand</button>
               </form>
               <a href={batch.sheetUrl} target="_blank" rel="noreferrer" className="link text-xs">Mở sheet</a>
-              {batch.sheetAt && <span className="text-xs text-ink-3">Đẩy lần cuối {fmtDate(batch.sheetAt)}</span>}
+              {batch.sheetAt && <span className="text-xs text-ink-3">Gửi lần cuối {fmtDate(batch.sheetAt)}</span>}
             </>
           )}
+          {sheetEmail && <span className="basis-full text-xs text-ink-3">Brand cần chia sẻ sheet cho {sheetEmail} với quyền chỉnh sửa.</span>}
         </div>
       )}
 
@@ -201,7 +206,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
             </Link>
           ))}
           <Link href={withParam('dup', dup ? '' : '1')} className={`pill px-2.5 py-1 ${dup ? 'bg-ink text-white' : byRec.some((r) => r.dup.length) ? 'bg-warning-soft text-warning' : 'bg-surface text-ink-3 ring-1 ring-line'}`}>
-            Trùng · {byRec.filter((r) => r.dup.length).length}
+            KOC trùng · {byRec.filter((r) => r.dup.length).length}
           </Link>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -217,8 +222,8 @@ export default async function ListingBatchPage({ params, searchParams }: { param
             <button className="btn h-8 px-2.5 text-xs">Lọc</button>
           </form>
           <div className="flex rounded-md bg-sunken p-0.5 text-[13px]">
-            <Link href={withParam('view', '')} className={`rounded px-3 py-1 ${!grid ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Tóm tắt</Link>
-            <Link href={withParam('view', 'grid')} className={`rounded px-3 py-1 ${grid ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Bảng Excel</Link>
+            <Link href={withParam('view', '')} className={`rounded px-3 py-1 ${!grid ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>Xem gọn</Link>
+            <Link href={withParam('view', 'grid')} className={`rounded px-3 py-1 ${grid ? 'bg-surface font-medium shadow-sm' : 'text-ink-3'}`}>{lark ? 'Xem đủ cột' : 'Sửa dạng bảng'}</Link>
           </div>
         </div>
       </div>
@@ -226,7 +231,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
       {grid ? (
         <>
           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
-            <span className="text-ink-3">Nhóm cột:</span>
+            <span className="text-ink-3">Hiện cột:</span>
             {groups.map((g) => (
               <Link key={g} href={toggleGroup(g)} className={`pill px-2 py-0.5 ${hidden.has(g) ? 'bg-surface text-ink-3 ring-1 ring-line' : 'bg-accent-soft text-accent'}`}>
                 {hidden.has(g) ? '+ ' : '✓ '}{COL_GROUPS[g]}
@@ -287,18 +292,18 @@ export default async function ListingBatchPage({ params, searchParams }: { param
             <thead>
               <tr>
                 <th>KOC</th><th className="text-right">Follower</th><th>Hiệu quả 30 ngày</th><th>Khán giả</th>
-                <th>Với UpBase</th><th className="text-right">Giá / phí</th><th className="text-right">Dự báo</th><th>Đề xuất · Brand</th><th />
+                <th>Đã làm với UpBase</th><th className="text-right">Giá</th><th className="text-right">Ước tính</th><th>Đề xuất · brand chọn</th><th />
               </tr>
             </thead>
             <tbody>
               {shown.map((r) => <Row key={r.item.id} r={r} readOnly={lark} />)}
-              {!shown.length && <tr><td colSpan={9} className="py-12 text-center text-ink-3">{rows.length ? 'Không có KOC khớp bộ lọc.' : lark ? 'Đợt chưa có KOC.' : 'Chưa có KOC. Tìm trong Danh bạ, tick từ gợi ý hoặc dán ID kênh ở khung "Thêm KOC" phía trên.'}</td></tr>}
+              {!shown.length && <tr><td colSpan={9} className="py-12 text-center text-ink-3">{rows.length ? 'Không có KOC khớp bộ lọc.' : lark ? 'Đợt chưa có KOC.' : 'Đợt chưa có KOC. Thêm KOC ở khung "Thêm KOC vào đợt" phía trên.'}</td></tr>}
             </tbody>
           </table>
         </div>
       )}
       <p className="mt-2 text-xs text-ink-3">
-        Số TikTok 30 ngày; GPM quy đổi từ USD. GMV Target = View Target × GPM / 1000 (bằng View × CTR × CR × AOV). View Target KL6–KL7 nhập tay.
+        Số liệu TikTok 30 ngày gần nhất. GMV mục tiêu tính từ view mục tiêu và GMV / 1.000 view của KOC. KOC KL6–KL7 chưa có view mục tiêu: bấm Sửa để nhập.
       </p>
 
       {editingRow && <ItemDialog r={editingRow} />}
@@ -315,8 +320,8 @@ export default async function ListingBatchPage({ params, searchParams }: { param
             />
             <F label="Tháng"><input name="month" type="month" required defaultValue={batch.month} className="input" /></F>
             <div />
-            <F label="CR sản phẩm (%)"><input name="cr" inputMode="decimal" defaultValue={batch.cr == null ? '' : String(+(batch.cr * 100).toFixed(4))} className="input" /></F>
-            <F label="AOV sản phẩm (₫)"><input name="aov" type="number" min={0} step={1000} defaultValue={batch.aov ?? ''} className="input" /></F>
+            <F label="Tỉ lệ chuyển đổi (%)"><input name="cr" inputMode="decimal" defaultValue={batch.cr == null ? '' : String(+(batch.cr * 100).toFixed(4))} className="input" /></F>
+            <F label="Giá trị 1 đơn (₫)"><input name="aov" type="number" min={0} step={1000} defaultValue={batch.aov ?? ''} className="input" /></F>
             <div className="col-span-full flex justify-end gap-2">
               <Link href={`/listing/${batch.id}`} className="btn">Hủy</Link>
               <button className="btn btn-primary">Lưu</button>
@@ -352,10 +357,10 @@ function Row({ r, readOnly }: { r: ListingRow; readOnly?: boolean }) {
       <td className="text-xs whitespace-nowrap">
         {k.statsAt ? (
           <>
-            <div>{fmtNum(k.avgViews)} view TB · {fmtNum(k.unitsSold)} món</div>
-            <div className="text-ink-3">GMV {r.gmv30 != null ? `~${fmtShort(r.gmv30)}` : gmvLabel(k.gmvRange) ?? '—'} · GPM {fmtShort(r.f.gpmVnd)}</div>
+            <div>{fmtNum(k.avgViews)} view trung bình · {fmtNum(k.unitsSold)} món</div>
+            <div className="text-ink-3">GMV {r.gmv30 != null ? `~${fmtShort(r.gmv30)}` : gmvLabel(k.gmvRange) ?? '—'} · GMV / 1.000 view {fmtShort(r.f.gpmVnd)}</div>
           </>
-        ) : <span className="text-ink-3">Kho dữ liệu chưa có số</span>}
+        ) : <span className="text-ink-3">Chưa có số liệu</span>}
       </td>
       <td className="text-xs whitespace-nowrap">
         {p.female != null ? (
@@ -369,17 +374,17 @@ function Row({ r, readOnly }: { r: ListingRow; readOnly?: boolean }) {
         {r.collab.count ? (
           <>
             <div>{r.collab.count} booking</div>
-            <div className="text-ink-3">Gần nhất {fmtShort(r.collab.lastPrice)}</div>
+            <div className="text-ink-3">Giá lần trước {fmtShort(r.collab.lastPrice)}</div>
           </>
         ) : <span className="text-ink-3">Chưa hợp tác</span>}
       </td>
       <td className="text-right text-xs whitespace-nowrap">
-        <div>{fmtNum(r.price)}{item.price == null && r.price != null && <span className="text-ink-3"> (giá cũ)</span>}</div>
-        <div className="text-ink-3">{item.priceType}{item.videos > 1 && <b className="text-ink"> × {item.videos}</b>} · kèm TNCN {fmtShort(r.f.fee)}</div>
+        <div>{fmtNum(r.price)}{item.price == null && r.price != null && <span className="text-ink-3"> (giá lần trước)</span>}</div>
+        <div className="text-ink-3">{item.priceType}{item.videos > 1 && <b className="text-ink"> × {item.videos}</b>} · gồm thuế TNCN {fmtShort(r.f.fee)}</div>
       </td>
       <td className="text-right text-xs whitespace-nowrap">
         <div>GMV {fmtShort(r.f.gmvTarget)}</div>
-        <div className="text-ink-3">View {fmtShort(r.viewTarget)}{r.viewTargetManual ? ' (tay)' : ''}{r.f.cpv != null && ` · CPV ${fmtNum(r.f.cpv)}`}</div>
+        <div className="text-ink-3">View {fmtShort(r.viewTarget)}{r.viewTargetManual ? ' (nhập tay)' : ''}{r.f.cpv != null && ` · ${fmtNum(r.f.cpv)} ₫ / view`}</div>
       </td>
       <td className="text-xs">
         <div className="flex flex-wrap gap-1">
@@ -412,18 +417,18 @@ function ItemDialog({ r }: { r: ListingRow }) {
         <F label="Loại giá">
           <select name="priceType" defaultValue={item.priceType} className="input">{PRICE_TYPES.map((p) => <option key={p}>{p}</option>)}</select>
         </F>
-        <F label={`Giá net đề xuất (₫)${r.collab.lastPrice ? ` · giá cũ ${fmtNum(r.collab.lastPrice)}` : ''}`}>
+        <F label={`Giá KOC nhận (₫)${r.collab.lastPrice ? ` · lần trước ${fmtNum(r.collab.lastPrice)}` : ''}`}>
           <input name="price" type="number" min={0} step={1000} defaultValue={item.price ?? ''} placeholder={r.collab.lastPrice ? String(r.collab.lastPrice) : ''} className="input" />
         </F>
         <F label="Số video / phiên trong đợt"><input name="videos" type="number" min={1} max={50} required defaultValue={item.videos} className="input" /></F>
         <F label="Trạng thái liên hệ">{select('status', item.status, CONTACT_STATUS)}</F>
-        <F label="Ngày air plan (video đầu)"><input name="planAirDate" type="date" defaultValue={isoDate(item.planAirDate)} className="input" /></F>
+        <F label="Ngày air dự kiến (video đầu)"><input name="planAirDate" type="date" defaultValue={isoDate(item.planAirDate)} className="input" /></F>
         <F label="Đề xuất từ UpBase">{select('recommendation', item.recommendation, RECOMMEND)}</F>
         <F label="Brand chọn">{select('brandChoice', item.brandChoice, BRAND_CHOICE)}</F>
         <F label="Lý do từ chối" wide><input name="rejectReason" list="reasons" defaultValue={item.rejectReason ?? ''} className="input" /></F>
         <datalist id="reasons"><option value="Không phù hợp" /><option value="Giá cao" /><option value="Trùng đối thủ" /><option value="Không phù hợp lịch" /></datalist>
-        <F label={`View Target nhập tay${r.viewTargetManual ? '' : ` · tự tính ${fmtNum(r.viewTarget)}`}`} wide>
-          <input name="viewTarget" type="number" min={0} defaultValue={item.viewTarget ?? ''} placeholder="Để trống: view TB video 30 ngày (KL1–KL5)" className="input" />
+        <F label={`View mục tiêu${r.viewTargetManual ? '' : ` · để trống thì lấy ${fmtNum(r.viewTarget)}`}`} wide>
+          <input name="viewTarget" type="number" min={0} defaultValue={item.viewTarget ?? ''} placeholder="Để trống: lấy view trung bình 30 ngày (KL1–KL5)" className="input" />
         </F>
         <F label="Content note" wide><textarea name="contentNote" rows={3} defaultValue={item.contentNote ?? ''} className="input" /></F>
         <p className="col-span-full text-xs text-ink-3">Thêm bởi {item.createdBy.name ?? '—'} · {fmtDate(item.createdAt)}</p>
@@ -514,7 +519,7 @@ async function kocPicker(batch: { brand: string | null }, inBatch: string[], kq:
       const avg = x.views.length ? Math.round(x.views.reduce((s, v) => s + v, 0) / x.views.length) : null;
       return {
         id: k.id, handle: k.handle, name: k.nickname ?? k.name, followers: k.followers, kl: k.kl ?? k.klAuto, niche: k.niche, bookings: x.n,
-        note: [`${x.n} đợt ${batch.brand}`, `gần nhất ${fmtDate(x.last)}`, x.price && `giá ${fmtShort(x.price)}`, avg && `view 30 ngày TB ${fmtShort(avg)}`].filter(Boolean).join(' · '),
+        note: [`${x.n} lần book ${batch.brand}`, `gần nhất ${fmtDate(x.last)}`, x.price && `giá ${fmtShort(x.price)}`, avg && `view trung bình 30 ngày ${fmtShort(avg)}`].filter(Boolean).join(' · '),
         last: x.last,
       };
     }).sort((a, b) => b.bookings - a.bookings || +b.last - +a.last).slice(0, 30);
@@ -558,7 +563,7 @@ function AddKocs({ batchId, brand, picker, kq, keep }: { batchId: string; brand:
       <ActionForm action={addKocs} className="grid gap-4">
         <input type="hidden" name="batchId" value={batchId} />
         {kq && list(`Kết quả tìm "${kq}"`, picker.found, 'Không có KOC nào khớp (hoặc đã có trong đợt).')}
-        {brand && list(`Gợi ý: KOC đã book ${brand} trên Lark (${picker.booked.length})`, picker.booked, `Chưa có KOC nào từng book ${brand}, hoặc đã có hết trong đợt.`)}
+        {brand && list(`Gợi ý: KOC từng book ${brand} (${picker.booked.length})`, picker.booked, `Chưa có KOC nào từng book ${brand}, hoặc đã có hết trong đợt.`)}
         <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
           <div>
             <label className="label" htmlFor="ids">Hoặc dán ID kênh / link TikTok, mỗi dòng một kênh (chưa có trong Danh bạ thì tự thêm)</label>
@@ -568,7 +573,7 @@ function AddKocs({ batchId, brand, picker, kq, keep }: { batchId: string; brand:
             <label className="label" htmlFor="priceType">Loại giá</label>
             <select id="priceType" name="priceType" className="input">{PRICE_TYPES.map((p) => <option key={p}>{p}</option>)}</select>
           </div>
-          <button className="btn btn-primary">Thêm KOC đã chọn vào listing</button>
+          <button className="btn btn-primary">Thêm KOC vào đợt</button>
         </div>
       </ActionForm>
     </section>

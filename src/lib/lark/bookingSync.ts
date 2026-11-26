@@ -277,7 +277,7 @@ export async function syncBookingsJob() {
   // Liên hệ / giá / PIC của KOC từ bảng KOC trên Lark (import động: kocLarkSync dùng lại hàm của file này).
   const { syncKocContacts } = await import('./kocLarkSync');
   const c = await syncKocContacts(await tenantToken());
-  const filled = [c.phone && `${c.phone} SĐT`, c.email && `${c.email} email`, c.pic && `${c.pic} PIC`, c.rate && `${c.rate} giá`].filter(Boolean).join(', ');
+  const filled = [c.phone && `${c.phone} SĐT`, c.email && `${c.email} email`, c.pic && `${c.pic} người phụ trách`, c.rate && `${c.rate} giá`].filter(Boolean).join(', ');
   return `${r.total} booking · ${r.created} mới · ${r.updated} cập nhật · ${r.removed} xoá · ${r.kocs} KOL mới${filled ? ` · Danh bạ điền thêm ${filled}` : ''}`;
 }
 

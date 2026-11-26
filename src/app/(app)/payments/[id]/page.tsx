@@ -31,7 +31,8 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
       <div className="mt-2 mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2"><h1 className="text-xl font-semibold">ĐNTT #{p.number}</h1><span className={`pill ${PAY_TONE[p.status] ?? 'bg-sunken text-ink-2'}`}>{p.status}</span></div>
-          <p className="text-xs text-ink-3">{p.jobs.length} job · tổng giá net {fmtNum(net)} ₫ · kèm thuế TNCN {fmtNum(Math.round(net / FEE_DIVISOR))} ₫ · tạo {fmtDate(p.createdAt)}{p.note ? ` · ${p.note}` : ''}</p>
+          <p className="mt-1 text-[13px] text-ink-2">Đề nghị thanh toán: tải file gửi kế toán, rồi cập nhật trạng thái tới khi đã trả tiền.</p>
+          <p className="mt-0.5 text-xs text-ink-3">{p.jobs.length} job · KOC nhận {fmtNum(net)} ₫ · gồm thuế TNCN {fmtNum(Math.round(net / FEE_DIVISOR))} ₫ · tạo {fmtDate(p.createdAt)}{p.note ? ` · ${p.note}` : ''}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {can(me, 'data.export') && <a href={`/payments/${p.id}/export`} className="btn">Tải file ĐNTT</a>}
@@ -44,7 +45,7 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
           {PAY_STATUS[step + 1] && (
             <form action={setPaymentStatus}>
               <input type="hidden" name="id" value={p.id} /><input type="hidden" name="status" value={PAY_STATUS[step + 1]} />
-              <button className="btn btn-primary">Chuyển &quot;{PAY_STATUS[step + 1]}&quot;</button>
+              <button className="btn btn-primary">Đánh dấu &quot;{PAY_STATUS[step + 1]}&quot;</button>
             </form>
           )}
         </div>
@@ -52,18 +53,18 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
       {err && <p role="alert" className="mb-3 rounded-md bg-critical-soft px-3 py-2 text-critical">{err}</p>}
       {(larkReady || p.approvalCode) && (
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md bg-sunken px-3 py-2 text-xs text-ink-2">
-        <span className="font-medium">Lark Approval</span>
+        <span className="font-medium">Duyệt trên Lark</span>
         {p.approvalCode ? (
           <>
-            <span>Đơn <code>{p.approvalCode}</code> {APPROVAL_LABEL[p.approvalStatus ?? ''] ?? p.approvalStatus}.</span>
+            <span>Đơn trên Lark {APPROVAL_LABEL[p.approvalStatus ?? ''] ?? p.approvalStatus}.</span>
             <form action={syncApproval}><input type="hidden" name="id" value={p.id} /><button className="btn h-7 px-2 text-xs">Cập nhật trạng thái từ Lark</button></form>
           </>
         ) : p.status === 'Nháp' ? (
           <>
-            <span>{p.approvalStatus ? `Đơn trước ${APPROVAL_LABEL[p.approvalStatus] ?? p.approvalStatus}. ` : ''}Gửi ĐNTT sang Lark Approval đứng tên bạn.</span>
-            <form action={sendToApproval}><input type="hidden" name="id" value={p.id} /><button className="btn btn-primary h-7 px-2 text-xs">Gửi Lark Approval</button></form>
+            <span>{p.approvalStatus ? `Đơn trước ${APPROVAL_LABEL[p.approvalStatus] ?? p.approvalStatus}. ` : ''}Gửi ĐNTT lên Lark để duyệt, đứng tên bạn.</span>
+            <form action={sendToApproval}><input type="hidden" name="id" value={p.id} /><button className="btn btn-primary h-7 px-2 text-xs">Gửi duyệt trên Lark</button></form>
           </>
-        ) : <span>ĐNTT này được chuyển trạng thái tay, không qua Lark Approval.</span>}
+        ) : <span>ĐNTT này cập nhật trạng thái bằng tay, không qua Lark.</span>}
       </div>
       )}
 
@@ -71,8 +72,8 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
         <table className="tbl">
           <thead>
             <tr>
-              <th>Job</th><th>KOC</th><th>Brand</th><th>Video nghiệm thu</th><th className="text-right">Giá net</th><th className="text-right">Kèm TNCN</th>
-              {bank && <><th>Chủ tài khoản</th><th>Số tài khoản</th><th>Ngân hàng</th><th>CCCD / MST</th></>}
+              <th>Job</th><th>KOC</th><th>Brand</th><th>Video nghiệm thu</th><th className="text-right">Giá KOC nhận</th><th className="text-right">Gồm thuế TNCN</th>
+              {bank && <><th>Chủ tài khoản</th><th>Số tài khoản</th><th>Ngân hàng</th><th>CCCD / mã số thuế</th></>}
               <th />
             </tr>
           </thead>
@@ -87,15 +88,15 @@ export default async function PaymentPage({ params, searchParams }: { params: Pr
                 <td className="text-right tabular-nums">{j.price == null ? '—' : fmtNum(Math.round(j.price / FEE_DIVISOR))}</td>
                 {bank && (
                   <>
-                    <td>{j.koc.bankHolder ?? <span className="text-warning">Thiếu</span>}</td>
-                    <td className="font-mono text-xs">{j.koc.bankAccount ?? <span className="text-warning">Thiếu</span>}</td>
+                    <td>{j.koc.bankHolder ?? <span className="text-warning">Chưa có</span>}</td>
+                    <td className="font-mono text-xs">{j.koc.bankAccount ?? <span className="text-warning">Chưa có: bổ sung ở Danh bạ</span>}</td>
                     <td>{j.koc.bankName ?? '—'}</td>
                     <td className="font-mono text-xs">{j.koc.idNumber ?? '—'}</td>
                   </>
                 )}
                 <td className="text-right">
                   {p.status === 'Nháp' && (
-                    <form action={removeFromPayment}><input type="hidden" name="jobId" value={j.id} /><button className="link text-xs">Bỏ ra</button></form>
+                    <form action={removeFromPayment}><input type="hidden" name="jobId" value={j.id} /><button className="link text-xs">Bỏ khỏi ĐNTT</button></form>
                   )}
                 </td>
               </tr>

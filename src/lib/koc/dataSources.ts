@@ -26,42 +26,42 @@ export type TopRow = { handle: string; m: number[]; shops?: ShopRow[] };
 // Số lấy từ đâu (chỉ ghi tên nơi), ai tạo ra số, bao lâu cập nhật: hiện ở tab Dữ liệu và trang creator để người xem tin số.
 export const ORIGIN = {
   lark: { name: 'Lark Base', kind: 'Team tự điền', schedule: 'mỗi giờ' },
-  seller: { name: 'Kho UpBase · TikTok Seller Center', kind: 'Số TikTok trả về', schedule: '6 giờ / lần' },
-  marketplace: { name: 'Kho UpBase · hồ sơ creator', kind: 'Số TikTok trả về', schedule: 'mỗi sáng 9:30' },
+  seller: { name: 'TikTok Shop (shop UpBase quản lý)', kind: 'Số từ TikTok', schedule: '6 giờ / lần' },
+  marketplace: { name: 'Hồ sơ creator trên TikTok', kind: 'Số từ TikTok', schedule: '9:30 mỗi sáng' },
 } as const;
 export const originOf = (s: Source) => ORIGIN[s.key === 'marketplace' ? 'marketplace' : s.group];
 /** Nơi lấy số của một bảng; nhiều nơi thì ghi đủ. */
 export const placesOf = (s: Source) => (s.from ?? [originOf(s).name]).join(', ');
 
 export const LARK: Source = {
-  key: 'lark', group: 'lark', name: '3.2 List duyệt book', note: 'Mỗi dòng là một booking; số video do team điền trên Lark',
+  key: 'lark', group: 'lark', name: 'Booking trên Lark', note: 'Mỗi dòng là một booking; số video do team điền trên Lark',
   metrics: [
     { label: 'Booking', hint: 'Số dòng booking' }, { label: 'Chi phí', money: true, hint: 'Cột chi phí booking trên Lark' },
-    { label: 'View 30 ngày', hint: 'Team điền trên Lark (cột 🌸 Views 30 ngày), không phải số TikTok trả' },
+    { label: 'View 30 ngày', hint: 'Team điền trên Lark (cột 🌸 Views 30 ngày), không phải số từ TikTok' },
     { label: 'GMV 30 ngày', money: true, hint: 'Team điền trên Lark (cột 🌸 GMV 30 ngày)' }, { label: 'Đơn 30 ngày', hint: 'Team điền trên Lark (cột 🌸 Số đơn hàng 30 ngày)' },
   ],
   shop: { field: 'brand', label: 'Brand' },
 };
 const MARKET_COLS = ['followers', 'medianViews', 'ecViews', 'gmv', 'unitsSold'] as const;
 export const MARKET: Source = {
-  key: 'marketplace', group: 'seller', name: 'Hồ sơ creator TikTok', note: 'Hồ sơ 30 ngày của ~62 nghìn creator TikTok trong kho, mọi shop trên sàn',
+  key: 'marketplace', group: 'seller', name: 'Hồ sơ creator TikTok', note: 'Số 30 ngày của ~62 nghìn creator TikTok, tính mọi shop trên sàn',
   metrics: [
-    { label: 'Follower', agg: 'max', hint: 'Số follower lúc kho chụp hồ sơ' },
+    { label: 'Follower', agg: 'max', hint: 'Số follower ở lần cập nhật gần nhất' },
     { label: 'View trung vị', agg: 'max', hint: 'Trung vị lượt xem mọi video của kênh' },
-    { label: 'View TB / video bán hàng', agg: 'max', hint: 'Lượt xem trung bình video gắn sản phẩm, 30 ngày' },
-    { label: 'GMV 30 ngày', money: true, hint: 'GMV affiliate 30 ngày trên toàn sàn; creator ẩn GMV thì lấy giữa khoảng TikTok trả' },
+    { label: 'View trung bình / video bán hàng', agg: 'max', hint: 'Lượt xem trung bình của video gắn sản phẩm, 30 ngày' },
+    { label: 'GMV 30 ngày', money: true, hint: 'GMV affiliate 30 ngày trên toàn sàn; creator ẩn GMV thì lấy giữa khoảng TikTok cho xem' },
     { label: 'Sản phẩm bán 30 ngày', hint: 'Mọi shop trên TikTok Shop, không riêng shop UpBase' },
   ],
 };
 
-const GMV_HINT = 'Giá × số lượng, tính cả đơn sau đó hoàn / huỷ / không đủ điều kiện hoa hồng';
+const GMV_HINT = 'Giá × số lượng, tính cả đơn sau đó bị hoàn / huỷ / không được hoa hồng';
 // Kho UpBase: bảng TikTok Seller Center của các shop UpBase quản lý (cột store_id). Creator khớp Danh bạ theo username.
 export const WAREHOUSE: Source[] = [
   {
     key: 'aff_orders', group: 'seller', name: 'Đơn affiliate của shop', note: 'Mọi đơn affiliate creator bán cho shop UpBase (từ video, LIVE, showcase, link)',
     metrics: [
       { label: 'GMV', money: true, hint: GMV_HINT }, { label: 'Đơn', hint: 'Số mã đơn khác nhau' }, { label: 'Sản phẩm bán', hint: 'Tổng số lượng trong các đơn' },
-      { label: 'Hoa hồng ước tính', money: true, hint: 'Hoa hồng chuẩn + hoa hồng Shop Ads ước tính lúc đặt đơn; có thể đổi khi quyết toán' },
+      { label: 'Hoa hồng ước tính', money: true, hint: 'Hoa hồng thường + hoa hồng Shop Ads ước tính lúc đặt đơn; có thể đổi khi quyết toán' },
     ],
     shop: { label: 'Shop' },
     wh: {
@@ -87,7 +87,7 @@ export const WAREHOUSE: Source[] = [
   {
     key: 'lives', group: 'seller', name: 'Phiên LIVE bán sản phẩm shop', note: 'Phiên LIVE affiliate trên TikTok bán sản phẩm shop UpBase',
     metrics: [
-      { label: 'Phiên', hint: 'Số phiên LIVE khác nhau' }, { label: 'Người xem', hint: 'Cộng người xem từng dòng (ngày) của các phiên' },
+      { label: 'Phiên', hint: 'Số phiên LIVE khác nhau' }, { label: 'Người xem', hint: 'Cộng người xem từng ngày của các phiên' },
       { label: 'GMV', money: true, hint: 'GMV của phiên cho sản phẩm shop' }, { label: 'Đơn', hint: 'Số đơn của phiên' },
     ],
     shop: { label: 'Shop' },

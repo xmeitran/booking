@@ -15,7 +15,7 @@ export const BRAND_CHOICE = ['Yes', 'No', 'Cân nhắc'];
 /** "@abc", "abc", "https://www.tiktok.com/@abc/video/1?q=" → "abc". Không hợp lệ → null. */
 /** Đợt / dòng listing đồng bộ từ Lark (3.1 Listing KOCs): chỉ đọc trong app, sửa trên Lark. */
 export const fromLarkListing = (id: string) => id.startsWith('lark-');
-export const LARK_LISTING_READONLY = 'Đợt listing đồng bộ từ Lark (3.1 Listing KOCs): sửa trên Lark, lượt đồng bộ sau tự cập nhật.';
+export const LARK_LISTING_READONLY = 'Đợt này lấy từ Lark nên chỉ xem được ở đây. Muốn sửa thì sửa trên Lark, app tự cập nhật trong vòng 1 giờ.';
 
 export function parseHandle(s: string): string | null {
   const t = s.trim();
@@ -83,7 +83,7 @@ const round = (n: number | null) => (n == null ? '' : Math.round(n));
 // Thứ tự cột theo tab "Excel Listing _ Final". personal = không xuất cho Brand; bank = chỉ Admin / Leader.
 export const COL_GROUPS = {
   meta: 'Người & ngày điền', batch: 'Thông tin đợt', koc: 'Thông tin KOC', price: 'Giá & phê duyệt', perf: 'Hiệu quả',
-  audience: 'Tỷ trọng & khán giả', plan: 'Kế hoạch & dự báo', contact: 'Liên hệ & nhận hàng', bank: 'Thanh toán',
+  audience: 'Tỉ trọng & khán giả', plan: 'Kế hoạch & ước tính', contact: 'Liên hệ & nhận hàng', bank: 'Thanh toán',
 } as const;
 export type Col = { h: string; g: keyof typeof COL_GROUPS; v: (r: ListingRow) => string | number | null | undefined; personal?: boolean; bank?: boolean };
 export const COLS: Col[] = [

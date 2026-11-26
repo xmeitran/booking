@@ -31,7 +31,7 @@ export async function saveUser(_: string | null, fd: FormData): Promise<string |
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       // 99992360: Lark báo ID không hợp lệ / không tồn tại.
-      return msg.includes('99992360') ? `Không tìm thấy ${larkUserId} trên Lark.` : `Không lấy được thông tin từ Lark. ${msg}`;
+      return msg.includes('99992360') ? `Không tìm thấy ${larkUserId} trên Lark.` : `Không lấy được thông tin từ Lark, thử lại sau. ${msg}`;
     }
     if (!found) return `Không tìm thấy ${larkUserId} trên Lark.`;
     // Một người có thể được nhập bằng User ID lẫn Open ID: chặn trùng theo email Lark.
@@ -56,7 +56,7 @@ export async function saveLoginDepts(_: string | null, fd: FormData): Promise<st
   const me = await requireUser('ADMIN');
   const policy = await readPolicy();
   const loginDepts = [...new Set(str(fd, 'depts').split('\n').map((s) => s.trim()).filter(Boolean))];
-  if (loginDepts.some((d) => d.length < 3)) return 'Tên phòng ban tối thiểu 3 ký tự (khớp theo "chứa", tên quá ngắn sẽ cho cả phòng khác vào).';
+  if (loginDepts.some((d) => d.length < 3)) return 'Tên phòng ban cần ít nhất 3 ký tự, để không cho nhầm phòng khác vào.';
   await writePolicy({ ...policy, loginDepts });
   await audit(me.id, 'Access', 'login', 'Sửa cổng đăng nhập', { loginDepts });
   revalidatePath('/users');

@@ -27,12 +27,12 @@ type Search = Partial<Record<(typeof PARAMS)[number] | 'edit' | 'channels' | 'bo
 const SORTS: Record<string, { label: string; cmp?: (a: DirKoc, b: DirKoc) => number }> = {
   '': { label: 'Mới cập nhật' },
   followers: { label: 'Follower nhiều nhất', cmp: (a, b) => (b.followers ?? -1) - (a.followers ?? -1) },
-  units: { label: 'Bán nhiều món nhất (30 ngày)', cmp: (a, b) => (b.unitsSold ?? -1) - (a.unitsSold ?? -1) },
-  views: { label: 'Lượt xem TB cao nhất', cmp: (a, b) => (b.avgViews ?? -1) - (a.avgViews ?? -1) },
+  units: { label: 'Bán nhiều nhất (30 ngày)', cmp: (a, b) => (b.unitsSold ?? -1) - (a.unitsSold ?? -1) },
+  views: { label: 'View trung bình cao nhất', cmp: (a, b) => (b.avgViews ?? -1) - (a.avgViews ?? -1) },
   bookings: { label: 'Nhiều booking nhất', cmp: (a, b) => b.bookingCount - a.bookingCount },
-  recent: { label: 'Book gần nhất', cmp: (a, b) => +(b.lastBookingAt ?? 0) - +(a.lastBookingAt ?? 0) },
+  recent: { label: 'Mới book gần đây', cmp: (a, b) => +(b.lastBookingAt ?? 0) - +(a.lastBookingAt ?? 0) },
 };
-const chip = (on: boolean) => `pill px-2.5 py-1 ${on ? 'bg-ink text-white' : 'bg-surface text-ink-2 ring-1 ring-line'}`;
+const chip = (on: boolean) => `pill gap-1 px-2.5 py-1 ${on ? 'bg-ink text-white' : 'bg-surface text-ink-2 ring-1 ring-line'}`;
 const pick = <T extends string>(v: string | undefined, allowed: readonly T[] | Record<T, unknown>) =>
   (v && (Array.isArray(allowed) ? allowed.includes(v as T) : Object.hasOwn(allowed, v)) ? v : '') as T | '';
 
@@ -106,19 +106,18 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     const v = rs?.latest.verdict;
     return (
       <Menu label={`Thao tác với ${k.name}`}>
-        {canEdit && <Link href={dlg('edit', k.id)}>Chỉnh sửa thông tin KOC</Link>}
-        {canEdit && <Link href={dlg('channels', k.id)}>Quản lý kênh & TikTok phụ</Link>}
-        {k.platform === 'TikTok' && <Link href={dlg('book', k.id)}>Tạo booking (Đẩy vào Listing)</Link>}
-        {!isCoop(k) && <Link href={dlg('contact_koc', k.id)}>Ghi lịch sử liên hệ / Chốt hợp tác</Link>}
-        <Link href={dlg('review', k.id)}>{rs ? `Đánh giá KOC (${v === 'SUITABLE' ? 'Phù hợp' : v === 'NOT_SUITABLE' ? 'Không phù hợp' : 'Cần cân nhắc'})` : 'Đánh giá KOC theo Brand'}</Link>
-        <Link href={dlg('review', k.id, { verdict: 'SUITABLE' })}>Đánh giá Phù hợp (theo Brand)</Link>
-        <Link href={dlg('review', k.id, { verdict: 'NOT_SUITABLE' })}>Đánh giá Không phù hợp (theo Brand)</Link>
-        {rs && <Link href={`${dlg('review', k.id)}#lich-su`}>Lịch sử đánh giá kênh ({rs.total})</Link>}
-        <Link href={`/contacts/${k.id}`}>Đánh giá lịch sử & rủi ro</Link>
+        {canEdit && <Link href={dlg('edit', k.id)}>Sửa thông tin KOC</Link>}
+        {canEdit && <Link href={dlg('channels', k.id)}>Thêm / sửa kênh phụ</Link>}
+        {k.platform === 'TikTok' && <Link href={dlg('book', k.id)}>Thêm vào listing</Link>}
+        {!isCoop(k) && <Link href={dlg('contact_koc', k.id)}>Ghi liên hệ / chốt hợp tác</Link>}
+        <Link href={dlg('review', k.id)}>{rs ? `Đánh giá cho brand (gần nhất: ${v === 'SUITABLE' ? 'Phù hợp' : v === 'NOT_SUITABLE' ? 'Không phù hợp' : 'Cần cân nhắc'})` : 'Đánh giá cho brand'}</Link>
+        <Link href={dlg('review', k.id, { verdict: 'SUITABLE' })}>Đánh giá nhanh: Phù hợp</Link>
+        <Link href={dlg('review', k.id, { verdict: 'NOT_SUITABLE' })}>Đánh giá nhanh: Không phù hợp</Link>
+        {rs && <Link href={`${dlg('review', k.id)}#lich-su`}>Xem lịch sử đánh giá ({rs.total})</Link>}
+        <Link href={`/contacts/${k.id}`}>Mở hồ sơ KOC</Link>
       </Menu>
     );
   };
-  const kocCode = <span className="inline-block rounded bg-sunken px-1.5 py-0.5 text-[11px] font-medium text-ink-3" title="Lưu nội bộ B2C, chưa đồng bộ lên KOC Hub">Lưu nội bộ</span>;
   const realName = (k: DirKoc) => { const p = legalOf(k)[0]; return p?.legalType === 'INDIVIDUAL' && p.holderName && p.holderName !== k.name ? p.holderName : null; };
   const kocCell = (k: DirKoc, sub?: React.ReactNode) => (
     <div className="flex min-w-0 max-w-[260px] items-center gap-3">
@@ -141,10 +140,13 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
           <h1 className="text-xl font-semibold">Danh bạ KOC / KOL</h1>
-          {statsRun?.finishedAt && <p className="text-xs text-ink-3">Chỉ số TikTok (kho dữ liệu) cập nhật {statsRun.finishedAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}</p>}
+          <p className="mt-1 text-[13px] text-ink-2">
+            Tra KOC, xem giá, giấy tờ, đánh giá và thêm KOC vào listing.
+            {statsRun?.finishedAt && <span className="text-ink-3"> Số TikTok cập nhật {statsRun.finishedAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}.</span>}
+          </p>
         </div>
         <div className="flex gap-2">
           {can(me, 'data.export') && <a href={`/contacts/export${ret}`} className="btn">Tải Excel</a>}
@@ -170,9 +172,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             {f.readiness && <input type="hidden" name="readiness" value={f.readiness} />}
             {f.owner && <input type="hidden" name="owner" value={f.owner} />}
             <input name="q" defaultValue={f.q} aria-label="Tìm kiếm" className="input max-w-sm"
-              placeholder={coopTab ? 'Tên kênh, @handle, chủ TK, CCCD, MST, mã BO' : 'Tên kênh, @handle, gian hàng, SĐT, Email'} />
-            <select name="pic" defaultValue={f.pic} aria-label="PIC phụ trách" className="input w-auto">
-              <option value="">Mọi PIC</option>
+              placeholder={coopTab ? 'Tên kênh (@...), chủ tài khoản, SĐT, CCCD, MST, mã BO' : 'Tên kênh (@...), SĐT, email'} />
+            <select name="pic" defaultValue={f.pic} aria-label="Người phụ trách" className="input w-auto">
+              <option value="">Mọi người phụ trách</option>
               {d.options.pic.map((v) => <option key={v}>{v}</option>)}
             </select>
             <select name="niche" defaultValue={f.niche} aria-label="Tệp kênh" className="input w-auto">
@@ -188,12 +190,12 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               <div className="flex flex-wrap gap-2">
                 {coopTab ? (
                   <select name="legal" defaultValue={f.legal} aria-label="Loại hồ sơ pháp lý" className="input w-auto">
-                    <option value="">Mọi loại hồ sơ</option>
+                    <option value="">Mọi loại hồ sơ pháp lý</option>
                     {d.legalOptions.map((o) => <option key={o.key} value={o.key}>{o.label} ({vnd.format(o.count)})</option>)}
                   </select>
                 ) : (
-                  <select name="contact" defaultValue={f.contact} aria-label="Tiếp cận" className="input w-auto">
-                    <option value="">Mọi trạng thái tiếp cận</option>
+                  <select name="contact" defaultValue={f.contact} aria-label="Liên hệ" className="input w-auto">
+                    <option value="">Mọi trạng thái liên hệ</option>
                     {d.contactOptions.map((o) => <option key={o.key} value={o.key}>{o.label} ({vnd.format(o.count)})</option>)}
                   </select>
                 )}
@@ -223,24 +225,24 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               </div>
             </details>
             <button className="btn">Lọc</button>
-            {isFiltered && <Link href={coopTab ? '/contacts' : '/contacts?tab=new'} className="btn border-transparent text-ink-3">Xóa lọc</Link>}
+            {isFiltered && <Link href={coopTab ? '/contacts' : '/contacts?tab=new'} className="btn border-transparent text-ink-3">Xóa bộ lọc</Link>}
           </form>
 
           <div className="flex flex-wrap gap-1.5 text-xs">
             {coopTab ? (
               <>
-                <Link href={withParam('issue', '')} className={chip(!f.issue)}>Tất cả <b className="font-medium">{vnd.format(d.issueAll)}</b></Link>
+                <Link href={withParam('issue', '')} className={chip(!f.issue)}>Tất cả · <b className="font-medium">{vnd.format(d.issueAll)}</b></Link>
                 {d.issueChips.map((c) => (
-                  <Link key={c.key} href={withParam('issue', f.issue === c.key ? '' : c.key)} className={chip(f.issue === c.key)}>{c.label} <b className="font-medium">{vnd.format(c.count)}</b></Link>
+                  <Link key={c.key} href={withParam('issue', f.issue === c.key ? '' : c.key)} className={chip(f.issue === c.key)}>{c.label} · <b className="font-medium">{vnd.format(c.count)}</b></Link>
                 ))}
               </>
             ) : d.readinessChips.map((c) => (
-              <Link key={c.key} href={withParam('readiness', c.key)} className={chip((f.readiness ?? '') === c.key)}>{c.label} <b className="font-medium">{vnd.format(c.count)}</b></Link>
+              <Link key={c.key} href={withParam('readiness', c.key)} className={chip((f.readiness ?? '') === c.key)}>{c.label} · <b className="font-medium">{vnd.format(c.count)}</b></Link>
             ))}
           </div>
           {f.owner && (
             <p className="flex flex-wrap items-center gap-2 rounded-md bg-accent-soft px-3 py-2 text-[13px] text-accent">
-              Các kênh chung chủ / MCN với <b>{ownerKoc ? `${ownerKoc.name} (@${ownerKoc.handle})` : 'KOC đã chọn'}</b> (trùng SĐT, email, CCCD / MST).
+              Đang xem các kênh cùng chủ hoặc cùng công ty quản lý (MCN) với <b>{ownerKoc ? `${ownerKoc.name} (@${ownerKoc.handle})` : 'KOC đã chọn'}</b>: trùng SĐT, email, CCCD hoặc MST.
               <Link href={withParam('owner', '')} className="link">Bỏ lọc</Link>
             </p>
           )}
@@ -250,7 +252,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           <table className="tbl">
             {coopTab ? (
               <>
-                <thead><tr><th>Mã KOC</th><th>KOC</th><th>Hợp tác</th><th className="text-right">Đơn giá</th><th>Hồ sơ pháp lý</th><th>Đánh giá</th><th>Phân loại & Tệp kênh</th><th /></tr></thead>
+                <thead><tr><th>KOC</th><th>Đã hợp tác</th><th className="text-right">Giá / video</th><th>Hồ sơ pháp lý</th><th>Đánh giá</th><th>Tệp kênh & ngành hàng</th><th /></tr></thead>
                 <tbody>
                   {rows.map((k) => {
                     const lk = k.lark;
@@ -265,31 +267,30 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                     const shared = twins.filter(([, fl]) => fl.some((x) => x !== 'kênh')).length;
                     const legal = !profiles.length ? { label: 'Chưa có hồ sơ', tone: 'bg-warning-soft text-warning' }
                       : dupNames.length ? { label: 'Trùng kênh', tone: 'bg-warning-soft text-warning' }
-                      : def.contractStatus === 'ĐÃ_KÝ' ? { label: 'Đã ký HĐNT', tone: 'bg-positive-soft text-positive' }
+                      : def.contractStatus === 'ĐÃ_KÝ' ? { label: 'Đã ký hợp đồng', tone: 'bg-positive-soft text-positive' }
                       : !ready?.ready ? { label: 'Chưa đủ hồ sơ', tone: 'bg-warning-soft text-warning' }
                       : { label: 'Đủ hồ sơ', tone: 'bg-positive-soft text-positive' };
                     const legalTip = [
                       dupNames.length ? `Trùng kênh: ${dupNames.join(', ')}` : '',
-                      ready && !ready.ready && def.contractStatus !== 'ĐÃ_KÝ' ? `Thiếu trường ký HĐ: ${ready.missing.join(', ')}` : '',
+                      ready && !ready.ready && def.contractStatus !== 'ĐÃ_KÝ' ? `Còn thiếu để ký hợp đồng: ${ready.missing.join(', ')}` : '',
                       profiles.map((p) => `${p.code}: ${p.holderName}`).join('\n'),
-                      shared ? `Chung chủ / MCN với ${shared} kênh` : '',
+                      shared ? `Cùng chủ / công ty quản lý (MCN) với ${shared} kênh` : '',
                     ].filter(Boolean).join('\n');
                     const r = ratingSummary(k.ratings);
                     return (
                       <tr key={k.id}>
-                        <td>{kocCode}</td>
                         <td>{kocCell(k)}</td>
                         <td className="text-xs">
-                          <div className="max-w-[210px] leading-snug" title={[lk?.paid != null ? `${lk.paid} Paid` : '', lk?.foc ? `${lk.foc} FOC` : '', lk?.code ? `BO gần nhất ${lk.code}` : '', lk?.pics ? `PIC từng làm: ${lk.pics}` : ''].filter(Boolean).join('\n') || undefined}>
+                          <div className="max-w-[210px] leading-snug" title={[lk?.paid != null ? `${lk.paid} booking có trả phí` : '', lk?.foc ? `${lk.foc} booking FOC (0đ)` : '', lk?.code ? `Mã BO gần nhất: ${lk.code}` : '', lk?.pics ? `Người từng phụ trách: ${lk.pics}` : ''].filter(Boolean).join('\n') || undefined}>
                             <span className="block truncate text-[13px] text-ink">
-                              <span className="font-medium">{k.bookingCount ? `${vnd.format(k.bookingCount)} đợt` : k.jobs ? `${k.jobs} job` : '—'}</span>
+                              <span className="font-medium">{k.bookingCount ? `${vnd.format(k.bookingCount)} booking` : k.jobs ? `${k.jobs} job` : '—'}</span>
                               {lk?.brand && <span className="text-ink-2"> · {lk.brand}{lk.brands > 1 && ` +${lk.brands - 1}`}</span>}
                             </span>
-                            <span className="block truncate text-ink-3">{pic ?? 'Chưa gán PIC'}{lk?.month && ` · ${lk.month}`}</span>
+                            <span className="block truncate text-ink-3">{pic ?? 'Chưa có người phụ trách'}{lk?.month && ` · ${lk.month}`}</span>
                           </div>
                         </td>
-                        <td className="text-right text-xs whitespace-nowrap" title={[lk?.minCost && lk.maxCost && lk.maxCost > lk.minCost ? `Biên độ giá: ${fmtVndShort(lk.minCost)} – ${fmtVndShort(lk.maxCost)}` : '', k.gmvRange ? 'GMV kênh: doanh thu cả kênh trên TikTok Shop, không riêng booking Upbase' : ''].filter(Boolean).join('\n') || undefined}>
-                          <span className="block text-[13px] text-ink">{rate && rate > 1 ? fmtVndShort(rate) : onlyFoc ? 'Chỉ FOC' : '—'}</span>
+                        <td className="text-right text-xs whitespace-nowrap" title={[lk?.minCost && lk.maxCost && lk.maxCost > lk.minCost ? `Giá từng book: ${fmtVndShort(lk.minCost)} – ${fmtVndShort(lk.maxCost)}` : '', k.gmvRange ? 'GMV kênh: doanh thu cả kênh trên TikTok Shop, không riêng booking Upbase' : ''].filter(Boolean).join('\n') || undefined}>
+                          <span className="block text-[13px] text-ink">{rate && rate > 1 ? fmtVndShort(rate) : onlyFoc ? 'Chỉ FOC (0đ)' : '—'}</span>
                           <span className="block text-ink-3">{k.gmvRange ? `GMV kênh ${gmvLabel(k.gmvRange)}` : '—'}</span>
                         </td>
                         <td className="text-xs">
@@ -300,7 +301,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                         </td>
                         <td className="text-xs">
                           {r.count ? (
-                            <div title={r.negativeTags.length ? `Hay gặp: ${r.negativeTags.join(', ')}` : undefined}>
+                            <div title={r.negativeTags.length ? `Hay bị nhắc: ${r.negativeTags.join(', ')}` : undefined}>
                               <span className={`text-[13px] font-medium ${r.isLow ? 'text-critical' : 'text-ink'}`}>{r.average.toLocaleString('vi-VN')} sao</span>
                               <span className="block text-ink-3">{r.isLow && 'Điểm thấp · '}{r.count} lượt</span>
                             </div>
@@ -308,7 +309,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                         </td>
                         <td className="text-xs">
                           <div className="max-w-[175px] leading-snug">
-                            <span className="block truncate text-[13px] font-medium text-ink">{k.niche ?? 'Chưa phân tệp kênh'}</span>
+                            <span className="block truncate text-[13px] font-medium text-ink">{k.niche ?? 'Chưa có tệp kênh'}</span>
                             <span className="block truncate text-ink-3">{[k.category, salaryOf(k)].filter(Boolean).join(' · ') || '—'}</span>
                           </div>
                         </td>
@@ -320,7 +321,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               </>
             ) : (
               <>
-                <thead><tr><th>Mã KOC</th><th>KOC & nguồn</th><th className="text-right">Chỉ số kênh</th><th>Tệp kênh & báo giá</th><th>Gian hàng & PIC</th><th>Sẵn sàng & liên hệ</th><th /></tr></thead>
+                <thead><tr><th>KOC</th><th className="text-right">Chỉ số kênh</th><th>Tệp kênh & báo giá</th><th>Gian hàng & người phụ trách</th><th>Sẵn sàng & liên hệ</th><th /></tr></thead>
                 <tbody>
                   {rows.map((k) => {
                     const li = listed.get(k.id);
@@ -328,23 +329,22 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                     const contacted = k.contactStatus === 'ĐÃ_LIÊN_HỆ' || k.contactStatus === 'ĐANG_THƯƠNG_LƯỢNG';
                     return (
                       <tr key={k.id}>
-                        <td>{kocCode}</td>
-                        <td>{kocCell(k, <span className="block truncate text-xs text-accent">{li ? `Listing ${li.first.name}` : 'Danh bạ'}{li && li.n > 1 && ` · Đề xuất ${li.n} lần`}</span>)}</td>
+                        <td>{kocCell(k, <span className="block truncate text-xs text-accent">{li ? `Từ listing ${li.first.name}` : 'Thêm trực tiếp'}{li && li.n > 1 && ` · Đề xuất ${li.n} lần`}</span>)}</td>
                         <td className="text-right text-xs whitespace-nowrap">
-                          <div className="font-semibold text-ink">{k.followers == null ? '—' : compact.format(k.followers)} flw · {k.avgViews == null ? '—' : compact.format(k.avgViews)} view TB</div>
+                          <div className="font-semibold text-ink">{k.followers == null ? '—' : compact.format(k.followers)} follower · {k.avgViews == null ? '—' : compact.format(k.avgViews)} view trung bình</div>
                           <div className="text-ink-3">GMV 30 ngày {k.gmvRange ? gmvLabel(k.gmvRange) : '—'}</div>
                         </td>
                         <td className="text-xs">
                           <div className="max-w-[175px] leading-snug">
-                            <span className="block truncate font-medium text-ink">{k.niche ?? 'Chưa phân tệp kênh'}</span>
+                            <span className="block truncate font-medium text-ink">{k.niche ?? 'Chưa có tệp kênh'}</span>
                             <span className="block truncate text-ink-2">{[k.category, salaryOf(k) ? `Khung ${salaryOf(k)}` : ''].filter(Boolean).join(' · ') || '—'}</span>
                             <span className="block truncate font-semibold text-ink">{k.rateCard ? `Báo giá: ${fmtVnd(k.rateCard)}` : 'Chưa có báo giá'}</span>
                           </div>
                         </td>
                         <td className="text-xs">
                           <div className="max-w-[170px] leading-snug">
-                            <span className="block truncate font-medium text-ink">{li?.first.store ?? li?.first.brand ?? 'Chưa gán gian hàng'}</span>
-                            <span className="block truncate text-ink-3">PIC đề xuất: <b className="text-ink-2">{picOf(k) ?? 'Chưa phân công'}</b></span>
+                            <span className="block truncate font-medium text-ink">{li?.first.store ?? li?.first.brand ?? 'Chưa có gian hàng'}</span>
+                            <span className="block truncate text-ink-3">Phụ trách: <b className="text-ink-2">{picOf(k) ?? 'Chưa có'}</b></span>
                           </div>
                         </td>
                         <td className="text-xs">
@@ -353,11 +353,11 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                               <span className={`pill ${rd.tone}`}>{rd.label}</span>
                               <span className={`pill ${contacted ? 'bg-positive-soft text-positive' : 'bg-sunken text-ink-3'}`}>{contactLabel(k.contactStatus)}</span>
                             </div>
-                            <span className="w-full truncate text-ink-2">{k.phone || k.email ? [k.phone ? mask(k.phone.trim()) : '', k.email].filter(Boolean).join(' · ') : 'Chưa có SĐT / Email'}</span>
+                            <span className="w-full truncate text-ink-2">{k.phone || k.email ? [k.phone ? mask(k.phone.trim()) : '', k.email].filter(Boolean).join(' · ') : 'Chưa có SĐT / email'}</span>
                           </div>
                         </td>
                         <td className="text-right whitespace-nowrap">
-                          <Link href={dlg('contact_koc', k.id)} className="btn mr-1.5 h-8 text-xs">Liên hệ</Link>
+                          <Link href={dlg('contact_koc', k.id)} className="btn mr-1.5 h-8 text-xs">Ghi liên hệ</Link>
                           {menu(k)}
                         </td>
                       </tr>
@@ -369,8 +369,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           </table>
           {!rows.length && (
             <div className="grid justify-items-center gap-3 py-12 text-center text-[13px] text-ink-3">
-              <p>{(coopTab ? d.counts.coop : d.counts.new) ? 'Không có KOC khớp bộ lọc' : 'Chưa có KOC nào trong bảng này'}</p>
-              {otherTab > 0 && <Link href={coopTab ? `/contacts?${new URLSearchParams([...filters, ['tab', 'new']])}` : withParam('tab', '')} className="link">{vnd.format(otherTab)} KOC khớp ở bảng {coopTab ? 'KOC mới / tiềm năng' : 'KOC đã hợp tác'}</Link>}
+              <p>{(coopTab ? d.counts.coop : d.counts.new) ? 'Không có KOC khớp bộ lọc. Bấm "Xóa bộ lọc" để xem tất cả.' : 'Chưa có KOC nào trong bảng này.'}</p>
+              {otherTab > 0 && <Link href={coopTab ? `/contacts?${new URLSearchParams([...filters, ['tab', 'new']])}` : withParam('tab', '')} className="link">Xem {vnd.format(otherTab)} KOC khớp ở tab {coopTab ? 'KOC mới / tiềm năng' : 'KOC đã hợp tác'}</Link>}
               {(coopTab ? d.counts.coop : d.counts.new) ? <Link href={coopTab ? '/contacts' : '/contacts?tab=new'} className="btn">Xóa bộ lọc</Link>
                 : canEdit && <Link href={`?${new URLSearchParams([...filters, ['edit', 'new']])}`} className="btn btn-primary">+ Thêm KOC</Link>}
             </div>
@@ -400,7 +400,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               </select>
             </Field>
             <Field label="ID kênh" id="handle">
-              <input id="handle" name="handle" required defaultValue={editing?.handle} placeholder="@username" className="input" />
+              <input id="handle" name="handle" required defaultValue={editing?.handle} placeholder="@tenkenh hoặc link kênh" className="input" />
             </Field>
             <Field label="Tên kênh" id="name">
               <input id="name" name="name" required defaultValue={editing?.name} className="input" />
@@ -424,16 +424,16 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             <Field label="Email" id="email">
               <input id="email" name="email" type="email" defaultValue={editing?.email ?? ''} className="input" />
             </Field>
-            <Field label="Giá tham khảo / video (VND)" id="rateCard">
+            <Field label="Giá tham khảo / video (₫)" id="rateCard">
               <input id="rateCard" name="rateCard" type="number" min={0} step={1000} defaultValue={editing?.rateCard ?? ''} className="input" />
             </Field>
-            <Field label="PIC" id="picId">
+            <Field label="Người phụ trách" id="picId">
               <select id="picId" name="picId" defaultValue={editing?.picId ?? ''} className="input">
                 <option value="">—</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.name ?? u.larkUserId}</option>)}
               </select>
             </Field>
-            <Field label="Ngành hàng (Category)" id="category">
+            <Field label="Ngành hàng" id="category">
               <select id="category" name="category" defaultValue={editing?.category ?? ''} className="input">
                 <option value="">{UNCATEGORIZED}</option>
                 {KOC_CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -441,7 +441,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             </Field>
             <Field label="Khung lương (KL)" id="kl">
               <select id="kl" name="kl" defaultValue={editing?.kl ?? ''} className="input">
-                <option value="">Theo booking gần nhất</option>
+                <option value="">Tự lấy theo booking gần nhất</option>
                 {KL_LEVELS.map((l) => <option key={l}>{l}</option>)}
               </select>
             </Field>
@@ -454,9 +454,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             </Field>
             <label className="col-span-full flex items-center gap-2 text-[13px]">
               <input type="checkbox" name="blacklisted" defaultChecked={editing?.blacklisted} className="size-4" />
-              Blacklist: không book nữa (ẩn khỏi Creator matching, cảnh báo ở Listing)
+              Blacklist: không book nữa (ẩn ở Creator matching, cảnh báo ở Listing)
             </label>
-            <Field label="Lý do blacklist (bắt buộc nếu tick)" id="blacklistReason" wide>
+            <Field label="Lý do blacklist (bắt buộc nếu chọn blacklist)" id="blacklistReason" wide>
               <input id="blacklistReason" name="blacklistReason" defaultValue={editing?.blacklistReason ?? ''} className="input" />
             </Field>
             <p className="col-span-full -mb-1 border-t border-line pt-3 text-xs font-semibold text-ink-2">Nhận hàng mẫu</p>
@@ -472,7 +472,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
             {bank && !editSaved ? (
               <>
                 <input type="hidden" name="bankSection" value="1" />
-                <p className="col-span-full -mb-1 border-t border-line pt-3 text-xs font-semibold text-ink-2">Hồ sơ pháp lý & thanh toán (HSPL-01)</p>
+                <p className="col-span-full -mb-1 border-t border-line pt-3 text-xs font-semibold text-ink-2">Thông tin thanh toán</p>
                 <Field label="Chủ tài khoản" id="bankHolder">
                   <input id="bankHolder" name="bankHolder" defaultValue={editing?.bankHolder ?? ''} className="input" />
                 </Field>
@@ -488,7 +488,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               </>
             ) : editing && (
               <p className="col-span-full border-t border-line pt-3 text-xs text-ink-3">
-                {editSaved ? <>KOC có {editSaved} hồ sơ pháp lý: sửa ở <Link href={`/contacts/${editing.id}#ho-so-phap-ly`} className="link">trang KOC → Hồ sơ pháp lý</Link>.</> : 'CCCD, số tài khoản chỉ người có quyền "Xem số tài khoản, CCCD" mới xem và sửa được.'}
+                {editSaved ? <>Sửa CCCD, số tài khoản ở <Link href={`/contacts/${editing.id}#ho-so-phap-ly`} className="link">hồ sơ KOC → Hồ sơ pháp lý</Link>.</> : 'Chỉ người có quyền "Xem số tài khoản, CCCD" mới xem và sửa được CCCD, số tài khoản.'}
               </p>
             )}
             <div className="col-span-full flex justify-end gap-2">

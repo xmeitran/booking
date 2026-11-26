@@ -15,7 +15,7 @@ type Full = LegalProfileView & {
 };
 type Koc = { id: string; name: string; phone: string | null; address: string | null };
 
-const contractLabel = (s?: string | null) => (s === 'ĐÃ_KÝ' ? 'Đã có file HĐNT ký' : s === 'ĐANG_TRÌNH_KÝ' ? 'Đang trình ký' : s === 'HẾT_HẠN' ? 'HĐNT hết hạn' : 'Chưa có file HĐNT ký');
+const contractLabel = (s?: string | null) => (s === 'ĐÃ_KÝ' ? 'Đã ký' : s === 'ĐANG_TRÌNH_KÝ' ? 'Đang trình ký' : s === 'HẾT_HẠN' ? 'Hết hạn' : 'Chưa ký');
 
 export function LegalSection({ koc, profiles, reveal, canSee, canEdit, base }: { koc: Koc; profiles: Full[]; reveal: boolean; canSee: boolean; canEdit: boolean; base: string }) {
   const show = (v?: string | null) => (!v ? '—' : canSee && reveal ? v : mask(v));
@@ -25,14 +25,13 @@ export function LegalSection({ koc, profiles, reveal, canSee, canEdit, base }: {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold">Hồ sơ pháp lý ({profiles.length})</h2>
         <div className="flex flex-wrap gap-2">
-          {canSee && profiles.length > 0 && <Link href={reveal ? `${base}#ho-so-phap-ly` : href('reveal=1')} className="btn h-8 text-xs">{reveal ? 'Ẩn số CCCD' : 'Hiện số CCCD'}</Link>}
+          {canSee && profiles.length > 0 && <Link href={reveal ? `${base}#ho-so-phap-ly` : href('reveal=1')} className="btn h-8 text-xs">{reveal ? 'Ẩn số' : 'Hiện đủ số'}</Link>}
           {canEdit && <Link href={href('lp=new')} className="btn btn-primary h-8 text-xs">Thêm hồ sơ pháp lý</Link>}
         </div>
       </div>
       {!profiles.length ? (
         <div className="grid justify-items-center gap-2 py-6 text-[13px] text-ink-3">
-          <p>KOC chưa có hồ sơ pháp lý</p>
-          {canEdit && <Link href={href('lp=new')} className="btn">Thêm hồ sơ pháp lý đầu tiên</Link>}
+          <p>Chưa có hồ sơ pháp lý: chưa ký hợp đồng và chưa thanh toán được.</p>
         </div>
       ) : (
         <div className="grid gap-3">
@@ -47,9 +46,9 @@ export function LegalSection({ koc, profiles, reveal, canSee, canEdit, base }: {
                   <span className="pill bg-sunken text-ink-2">{LEGAL_TYPE_LABEL[p.legalType]}</span>
                   {p.isDefault && <span className="pill bg-accent-soft text-accent">Mặc định</span>}
                   <span className={`pill ${r.ready ? 'bg-positive-soft text-positive' : 'bg-warning-soft text-warning'}`} title={r.missing.length ? `Thiếu: ${r.missing.join(', ')}` : undefined}>
-                    {r.ready ? `Đủ thông tin ký HĐ (${r.filled}/${r.total})` : `Thiếu ${r.missing.length} trường HĐ`}
+                    {r.ready ? 'Đủ để ký hợp đồng' : `Thiếu ${r.missing.length} mục để ký hợp đồng`}
                   </span>
-                  {!p.id && <span className="text-xs text-ink-3">Dựng từ CCCD / số TK đồng bộ Lark, chưa lưu hồ sơ</span>}
+                  {!p.id && <span className="text-xs text-ink-3">Lấy từ booking trên Lark, chưa lưu</span>}
                   {canEdit && (
                     <span className="ml-auto flex items-center gap-2">
                       <Link href={href(`lp=${p.id ?? 'legacy'}`)} className="btn h-8 text-xs">Sửa hồ sơ</Link>
@@ -74,25 +73,25 @@ export function LegalSection({ koc, profiles, reveal, canSee, canEdit, base }: {
                 </div>
                 <div className="grid gap-4 text-[13px] md:grid-cols-2">
                   <dl className="grid grid-cols-[150px_1fr] gap-x-3 gap-y-1">
-                    <dt className="col-span-full mb-1 text-xs font-semibold text-ink-2">Định danh pháp nhân & thuế</dt>
+                    <dt className="col-span-full mb-1 text-xs font-semibold text-ink-2">Giấy tờ & thuế</dt>
                     <dt className="text-ink-3">Chế độ thuế</dt><dd>{p.taxAccountType ?? '—'}</dd>
                     {individual && <><dt className="text-ink-3">Số CCCD</dt><dd className="font-mono text-xs">{show(p.cccd)}</dd></>}
-                    <dt className="text-ink-3">{individual ? 'MST cá nhân' : 'Mã số thuế / ĐKKD'}</dt><dd className="font-mono text-xs">{show(p.taxCode ?? p.businessLicenseNo)}</dd>
+                    <dt className="text-ink-3">{individual ? 'MST cá nhân' : 'MST / số đăng ký kinh doanh'}</dt><dd className="font-mono text-xs">{show(p.taxCode ?? p.businessLicenseNo)}</dd>
                     {!individual && <><dt className="text-ink-3">Người đại diện</dt><dd>{[p.representativeName, p.representativeTitle].filter(Boolean).join(' · ') || '—'}</dd></>}
                     {individual && <><dt className="text-ink-3">Ngày & nơi cấp</dt><dd>{[p.cccdIssueDate, p.cccdIssuePlace].filter(Boolean).join(' · ') || '—'}</dd></>}
                     <dt className="text-ink-3">{individual ? 'Địa chỉ thường trú' : 'Địa chỉ đăng ký'}</dt><dd>{p.address ?? '—'}</dd>
-                    <dt className="text-ink-3">Liên hệ hợp đồng</dt><dd>{p.contactPhone ? show(p.contactPhone) : '—'}</dd>
+                    <dt className="text-ink-3">SĐT trên hợp đồng</dt><dd>{p.contactPhone ? show(p.contactPhone) : '—'}</dd>
                     <dt className="text-ink-3">Ngân hàng</dt><dd>{p.bankName ?? '—'}</dd>
-                    <dt className="text-ink-3">Số tài khoản</dt><dd className="font-mono text-xs">{show(p.bankAccount)}</dd>
+                    <dt className="text-ink-3">Số tài khoản</dt><dd className="font-mono text-xs">{p.bankAccount ? show(p.bankAccount) : <span className="font-sans text-warning">Chưa có: chưa thanh toán được</span>}</dd>
                     <dt className="text-ink-3">Chủ tài khoản</dt><dd>{p.bankHolderName ?? '—'}</dd>
                   </dl>
                   <dl className="grid content-start grid-cols-[150px_1fr] gap-x-3 gap-y-1">
-                    <dt className="col-span-full mb-1 text-xs font-semibold text-ink-2">Hợp đồng nguyên tắc (HĐNT)</dt>
-                    <dt className="text-ink-3">Trạng thái HĐNT</dt>
+                    <dt className="col-span-full mb-1 text-xs font-semibold text-ink-2">Hợp đồng nguyên tắc</dt>
+                    <dt className="text-ink-3">Trạng thái</dt>
                     <dd><span className={`pill ${p.contractStatus === 'ĐÃ_KÝ' ? 'bg-positive-soft text-positive' : p.contractStatus === 'ĐANG_TRÌNH_KÝ' ? 'bg-warning-soft text-warning' : 'bg-sunken text-ink-3'}`}>{contractLabel(p.contractStatus)}</span></dd>
-                    {p.contractCode && <><dt className="text-ink-3">Mã HĐNT</dt><dd>{p.contractCode}</dd></>}
+                    {p.contractCode && <><dt className="text-ink-3">Số hợp đồng</dt><dd>{p.contractCode}</dd></>}
                     {p.contractSignedAt && <><dt className="text-ink-3">Ngày ký</dt><dd>{fmtDate(p.contractSignedAt)}</dd></>}
-                    {p.contractUrl && <><dt className="text-ink-3">File</dt><dd><a href={p.contractUrl} target="_blank" rel="noreferrer" className="link">Mở file HĐNT đã ký</a></dd></>}
+                    {p.contractUrl && <><dt className="text-ink-3">File</dt><dd><a href={p.contractUrl} target="_blank" rel="noreferrer" className="link">Mở file hợp đồng</a></dd></>}
                     {p.notes && <><dt className="text-ink-3">Ghi chú</dt><dd className="whitespace-pre-line">{p.notes}</dd></>}
                   </dl>
                 </div>
@@ -118,7 +117,7 @@ export function LegalDialog({ koc, profile, type, nextNo, banks, base }: { koc: 
   return (
     <Dialog title={profile ? `Sửa hồ sơ pháp lý ${profile.code} — ${koc.name}` : `Thêm hồ sơ pháp lý mới (${profileCode(nextNo)}) — ${koc.name}`} closeHref={close} wide>
       <div className="mb-4">
-        <p className="label">Loại hình pháp nhân</p>
+        <p className="label">KOC ký hợp đồng với tư cách</p>
         <div className="flex flex-wrap gap-2">
           {LEGAL_TYPES.map((t) => (
             <Link key={t} href={`${base}?lp=${lpParam}&type=${t}#ho-so-phap-ly`} aria-current={t === legalType ? 'true' : undefined}
@@ -132,32 +131,32 @@ export function LegalDialog({ koc, profile, type, nextNo, banks, base }: { koc: 
         <input type="hidden" name="fromLegacy" value={profile && !profile.id ? '1' : ''} />
         <input type="hidden" name="legalType" value={legalType} />
         <input type="hidden" name="next" value={close} />
-        <F label="Chế độ khấu trừ thuế" id="taxAccountType">
+        <F label="Cách tính thuế" id="taxAccountType">
           <select id="taxAccountType" name="taxAccountType" defaultValue={TAX_ACCOUNT_OPTIONS[legalType].includes(v('taxAccountType')) ? v('taxAccountType') : DEFAULT_TAX_ACCOUNT[legalType]} className="input">
             {[...new Set([DEFAULT_TAX_ACCOUNT[legalType], ...TAX_ACCOUNT_OPTIONS[legalType]])].map((o) => <option key={o}>{o}</option>)}
           </select>
         </F>
-        <F label="Vai trò ký kết" id="signRole">
+        <F label="Người ký là" id="signRole">
           <select id="signRole" name="signRole" defaultValue={v('signRole') || DEFAULT_SIGN_ROLE[legalType]} className="input">
             {SIGN_ROLES.map((o) => <option key={o}>{o}</option>)}
           </select>
         </F>
-        <F label={individual ? 'Họ và tên cá nhân đứng tên Hợp đồng *' : 'Tên pháp nhân Công ty / Hộ kinh doanh *'} id="holderName">
+        <F label={individual ? 'Họ tên người đứng tên hợp đồng *' : 'Tên công ty / hộ kinh doanh *'} id="holderName">
           <input id="holderName" name="holderName" required defaultValue={v('holderName')} className="input" />
         </F>
-        <F label={individual ? 'Mã số thuế TNCN (nếu có)' : 'Mã số thuế / Mã số ĐKKD *'} id="taxCode">
+        <F label={individual ? 'MST cá nhân (nếu có)' : 'MST hoặc số đăng ký kinh doanh *'} id="taxCode">
           <input id="taxCode" name="taxCode" defaultValue={v('taxCode')} className="input" />
         </F>
         {individual ? (
           <>
-            <F label="Số CCCD (đủ 12 chữ số) *" id="cccd"><input id="cccd" name="cccd" inputMode="numeric" maxLength={12} defaultValue={v('cccd')} className="input" /></F>
-            <F label="Ngày cấp CCCD (DD/MM/YYYY) *" id="cccdIssueDate"><input id="cccdIssueDate" name="cccdIssueDate" placeholder="15/05/2022" defaultValue={v('cccdIssueDate')} className="input" /></F>
-            <F label="Nơi cấp CCCD (phải là chữ) *" id="cccdIssuePlace" wide><input id="cccdIssuePlace" name="cccdIssuePlace" placeholder="Cục Cảnh sát QLHC về TTXH" defaultValue={v('cccdIssuePlace')} className="input" /></F>
+            <F label="Số CCCD (12 số) *" id="cccd"><input id="cccd" name="cccd" inputMode="numeric" maxLength={12} defaultValue={v('cccd')} className="input" /></F>
+            <F label="Ngày cấp CCCD (ngày/tháng/năm) *" id="cccdIssueDate"><input id="cccdIssueDate" name="cccdIssueDate" placeholder="15/05/2022" defaultValue={v('cccdIssueDate')} className="input" /></F>
+            <F label="Nơi cấp CCCD *" id="cccdIssuePlace" wide><input id="cccdIssuePlace" name="cccdIssuePlace" placeholder="Cục Cảnh sát QLHC về TTXH" defaultValue={v('cccdIssuePlace')} className="input" /></F>
           </>
         ) : (
           <>
-            <F label="Số Giấy phép ĐKKD / Hộ kinh doanh" id="businessLicenseNo"><input id="businessLicenseNo" name="businessLicenseNo" defaultValue={v('businessLicenseNo')} className="input" /></F>
-            <F label="Thuế suất VAT áp dụng (%)" id="vatRatePercent">
+            <F label="Số giấy phép kinh doanh" id="businessLicenseNo"><input id="businessLicenseNo" name="businessLicenseNo" defaultValue={v('businessLicenseNo')} className="input" /></F>
+            <F label="VAT" id="vatRatePercent">
               <select id="vatRatePercent" name="vatRatePercent" defaultValue={String(vat)} className="input">
                 {VAT_OPTIONS[legalType].map(([n, l]) => <option key={n} value={n}>{l}</option>)}
               </select>
@@ -165,35 +164,35 @@ export function LegalDialog({ koc, profile, type, nextNo, banks, base }: { koc: 
           </>
         )}
         <F label="Người đại diện ký hợp đồng" id="representativeName"><input id="representativeName" name="representativeName" defaultValue={v('representativeName')} className="input" /></F>
-        <F label="Chức vụ đại diện" id="representativeTitle"><input id="representativeTitle" name="representativeTitle" defaultValue={v('representativeTitle') || (legalType === 'COMPANY' ? 'Giám đốc' : legalType === 'HOUSEHOLD' ? 'Chủ hộ kinh doanh' : '')} className="input" /></F>
+        <F label="Chức vụ người đại diện" id="representativeTitle"><input id="representativeTitle" name="representativeTitle" defaultValue={v('representativeTitle') || (legalType === 'COMPANY' ? 'Giám đốc' : legalType === 'HOUSEHOLD' ? 'Chủ hộ kinh doanh' : '')} className="input" /></F>
         <F label="Số văn bản ủy quyền" id="authorizationNumber"><input id="authorizationNumber" name="authorizationNumber" defaultValue={v('authorizationNumber')} className="input" /></F>
-        <F label="Ngày văn bản ủy quyền" id="authorizationDate"><input id="authorizationDate" name="authorizationDate" placeholder="DD/MM/YYYY" defaultValue={v('authorizationDate')} className="input" /></F>
-        <F label="Số điện thoại liên hệ trên Hợp đồng" id="contactPhone"><input id="contactPhone" name="contactPhone" type="tel" defaultValue={v('contactPhone')} className="input" /></F>
-        <F label="Email nhận thông báo & ký số" id="contactEmail"><input id="contactEmail" name="contactEmail" type="email" defaultValue={v('contactEmail')} className="input" /></F>
-        <F label={individual ? 'Địa chỉ thường trú trên CCCD' : 'Địa chỉ trụ sở đăng ký kinh doanh'} id="address" wide><input id="address" name="address" defaultValue={v('address')} className="input" /></F>
+        <F label="Ngày văn bản ủy quyền" id="authorizationDate"><input id="authorizationDate" name="authorizationDate" placeholder="ngày/tháng/năm" defaultValue={v('authorizationDate')} className="input" /></F>
+        <F label="SĐT trên hợp đồng" id="contactPhone"><input id="contactPhone" name="contactPhone" type="tel" defaultValue={v('contactPhone')} className="input" /></F>
+        <F label="Email nhận và ký hợp đồng" id="contactEmail"><input id="contactEmail" name="contactEmail" type="email" defaultValue={v('contactEmail')} className="input" /></F>
+        <F label={individual ? 'Địa chỉ thường trú trên CCCD' : 'Địa chỉ trụ sở'} id="address" wide><input id="address" name="address" defaultValue={v('address')} className="input" /></F>
         <F label="Tên ngân hàng" id="bankName">
           <input id="bankName" name="bankName" list="bank-list" defaultValue={v('bankName')} className="input" />
           <datalist id="bank-list">{banks.map((b) => <option key={b} value={b} />)}</datalist>
         </F>
-        <F label="Số tài khoản ngân hàng" id="bankAccount"><input id="bankAccount" name="bankAccount" defaultValue={v('bankAccount')} className="input" /></F>
+        <F label="Số tài khoản" id="bankAccount"><input id="bankAccount" name="bankAccount" defaultValue={v('bankAccount')} className="input" /></F>
         <F label="Tên chủ tài khoản (IN HOA KHÔNG DẤU)" id="bankHolderName" wide>
-          <input id="bankHolderName" name="bankHolderName" defaultValue={v('bankHolderName')} placeholder="Để trống: lấy theo tên đứng tên hợp đồng" className="input uppercase" />
+          <input id="bankHolderName" name="bankHolderName" defaultValue={v('bankHolderName')} placeholder="Để trống: lấy theo tên người đứng tên hợp đồng" className="input uppercase" />
         </F>
-        <p className="col-span-full -mb-1 border-t border-line pt-3 text-xs font-semibold text-ink-2">Hợp đồng nguyên tắc (HĐNT) · Booking Hub chưa có phân hệ hợp đồng nên cập nhật tay</p>
-        <F label="Trạng thái HĐNT" id="contractStatus">
+        <p className="col-span-full -mb-1 border-t border-line pt-3 text-xs font-semibold text-ink-2">Hợp đồng nguyên tắc (nhập tay)</p>
+        <F label="Trạng thái hợp đồng" id="contractStatus">
           <select id="contractStatus" name="contractStatus" defaultValue={editing?.contractStatus ?? 'CHƯA_KÝ'} className="input">
             {Object.entries(CONTRACT_STATUS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </F>
-        <F label="Mã HĐNT" id="contractCode"><input id="contractCode" name="contractCode" placeholder="HDNT-2026-0028" defaultValue={editing?.contractCode ?? ''} className="input" /></F>
+        <F label="Số hợp đồng" id="contractCode"><input id="contractCode" name="contractCode" placeholder="HDNT-2026-0028" defaultValue={editing?.contractCode ?? ''} className="input" /></F>
         <F label="Ngày ký" id="contractSignedAt">
           <input id="contractSignedAt" name="contractSignedAt" type="date" defaultValue={editing?.contractSignedAt ? editing.contractSignedAt.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : ''} className="input" />
         </F>
-        <F label="Link file HĐNT đã ký" id="contractUrl"><input id="contractUrl" name="contractUrl" type="url" defaultValue={editing?.contractUrl ?? ''} className="input" /></F>
-        <F label="Ghi chú vận hành / Ủy quyền thanh toán (nếu có)" id="notes" wide><textarea id="notes" name="notes" rows={2} defaultValue={v('notes')} className="input" /></F>
+        <F label="Link file hợp đồng đã ký" id="contractUrl"><input id="contractUrl" name="contractUrl" type="url" defaultValue={editing?.contractUrl ?? ''} className="input" /></F>
+        <F label="Ghi chú (vd: ủy quyền thanh toán)" id="notes" wide><textarea id="notes" name="notes" rows={2} defaultValue={v('notes')} className="input" /></F>
         <label className="col-span-full flex items-center gap-2">
           <input type="checkbox" name="isDefault" defaultChecked={profile ? profile.isDefault : nextNo === 1} className="size-4" />
-          Đặt làm hồ sơ pháp lý mặc định (dùng cho ĐNTT, listing, job)
+          Đặt làm hồ sơ mặc định (dùng khi đề nghị thanh toán, listing, job)
         </label>
         <div className="col-span-full flex justify-end gap-2">
           <Link href={close} className="btn">Hủy</Link>

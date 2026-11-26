@@ -7,7 +7,7 @@ import { requirePerm, ROLE_LABEL } from '@/lib/auth/session';
 import { assignBrand, handover, unassignBrand } from '../actions';
 import { UsersTabs } from '../Tabs';
 
-const SHORT: Record<string, string> = { 'Booking PIC': 'PIC', 'Booking Support': 'Support', 'Brand Manager': 'BM' };
+const SHORT: Record<string, string> = { 'Booking PIC': 'PIC', 'Booking Support': 'Support' };
 
 // Phân công & bàn giao gian hàng (như màn cùng tên của app b2c): ai phụ trách brand nào, việc đang giữ, bàn giao khi đổi người / nghỉ việc.
 export default async function AssignPage({ searchParams }: { searchParams: Promise<{ assign?: string; from?: string; done?: string }> }) {
@@ -36,12 +36,8 @@ export default async function AssignPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <UsersTabs me={me} active="/users/assign" />
-      <p className="mb-3 text-[13px] text-ink-2">
-        Brand phụ trách quyết định Nhân viên thấy dữ liệu nào (khi vai trò không có quyền &quot;Xem dữ liệu mọi brand&quot;). Lượt đồng bộ Lark Base tự thêm phân công
-        theo cột &quot;Người phụ trách&quot; của 5.1 Stores, không xoá phân công sửa ở đây.
-      </p>
       {sp.done && <p role="status" className="mb-3 rounded-md bg-positive-soft px-3 py-2 text-positive">{sp.done}</p>}
-      {staffNoBrand > 0 && <p className="mb-3 rounded-md bg-warning-soft px-3 py-2 text-[13px] text-warning">{staffNoBrand} nhân viên chưa được giao brand nào: họ chỉ thấy việc mình là PIC / người tạo.</p>}
+      {staffNoBrand > 0 && <p className="mb-3 rounded-md bg-warning-soft px-3 py-2 text-[13px] text-warning">{staffNoBrand} nhân viên chưa được giao brand nào: họ chỉ thấy việc mình phụ trách hoặc tự tạo.</p>}
 
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">
@@ -87,6 +83,7 @@ export default async function AssignPage({ searchParams }: { searchParams: Promi
           </tbody>
         </table>
       </div>
+      <p className="mt-2 text-xs text-ink-3">Ai không có quyền &quot;Xem dữ liệu mọi brand&quot; chỉ thấy brand mình phụ trách. Người ở cột &quot;Người phụ trách&quot; của 5.1 Stores trên Lark được tự thêm vào đây.</p>
 
       {assignTo && (
         <Dialog title={`Giao brand cho ${assignTo.name ?? assignTo.larkUserId}`} closeHref="/users/assign">
@@ -138,10 +135,7 @@ export default async function AssignPage({ searchParams }: { searchParams: Promi
             {me.role === 'ADMIN' && from.active && from.id !== me.id && (
               <label className="flex items-center gap-2"><input type="checkbox" name="lock" className="size-4" />Khoá tài khoản (nghỉ việc / chuyển bộ phận)</label>
             )}
-            <p className="text-xs text-ink-3">
-              Gian hàng và plan đồng bộ từ Lark Base: nếu người cũ vẫn hoạt động, đổi &quot;Người phụ trách&quot; / &quot;Booking PIC&quot; trên Lark, không thì lượt đồng bộ sau gán lại dòng plan Lark cho người cũ.
-              Người đã khoá thì đồng bộ bỏ qua, dòng plan Lark về Booking PIC hiện tại của brand.
-            </p>
+            <p className="text-xs text-ink-3">Nhớ đổi &quot;Người phụ trách&quot; / &quot;Booking PIC&quot; trên Lark, nếu không plan từ Lark sẽ quay về người cũ (trừ khi đã khoá tài khoản người cũ).</p>
             <div className="flex justify-end gap-2">
               <Link href="/users/assign" className="btn">Hủy</Link>
               <button className="btn btn-primary">Bàn giao</button>

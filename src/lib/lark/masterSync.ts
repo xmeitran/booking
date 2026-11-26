@@ -60,7 +60,7 @@ export async function syncMaster() {
   const staffRows = await readAll(T.staff, Object.values(STAFF), token);
   const castRows = await readAll(T.cast, Object.values(CAST), token);
   const fileRows = await readAll(T.files, Object.values(FILES), token);
-  if (!storeRows.length) throw new Error('Bảng 5.1 Stores trên Lark trả về 0 dòng.');
+  if (!storeRows.length) throw new Error('Không đọc được dòng nào ở bảng 5.1 Stores trên Lark.');
 
   const stores = storeRows.flatMap((r) => {
     const name = text(r.fields[STORE.name]);

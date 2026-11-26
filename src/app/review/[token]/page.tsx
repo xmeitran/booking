@@ -28,10 +28,10 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
             <h1 className="text-xl font-semibold">{data.batch.name}</h1>
             <p className="mt-1 text-[13px] text-ink-2">
               {[data.batch.brand, data.batch.store, data.batch.product].filter(Boolean).join(' · ')} · {data.rows.length} KOC đề xuất.
-              Chọn Yes / No / Cân nhắc cho từng KOC, ghi lý do nếu từ chối, rồi bấm Gửi phản hồi.
+              Vui lòng chọn Yes / No / Cân nhắc cho từng KOC (ghi lý do nếu không chọn Yes), rồi bấm &quot;Gửi phản hồi&quot;.
             </p>
             {saved !== undefined && (
-              <p role="status" className="mt-3 rounded-md bg-positive-soft px-3 py-2 text-positive">Đã ghi nhận phản hồi ({saved} KOC thay đổi). Cảm ơn bạn!</p>
+              <p role="status" className="mt-3 rounded-md bg-positive-soft px-3 py-2 text-positive">Đã nhận phản hồi của bạn ({saved} KOC thay đổi). Cảm ơn bạn!</p>
             )}
             <form action={submitReview} className="mt-4">
               <input type="hidden" name="token" value={token} />
@@ -40,7 +40,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
                   <thead>
                     <tr>
                       <th>KOC</th><th className="text-right">Follower</th><th>Hiệu quả 30 ngày</th><th>Khán giả</th>
-                      <th className="text-right">Chi phí (kèm thuế TNCN)</th><th className="text-right">Dự báo</th><th>UpBase đề xuất</th><th>Brand chọn</th>
+                      <th className="text-right">Chi phí (gồm thuế TNCN)</th><th className="text-right">Ước tính</th><th>UpBase đề xuất</th><th>Brand chọn</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -52,8 +52,8 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
                         </td>
                         <td className="text-right">{fmtShort(r.koc.followers)}</td>
                         <td className="text-xs whitespace-nowrap">
-                          <div>{fmtNum(r.koc.avgViews)} view TB / video</div>
-                          <div className="text-ink-3">{fmtNum(r.koc.unitsSold)} món · GMV {gmvLabel(r.koc.gmvRange) ?? '—'}</div>
+                          <div>{fmtNum(r.koc.avgViews)} view trung bình / video</div>
+                          <div className="text-ink-3">{fmtNum(r.koc.unitsSold)} sản phẩm đã bán · GMV {gmvLabel(r.koc.gmvRange) ?? '—'}</div>
                         </td>
                         <td className="text-xs whitespace-nowrap">
                           {r.p.female != null ? <>Nữ {fmtPct(r.p.female, 0)} · 18–24 {fmtPct(r.p.age18_24, 0)} · 25–34 {fmtPct(r.p.age25_34, 0)}</> : '—'}
@@ -84,7 +84,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
               </div>
               <div className="mt-3 flex justify-end"><button className="btn btn-primary">Gửi phản hồi</button></div>
             </form>
-            <p className="mt-3 text-xs text-ink-3">Số liệu 30 ngày từ TikTok Shop. Dự báo GMV = View Target × GPM / 1000.</p>
+            <p className="mt-3 text-xs text-ink-3">Số liệu 30 ngày gần nhất từ TikTok Shop. GMV ước tính = view ước tính × GMV trung bình trên mỗi view của KOC.</p>
           </>
         )}
       </main>

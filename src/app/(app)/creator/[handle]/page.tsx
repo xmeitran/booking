@@ -16,7 +16,7 @@ const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute
 const day = (s: string | null | undefined) => (s ? fmtDate(new Date(s)) : '—');
 const val = (x: { money?: boolean }, v: number | null | undefined) => (v == null ? '—' : x.money ? `${fmtShort(v)} ₫` : fmtShort(v));
 const num = (v: unknown) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-const GROUPS = [['lark', 'Lark Base'], ['seller', 'Shop UpBase (kho)'], ['marketplace', 'Hồ sơ creator (kho)']] as const;
+const GROUPS = [['lark', 'Lark'], ['seller', 'Bán cho shop UpBase'], ['marketplace', 'Toàn sàn TikTok']] as const;
 
 type Tile = { s: Source; m: number[] | null; shops: ShopRow[]; from: 'saved' | 'live' | 'local'; known: boolean; note?: string };
 
@@ -72,7 +72,7 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
     { s: LARK, m: bookings.length ? larkM : null, shops: brands, from: 'local', known: true },
     ...station.map((c): Tile => ({
       s: c.s, m: c.m, shops: c.shops, from: c.live ? 'live' : 'saved', known: c.live || Boolean(coverage[c.s.key] && !('error' in coverage[c.s.key])),
-      note: liveErr[c.s.key] ? `Không hỏi được kho (${liveErr[c.s.key].slice(0, 120)}), đang hiện bản tổng hợp sẵn` : undefined,
+      note: liveErr[c.s.key] ? 'Chưa lấy được số mới nhất, đang hiện số lần cập nhật trước. Tải lại trang sau ít phút.' : undefined,
     })),
     { s: MARKET, m: marketM, shops: [], from: 'local', known: true },
   ];
@@ -83,17 +83,17 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
   const m = (key: string) => station.find((c) => c.s.key === key)?.m ?? null;
   const so = m('aff_orders'), vid = m('videos');
   const cov = (key: string) => { const c = coverage[key]; return c && !('error' in c) ? `, ${day(c.from)} – ${day(c.to)}` : ''; };
-  const mk = wAt ? `Kho UpBase · hồ sơ 30 ngày, ${fmtDate(wAt)}` : null;
+  const mk = wAt ? `TikTok · 30 ngày, đến ${fmtDate(wAt)}` : null;
   const summary: { label: string; v: [number | null | undefined, string | null]; money?: boolean; text?: string | null; sub?: string; anchor?: string }[] = [
     { label: 'Follower', v: [w?.followers ?? koc?.followers, mk ?? (koc?.followers != null ? 'Danh bạ' : null)], anchor: 'marketplace' },
-    { label: 'View TB / video bán hàng', v: [w?.ecViews, mk], sub: w?.medianViews != null ? `Trung vị mọi video ${fmtNum(w.medianViews)}` : undefined },
+    { label: 'View trung bình / video bán hàng', v: [w?.ecViews, mk], sub: w?.medianViews != null ? `Trung vị mọi video ${fmtNum(w.medianViews)}` : undefined },
     { label: 'Số món bán 30 ngày (toàn sàn)', v: [w?.unitsSold, mk] },
-    { label: 'GMV 30 ngày (toàn sàn)', v: [w?.gmv, mk], money: true, sub: w?.gmvHidden ? 'Creator ẩn GMV: giữa khoảng TikTok trả' : undefined },
-    { label: 'GMV bán cho shop UpBase', v: [so?.[0], so ? `Kho · Đơn affiliate${cov('aff_orders')}` : null], money: true, sub: so ? `${fmtNum(so[2])} món · ${fmtNum(so[1])} đơn` : undefined, anchor: 'aff_orders' },
-    { label: 'GMV video gắn SP shop UpBase', v: [vid?.[2], vid ? `Kho · Video${cov('videos')}` : null], money: true, sub: vid ? `${fmtNum(vid[0])} video · ${fmtShort(vid[1])} view` : undefined, anchor: 'videos' },
-    { label: 'Booking với UpBase', v: [bookings.length + jobCount || null, bookings.length + jobCount ? `Lark Base${jobCount ? ' + job trong app' : ''}` : null], sub: bookings.length || jobCount ? `${bookings.length} booking Lark · ${jobCount} job trong app · chi phí Lark ${fmtShort(larkM[1])} ₫` : undefined, anchor: 'lark' },
+    { label: 'GMV 30 ngày (toàn sàn)', v: [w?.gmv, mk], money: true, sub: w?.gmvHidden ? 'Creator ẩn GMV: số ước tính' : undefined },
+    { label: 'GMV bán cho shop UpBase', v: [so?.[0], so ? `TikTok · đơn affiliate${cov('aff_orders')}` : null], money: true, sub: so ? `${fmtNum(so[2])} món · ${fmtNum(so[1])} đơn` : undefined, anchor: 'aff_orders' },
+    { label: 'GMV video gắn sản phẩm shop UpBase', v: [vid?.[2], vid ? `TikTok · video${cov('videos')}` : null], money: true, sub: vid ? `${fmtNum(vid[0])} video · ${fmtShort(vid[1])} view` : undefined, anchor: 'videos' },
+    { label: 'Booking với UpBase', v: [bookings.length + jobCount || null, bookings.length + jobCount ? `Lark${jobCount ? ' + job trong Booking Hub' : ''}` : null], sub: bookings.length || jobCount ? `${bookings.length} booking trên Lark · ${jobCount} job · chi phí ${fmtShort(larkM[1])} ₫` : undefined, anchor: 'lark' },
   ];
-  const whState = w ? `Hồ sơ kho chụp ${fmtDate(wAt)}, đồng bộ mỗi sáng` : 'Kho chưa có hồ sơ creator này (kho theo dõi ~62 nghìn creator TikTok)';
+  const whState = w ? `Số TikTok ngày ${fmtDate(wAt)}, cập nhật 9:30 mỗi sáng` : 'Chưa có số TikTok của creator này';
 
   return (
     <>
@@ -106,19 +106,20 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
             <h1 className="text-xl font-semibold">{name}</h1>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
               <a href={`https://www.tiktok.com/@${handle}`} target="_blank" rel="noreferrer" className="link">@{handle} ↗</a>
-              {koc ? <span className="pill bg-accent-soft text-accent">Trong Danh bạ</span> : <span className="pill bg-sunken text-ink-2">Chưa có trong Danh bạ</span>}
+              {koc ? <span className="pill bg-accent-soft text-accent">Đã có trong Danh bạ</span> : <span className="pill bg-sunken text-ink-2">Chưa có trong Danh bạ</span>}
               {(koc?.kl ?? koc?.klAuto) && <span className="pill bg-sunken text-ink-2">{koc?.kl ?? koc?.klAuto}</span>}
               {koc?.niche && <span>{koc.niche}</span>}
-              {koc?.pic?.name && <span>PIC {koc.pic.name}</span>}
+              {koc?.pic?.name && <span>Phụ trách: {koc.pic.name}</span>}
             </div>
+            <p className="mt-1 text-[13px] text-ink-2">Creator này bán được bao nhiêu: số TikTok và booking trên Lark.</p>
           </div>
         </div>
-        {koc ? <Link href={`/contacts/${koc.id}`} className="btn">Hồ sơ Danh bạ (liên hệ, chân dung follower)</Link> : (
+        {koc ? <Link href={`/contacts/${koc.id}`} className="btn">Mở hồ sơ KOC</Link> : (
           <form action={addToDanhBa}><input type="hidden" name="handle" value={handle} /><button className="btn">Thêm vào Danh bạ</button></form>
         )}
       </div>
 
-      {added && <p role="status" className="mb-4 rounded-md bg-positive-soft px-3 py-2 text-positive">Đã thêm vào Danh bạ{w ? ', kèm số từ kho.' : '.'}</p>}
+      {added && <p role="status" className="mb-4 rounded-md bg-positive-soft px-3 py-2 text-positive">Đã thêm vào Danh bạ{w ? ', kèm số TikTok.' : '.'}</p>}
 
       <section className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -134,7 +135,7 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
                 <div className="text-xs text-ink-3">{x.label}</div>
                 <div className={`mt-0.5 text-lg font-semibold tabular-nums ${has ? '' : 'text-ink-3'}`}>{x.text ?? (v != null ? (x.money ? `${fmtShort(v)} ₫` : fmtNum(v)) : 'Chưa có')}</div>
                 {x.sub && <div className="text-xs text-ink-2">{x.sub}</div>}
-                <div className="mt-1 text-[11px] leading-tight text-ink-3">{has ? `Nguồn: ${src ?? x.sub}` : 'Chưa có nguồn nào có số này'}</div>
+                <div className="mt-1 text-[11px] leading-tight text-ink-3">{has ? `Nguồn: ${src ?? x.sub}` : 'Chưa có số'}</div>
               </>
             );
             return has && x.anchor ? (
@@ -149,7 +150,7 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
       <section className="mb-5">
         <h2 className="mb-1 text-base font-semibold">Creator này có mặt ở đâu</h2>
         <p className="mb-3 text-[13px] text-ink-2">
-          Có số ở {present.length}/{tiles.length} bảng dữ liệu. Mỗi ô là một bảng riêng, tính theo cách riêng, nên <b>không cộng các ô với nhau</b>. Bấm ô để xem chi tiết.
+          Có số ở {present.length}/{tiles.length} nguồn. Mỗi nguồn tính riêng, <b>không cộng các ô với nhau</b>.
         </p>
         <div className="grid gap-4 lg:grid-cols-3">
           {GROUPS.map(([g, label]) => {
@@ -179,8 +180,8 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
           {t.s.key === 'lark' && <LarkBookings bookings={bookings.slice(0, 30)} total={bookings.length} />}
           {t.s.key === 'marketplace' && w && (
             <p className="mt-3 text-[13px] text-ink-2">
-              GPM {w.gpm == null ? '—' : fmtVnd(w.gpm)} · GMV / khách {w.aov == null ? '—' : fmtVnd(w.aov)} · ER {fmtPct(w.er)} · follower nữ {fmtPct(w.female)} · {w.brandCount ?? '—'} brand đã hợp tác.
-              {koc ? <> Chân dung follower, tỷ trọng GMV theo kênh và ngành xem ở <Link href={`/contacts/${koc.id}`} className="link">hồ sơ Danh bạ</Link>.</> : null}
+              GMV / 1.000 view {w.gpm == null ? '—' : fmtVnd(w.gpm)} · Giá trị 1 đơn {w.aov == null ? '—' : fmtVnd(w.aov)} · Tỉ lệ tương tác {fmtPct(w.er)} · Follower nữ {fmtPct(w.female)} · {w.brandCount ?? '—'} brand đã hợp tác.
+              {koc ? <> Xem chân dung follower ở <Link href={`/contacts/${koc.id}`} className="link">hồ sơ KOC</Link>.</> : null}
             </p>
           )}
         </SourceCard>
@@ -189,11 +190,10 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
       <section className="rounded-lg border border-line bg-sunken px-5 py-4 text-[13px] text-ink-2">
         <h2 className="mb-2 text-sm font-semibold text-ink">Cách đọc số</h2>
         <ul className="list-disc space-y-1 pl-5">
-          <li><b>Đơn affiliate của shop</b>, <b>Video</b>, <b>Phiên LIVE</b> chỉ gồm sản phẩm của các shop UpBase quản lý. Đơn từ video, LIVE cũng nằm trong Đơn affiliate.</li>
-          <li><b>Hồ sơ creator</b> là số 30 ngày trên toàn sàn TikTok Shop (mọi shop), kho chụp lại mỗi ngày.</li>
-          <li>GMV là giá × số lượng lúc đặt đơn, chưa trừ đơn hoàn / huỷ. Hoa hồng &quot;ước tính&quot; có thể đổi khi quyết toán.</li>
-          <li>Số trên Lark Base (view, GMV 30 ngày của booking) do team điền tay; số TikTok lấy từ kho dữ liệu UpBase, không ai sửa được.</li>
-          <li>Đơn affiliate và LIVE trên trang này hỏi thẳng kho lúc mở trang; Video lấy bản tổng hợp 6 giờ / lần (nút Làm mới số kho ở trang Dữ liệu); hồ sơ creator đồng bộ mỗi sáng 9:30.</li>
+          <li><b>Bán cho shop UpBase</b>: chỉ tính sản phẩm của shop UpBase. Đơn từ video, LIVE đã nằm trong đơn affiliate.</li>
+          <li><b>Toàn sàn TikTok</b>: số 30 ngày của creator trên mọi shop.</li>
+          <li>GMV chưa trừ đơn hoàn / huỷ. Hoa hồng là số ước tính.</li>
+          <li>Số trên Lark do team điền tay; số TikTok không ai sửa được.</li>
         </ul>
       </section>
     </>
@@ -211,7 +211,7 @@ function SourceTile({ t }: { t: Tile }) {
     return (
       <div className="rounded-md border border-dashed border-line px-3 py-2 text-xs text-ink-3">
         <div className="font-medium">{t.s.name}</div>
-        <div>{t.known ? 'Không có dữ liệu' : 'Chưa tra được'}</div>
+        <div>{t.known ? 'Không có số' : 'Chưa xem được'}</div>
       </div>
     );
   }
@@ -227,7 +227,7 @@ function SourceTile({ t }: { t: Tile }) {
   );
 }
 
-const FROM_LABEL: Record<string, string> = { saved: 'Tổng hợp từ kho', live: 'Hỏi thẳng kho lúc mở trang', local: 'Lưu trong Booking Hub' };
+const FROM_LABEL: Record<string, string> = { saved: 'Số tổng hợp', live: 'Số mới nhất, lấy lúc mở trang', local: 'Lưu trong Booking Hub' };
 
 function SourceCard({ t, coverage, updated, raw, handle, canRaw, children }: {
   t: Tile; coverage?: Partial<SourceStats> | { error: string }; updated: Date | null;
@@ -247,10 +247,10 @@ function SourceCard({ t, coverage, updated, raw, handle, canRaw, children }: {
       </div>
       <dl className="mb-3 grid gap-x-6 gap-y-1 rounded-md bg-sunken px-3 py-2 text-xs sm:grid-cols-3">
         <div><dt className="inline text-ink-3">Nguồn: </dt><dd className="inline">{placesOf(t.s)}</dd></div>
-        <div><dt className="inline text-ink-3">Phủ dữ liệu: </dt><dd className="inline">{cov ? `${day(cov.from)} – ${day(cov.to)}` : '—'}</dd></div>
+        <div><dt className="inline text-ink-3">Khoảng ngày: </dt><dd className="inline">{cov ? `${day(cov.from)} – ${day(cov.to)}` : '—'}</dd></div>
         <div>
-          <dt className="inline text-ink-3">Số trên trang: </dt>
-          <dd className="inline">{FROM_LABEL[t.from]}{updated ? `, cập nhật ${fmtTime(updated)}` : ''}{t.from === 'live' ? '' : ` · ${o.schedule}`}</dd>
+          <dt className="inline text-ink-3">Cập nhật: </dt>
+          <dd className="inline">{FROM_LABEL[t.from]}{updated ? `, lúc ${fmtTime(updated)}` : ''}{t.from === 'live' ? '' : ` · ${o.schedule}`}</dd>
         </div>
       </dl>
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
@@ -291,7 +291,7 @@ function SourceCard({ t, coverage, updated, raw, handle, canRaw, children }: {
         <div className="mt-4 border-t border-line pt-3">
           {raw ? <RawTable raw={raw} handle={handle} /> : (
             <Link href={`/creator/${handle}?raw=${t.s.key}#${t.s.key}`} className="btn h-8 px-3 text-xs">
-              Xem dữ liệu gốc (50 dòng mới nhất{LIVE_SOURCES.includes(t.s.key) ? '' : ', hỏi kho ~15 giây'})
+              Xem 50 dòng chi tiết mới nhất{LIVE_SOURCES.includes(t.s.key) ? '' : ' (chờ ~15 giây)'}
             </Link>
           )}
         </div>
@@ -302,7 +302,7 @@ function SourceCard({ t, coverage, updated, raw, handle, canRaw, children }: {
 }
 
 function RawTable({ raw, handle }: { raw: Awaited<ReturnType<typeof rawRows>> | string; handle: string }) {
-  if (typeof raw === 'string') return <p role="alert" className="rounded-md bg-critical-soft px-3 py-2 text-[13px] text-critical">Không đọc được kho dữ liệu: {raw}</p>;
+  if (typeof raw === 'string') return <p role="alert" title={raw} className="rounded-md bg-critical-soft px-3 py-2 text-[13px] text-critical">Chưa lấy được số chi tiết. Thử lại sau ít phút.</p>;
   const cell = (c: RawColumn, v: unknown) => {
     if (v == null || v === '') return '—';
     const s = String(v);
@@ -315,7 +315,7 @@ function RawTable({ raw, handle }: { raw: Awaited<ReturnType<typeof rawRows>> | 
   };
   return (
     <>
-      <h3 className="mb-1 text-[13px] font-semibold">Dữ liệu gốc: {fmtNum(raw.rows.length)} dòng mới nhất, hỏi thẳng kho dữ liệu UpBase</h3>
+      <h3 className="mb-1 text-[13px] font-semibold">Chi tiết: {fmtNum(raw.rows.length)} dòng mới nhất</h3>
       {!raw.rows.length ? <p className="text-xs text-ink-3">Không có dòng nào.</p> : (
         <div className="max-h-[28rem] overflow-auto rounded-md border border-line">
           <table className="tbl text-xs">
@@ -324,7 +324,7 @@ function RawTable({ raw, handle }: { raw: Awaited<ReturnType<typeof rawRows>> | 
           </table>
         </div>
       )}
-      <p className="mt-1 text-xs text-ink-3">Mỗi dòng là một bản ghi trong kho (đơn, video theo ngày, phiên LIVE theo ngày). Số tổng ở trên được cộng từ các dòng này.</p>
+      <p className="mt-1 text-xs text-ink-3">Mỗi dòng là một đơn, hoặc một video / phiên LIVE trong một ngày. Số tổng ở trên cộng từ các dòng này.</p>
     </>
   );
 }
@@ -334,7 +334,7 @@ function LarkBookings({ bookings, total }: { bookings: { id: string; code: strin
     <div className="mt-4 overflow-x-auto">
       <h3 className="mb-1 text-[13px] font-semibold">Booking ({total}{total > 30 ? ', 30 gần nhất' : ''})</h3>
       <table className="tbl">
-        <thead><tr><th>Mã</th><th>Brand</th><th>Pipeline</th><th>Ngày air</th><th className="text-right">Chi phí</th><th className="text-right">View / GMV 30 ngày</th></tr></thead>
+        <thead><tr><th>Mã BO</th><th>Brand</th><th>Pipeline</th><th>Ngày air</th><th className="text-right">Chi phí</th><th className="text-right">View / GMV 30 ngày</th></tr></thead>
         <tbody>
           {bookings.map((b) => {
             const x = b.extra as Record<string, unknown>;

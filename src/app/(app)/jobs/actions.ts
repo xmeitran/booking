@@ -77,8 +77,8 @@ export async function updateJob(_: string | null, fd: FormData): Promise<string 
   await guard(me, 'job', id);
   const price = optInt(fd, 'price');
   const submittedUrl = str(fd, 'submittedUrl');
-  if (Number.isNaN(price)) return 'Giá là số nguyên ≥ 0.';
-  if (submittedUrl && !/^https?:\/\//i.test(submittedUrl)) return 'Link video phải bắt đầu bằng http(s)://';
+  if (Number.isNaN(price)) return 'Giá phải là số tiền từ 0 trở lên.';
+  if (submittedUrl && !/^https?:\/\//i.test(submittedUrl)) return 'Dán đầy đủ link video, bắt đầu bằng https://';
   const before = await db.job.findUniqueOrThrow({ where: { id }, include: { payment: { select: { number: true, status: true } } } });
   const priceType = PRICE_TYPES.includes(str(fd, 'priceType')) ? str(fd, 'priceType') : before.priceType;
   const newLink = Boolean(submittedUrl) && submittedUrl !== before.submittedUrl;
@@ -126,11 +126,11 @@ export async function moveStage(fd: FormData) {
   const stage = str(fd, 'stage');
   const job = await db.job.findUniqueOrThrow({ where: { id } });
   const ok = (STAGES as readonly string[]).includes(stage) || stage === CANCELLED;
-  const why = !ok ? 'Chặng không hợp lệ'
-    : job.paymentId ? 'Job đã nằm trong ĐNTT, bỏ khỏi ĐNTT (khi còn Nháp) trước khi đổi chặng'
-    : stage === 'Đã nộp' && !job.submittedUrl ? 'Nhập link video KOC nộp trước'
-    : stage === 'Nghiệm thu' && job.reviewResult !== 'Đạt' ? 'Nghiệm thu chưa Đạt'
-    : stage === 'Thanh toán' && !job.paymentId ? 'Tạo đề nghị thanh toán để chuyển sang Thanh toán'
+  const why = !ok ? 'Trạng thái không hợp lệ'
+    : job.paymentId ? 'Job đã nằm trong ĐNTT. Bỏ job khỏi ĐNTT (khi ĐNTT còn Nháp) rồi mới đổi trạng thái'
+    : stage === 'Đã nộp' && !job.submittedUrl ? 'Nhập link video KOC nộp trước đã'
+    : stage === 'Nghiệm thu' && job.reviewResult !== 'Đạt' ? 'Nghiệm thu chưa Đạt nên chưa chuyển được'
+    : stage === 'Thanh toán' && !job.paymentId ? 'Job sang "Thanh toán" khi được đưa vào ĐNTT ở tab Thanh toán'
     : null;
   if (why) redirect(`/jobs/${id}?err=${encodeURIComponent(why)}`);
   await db.job.update({ where: { id }, data: { stage } });
@@ -183,7 +183,7 @@ export async function aiDraftBrief(fd: FormData) {
   const id = str(fd, 'id');
   await guard(me, 'job', id);
   const { aiBrief, aiEnabled } = await import('@/lib/ai');
-  if (!(await aiEnabled())) redirect(`/jobs/${id}?err=${encodeURIComponent('Chưa gắn key Claude (Phân quyền → Tích hợp → API AI).')}`);
+  if (!(await aiEnabled())) redirect(`/jobs/${id}?err=${encodeURIComponent('Chưa bật AI. Nhờ Admin bật ở Phân quyền → Tích hợp.')}`);
   const j = await db.job.findUniqueOrThrow({ where: { id }, include: { koc: true, brand: true, product: true } });
   let brief: string;
   try {
@@ -215,7 +215,7 @@ export async function deleteJob(fd: FormData) {
   redirect('/jobs');
 }
 
-const jobErr = (id: string, e: unknown, hash = ''): never => redirect(`/jobs/${id}?err=${encodeURIComponent(e instanceof Error ? e.message : 'Lỗi không rõ')}${hash}`);
+const jobErr = (id: string, e: unknown, hash = ''): never => redirect(`/jobs/${id}?err=${encodeURIComponent(e instanceof Error ? e.message : 'Có lỗi, thử lại sau')}${hash}`);
 
 /** Kiểm tra tự động link KOC nộp (link sống, đúng kênh, từ khoá / hashtag bắt buộc của brand). Kết quả là gợi ý, người nghiệm thu vẫn chốt. */
 export async function autoCheckJob(fd: FormData) {

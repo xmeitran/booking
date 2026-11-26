@@ -36,21 +36,22 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Plan</h1>
-          <p className="mt-1 text-[13px] text-ink-2">Plan tổng theo tháng, tách chi tiết theo brand, tuần, tier KOC, loại content, ngân sách và PIC. Mỗi dòng plan bấm &quot;Tìm KOC&quot; để sang Creator matching; tiến độ tính theo job đã tạo.</p>
+          <p className="mt-1 text-[13px] text-ink-2">Số KOC cần book và ngân sách theo tháng. Mở một plan để xem từng dòng và tìm KOC.</p>
           <p className="mt-1 text-xs text-ink-3">
-            {syncing ? 'Đang đồng bộ danh mục và plan từ Lark Base, tải lại trang sau 1 phút'
-              : sync?.finishedAt ? `Lark Base · đồng bộ ${fmtTime(sync.finishedAt)} · ${sync.message}` : 'Chưa đồng bộ plan từ Lark Base'}
+            {syncing ? 'Đang lấy plan mới từ Lark, tải lại trang sau 1 phút.'
+              : sync?.message?.startsWith('Lỗi') ? 'Lần cập nhật gần nhất bị lỗi. Bấm "Cập nhật từ Lark" để thử lại.'
+              : sync?.finishedAt ? `Plan từ Lark cập nhật lúc ${fmtTime(sync.finishedAt)} · tự cập nhật mỗi giờ` : 'Chưa lấy plan từ Lark.'}
           </p>
           <ScopeNote scope={scope} />
         </div>
         <div className="flex gap-2">
-          <form action={syncPlansNow}><button className="btn" disabled={syncing}>{syncing ? 'Đang đồng bộ…' : 'Đồng bộ ngay từ Lark'}</button></form>
+          <form action={syncPlansNow}><button className="btn" disabled={syncing}>{syncing ? 'Đang cập nhật…' : 'Cập nhật từ Lark'}</button></form>
           {canEdit && <Link href="?new=1" className="btn btn-primary">Tạo plan</Link>}
         </div>
       </div>
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">
-          <thead><tr><th>Plan</th><th>Tháng</th><th className="text-right">KOC cần book</th><th className="text-right">Đã có job</th><th className="text-right">Ngân sách</th><th className="text-right">Đã chốt</th></tr></thead>
+          <thead><tr><th>Plan</th><th>Tháng</th><th className="text-right">KOC cần book</th><th className="text-right">Đã có job</th><th className="text-right">Ngân sách</th><th className="text-right">Đã chốt (giá job)</th></tr></thead>
           <tbody>
             {plans.map((p) => {
               const qty = p.lines.reduce((s, l) => s + l.quantity, 0);
@@ -60,7 +61,7 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
               const spent = [...jobs, ...outside.filter((j) => ids.has(j.listingItem!.batch.planLineId!))].reduce((s, j) => s + (j.price ?? 0), 0);
               return (
                 <tr key={p.id}>
-                  <td><Link href={`/plan/${p.id}`} className="font-medium text-accent hover:underline">{p.name}</Link><div className="text-xs text-ink-3">{p.lines.length} dòng chi tiết{fromLark(p.id) ? ' · Lark Base' : ''}</div></td>
+                  <td><Link href={`/plan/${p.id}`} className="font-medium text-accent hover:underline">{p.name}</Link><div className="text-xs text-ink-3">{p.lines.length} dòng{fromLark(p.id) ? ' · từ Lark' : ''}</div></td>
                   <td>{p.month.split('-').reverse().join('/')}</td>
                   <td className="text-right tabular-nums">{fmtNum(qty)}</td>
                   <td className="text-right tabular-nums">{fmtNum(jobs.length)} <span className="text-xs text-ink-3">{qty ? fmtPct(jobs.length / qty, 0) : ''}</span></td>
@@ -69,7 +70,7 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
                 </tr>
               );
             })}
-            {!plans.length && <tr><td colSpan={6} className="py-12 text-center text-ink-3">Chưa có plan.</td></tr>}
+            {!plans.length && <tr><td colSpan={6} className="py-12 text-center text-ink-3">Chưa có plan. Bấm &quot;Cập nhật từ Lark&quot; để lấy plan.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -79,9 +80,9 @@ export default async function PlanList({ searchParams }: { searchParams: Promise
           <ActionForm action={savePlan} className="grid gap-4 sm:grid-cols-2">
             <label className="col-span-full block"><span className="label">Tên plan</span><input name="name" required placeholder="Plan booking T12/2026" className="input" /></label>
             <label className="block"><span className="label">Tháng</span><input name="month" type="month" required defaultValue={thisMonth()} className="input" /></label>
-            <label className="block"><span className="label">Ngân sách tổng (₫)</span><input name="budget" inputMode="numeric" placeholder="Để trống = cộng từ các dòng" className="input" /></label>
+            <label className="block"><span className="label">Ngân sách tổng (₫)</span><input name="budget" inputMode="numeric" placeholder="Để trống thì cộng từ các dòng" className="input" /></label>
             <label className="col-span-full block"><span className="label">Ghi chú</span><textarea name="note" rows={2} className="input" /></label>
-            <div className="col-span-full flex justify-end gap-2"><Link href="/plan" className="btn">Hủy</Link><button className="btn btn-primary">Tạo</button></div>
+            <div className="col-span-full flex justify-end gap-2"><Link href="/plan" className="btn">Hủy</Link><button className="btn btn-primary">Tạo plan</button></div>
           </ActionForm>
         </Dialog>
       )}

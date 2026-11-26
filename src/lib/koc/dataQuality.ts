@@ -8,15 +8,15 @@ export const QUALITY_DAYS = 60;
 
 export const CHECKS: { key: string; label: string; hint: string; where: Prisma.Sql }[] = [
   {
-    key: 'badChannel', label: 'ID kênh TikTok sai định dạng', hint: 'Có dấu cách, dấu tiếng Việt, tên người…: không khớp Danh bạ, không tra được TikTok (bỏ qua VJ, CTV, Facebook…)',
+    key: 'badChannel', label: 'ID kênh TikTok sai định dạng', hint: 'Có dấu cách, dấu tiếng Việt hoặc ghi tên người: không khớp được Danh bạ, không xem được số TikTok (không xét VJ, CTV, Facebook…)',
     where: Prisma.sql`channel is not null and channel !~* '^[a-z0-9._]{2,24}$' and coalesce(extra->>'platform', 'TikTok') = 'TikTok'`,
   },
   { key: 'noChannel', label: 'Thiếu ID kênh', hint: 'Không biết booking của KOL nào', where: Prisma.sql`channel is null` },
-  { key: 'noCost', label: 'Thiếu chi phí', hint: 'Chi phí trống hoặc 0', where: Prisma.sql`coalesce(cost, 0) = 0` },
-  { key: 'noMonth', label: 'Thiếu tháng plan', hint: 'Không vào được KPI tháng ở Tổng quan', where: Prisma.sql`"planMonth" is null` },
-  { key: 'noOwner', label: 'Thiếu người phụ trách', hint: 'Không vào "Việc của bạn" của ai', where: Prisma.sql`owner is null` },
+  { key: 'noCost', label: 'Thiếu chi phí', hint: 'Chi phí trống hoặc bằng 0: không tính được chi phí, chi phí / view', where: Prisma.sql`coalesce(cost, 0) = 0` },
+  { key: 'noMonth', label: 'Thiếu tháng plan', hint: 'Không tính vào KPI tháng ở Tổng quan', where: Prisma.sql`"planMonth" is null` },
+  { key: 'noOwner', label: 'Thiếu người phụ trách', hint: 'Không hiện trong "Việc của bạn" của ai', where: Prisma.sql`owner is null` },
   {
-    key: 'dup', label: 'Nghi trùng: cùng kênh, brand, tháng plan', hint: 'Có thể là 2 video thật; kiểm tra lại nếu không phải',
+    key: 'dup', label: 'Có thể bị trùng: cùng kênh, brand, tháng plan', hint: 'Có thể đúng là 2 video; nếu không thì xoá dòng thừa trên Lark',
     where: Prisma.sql`(lower(channel), brand, "planMonth") in (
       select lower(channel), brand, "planMonth" from "Booking" where channel is not null and brand is not null and "planMonth" is not null
       group by 1, 2, 3 having count(*) > 1)`,

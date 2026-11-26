@@ -12,16 +12,16 @@ export type Integration = { id: string; code: string; name: string; what: string
 export const INTEGRATIONS: Integration[] = [
   {
     id: 'upaffiliate', code: 'U1 · U2 · U5', name: 'UpAffiliate / UpS',
-    what: 'Đã đóng: UpAffiliate chưa có API. App không gọi và không hiện số liệu UpAffiliate; chỉ dùng dữ liệu đang có (Lark, TikTok Shop).',
+    what: 'Tạm đóng: UpAffiliate chưa mở kết nối, app chỉ dùng số từ Lark và TikTok Shop.',
     items: [],
     todo: [
-      'Tài liệu API + khoá cho: hồ sơ KOC đã chuẩn hoá (U1), số liệu video affiliate và ads (U2), thông tin nghiệm thu (U5). Có rồi mới làm.',
+      'Tài liệu API và khoá truy cập cho: hồ sơ KOC, số liệu video affiliate và ads, thông tin nghiệm thu.',
     ],
   },
   {
-    id: 'sheets', code: 'G1 · G2', name: 'Google Sheet với brand',
-    what: 'Đẩy đợt listing sang Google Sheet của brand và lấy kết quả duyệt (Yes / No / Cân nhắc, lý do) về.',
-    todo: ['Từng brand chia sẻ sheet của mình cho email service account (quyền Editor) rồi dán link sheet ở trang đợt listing.'],
+    id: 'sheets', code: 'G1 · G2', name: 'Google Sheet gửi brand duyệt',
+    what: 'Gửi đợt listing sang Google Sheet của brand, rồi lấy kết quả brand duyệt (Yes / No / Cân nhắc) về.',
+    todo: ['Mỗi brand chia sẻ sheet cho email service account (quyền Editor), rồi dán link sheet vào trang đợt listing.'],
     items: [
       { key: 'GOOGLE_SERVICE_ACCOUNT_EMAIL', label: 'Email service account Google', hint: 'Brand chia sẻ sheet cho email này với quyền Editor' },
       { key: 'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY', label: 'Private key service account', secret: true, long: true, hint: 'Trường private_key trong file JSON của service account' },
@@ -29,8 +29,8 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: 'mail', code: 'L6', name: 'Mail mời hợp tác KOC',
-    what: 'Gửi mail mời hợp tác cho KOC trong đợt listing (SMTP của Lark Mail hoặc hộp thư khác).',
-    todo: ['Gửi Zalo mời hợp tác: chưa có kênh gửi Zalo (cần Zalo OA / ZNS).'],
+    what: 'Gửi mail mời hợp tác cho KOC trong đợt listing, từ hộp thư Lark Mail hoặc hộp thư khác.',
+    todo: ['Mời hợp tác qua Zalo: cần tài khoản Zalo OA / ZNS.'],
     items: [
       { key: 'SMTP_HOST', label: 'SMTP host', hint: 'Lark Mail: smtp.larksuite.com' },
       { key: 'SMTP_PORT', label: 'SMTP port', hint: '465 (SSL) hoặc 587', optional: true },
@@ -43,37 +43,37 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: 'contract', code: 'U3 · U4', name: 'Hợp đồng (HĐNT, phụ lục, WeSign)',
-    what: 'Đã đóng: để nâng cấp sau. Trạng thái / mã / link HĐNT vẫn nhập tay trong hồ sơ pháp lý của KOC như hiện tại.',
+    what: 'Tạm đóng, làm sau. Trạng thái, mã, link HĐNT vẫn nhập tay trong hồ sơ pháp lý của KOC.',
     items: [],
     todo: [
-      'Gen HĐNT / phụ lục / BBNT và ký WeSign: làm khi chốt nâng cấp giao diện hợp đồng và có API hợp đồng chính thức.',
+      'Tạo HĐNT / phụ lục / BBNT và ký WeSign: làm khi chốt giao diện hợp đồng và có API hợp đồng chính thức.',
     ],
   },
   {
-    id: 'approval', code: 'L3 · L4 · L5', name: 'Lark Approval & phiếu thanh toán',
-    what: 'Gửi ĐNTT sang Lark Approval khi nghiệm thu đạt; đọc lại trạng thái duyệt / thanh toán của Kế toán.',
+    id: 'approval', code: 'L3 · L4 · L5', name: 'Duyệt ĐNTT trên Lark Approval',
+    what: 'Gửi ĐNTT sang Lark Approval để duyệt, rồi lấy kết quả duyệt về app.',
     items: [
       { key: 'LARK_APPROVAL_CODE', label: 'Mã quy trình duyệt ĐNTT (approval code)', hint: 'Kế toán / admin Lark Approval cấp' },
       { key: 'LARK_APPROVAL_FORM_MAP', label: 'Mapping ô form Approval', long: true, hint: 'JSON { "<widget id>": "<trường>" }. Trường: code, amount, gross, jobs, koc, bank, note, creator. Widget id hiện ở danh sách bên dưới sau khi lưu mã quy trình.' },
     ],
     todo: [
-      'Ghi phiếu vào bảng 6.1 Phiếu thanh toán và ghi booking / job / kết quả nghiệm thu về view 3.2 (L3): cần app token, table id, tên cột chính xác và quyền ghi Base cho app Lark.',
-      'Trạng thái "Đã thanh toán" + số UNC từ Kế toán (L5): cần biết Kế toán ghi ở đâu (cột nào của bảng 6.1 hoặc event nào). Hiện đọc được Duyệt / Từ chối từ Approval, bước đã thanh toán chuyển tay.',
+      'Ghi phiếu vào bảng 6.1 Phiếu thanh toán và ghi kết quả nghiệm thu về 3.2 trên Lark: cần quyền ghi Lark Base cho app và tên cột chính xác.',
+      'Trạng thái "Đã thanh toán" và số UNC: cần biết Kế toán ghi ở cột nào trên Lark. Hiện app chỉ lấy được Duyệt / Từ chối; bước đã thanh toán chuyển tay.',
     ],
   },
   {
-    id: 'r2', code: 'Object storage', name: 'Cloudflare R2',
-    what: 'Đã đóng: chưa có chức năng nào cần lưu file (hợp đồng làm sau).',
+    id: 'r2', code: 'Object storage', name: 'Lưu file (Cloudflare R2)',
+    what: 'Tạm đóng: chưa có chức năng nào cần lưu file.',
     items: [],
     todo: [
-      'Bucket + khoá R2 khi làm hợp đồng, giấy tờ pháp lý KOC hoặc ảnh bằng chứng nghiệm thu.',
+      'Cần khi làm hợp đồng, giấy tờ pháp lý KOC hoặc ảnh nghiệm thu.',
     ],
   },
   {
-    id: 'warehouse', code: 'DWH', name: 'Kho dữ liệu (qua Metabase)',
-    what: 'Số liệu creator cho Creator matching: pool ứng viên ngoài Danh bạ, follower, view trung vị, ER, GMV, chân dung follower, tỷ trọng ngành, video nổi bật (bảng kol-connector trong upbase_prod). Đọc kho ClickHouse qua Metabase của DX bằng SQL chỉ đọc, đồng bộ mỗi ngày bằng job sync-creators.',
+    id: 'warehouse', code: 'DWH', name: 'Kho dữ liệu UpBase',
+    what: 'Số liệu creator TikTok (follower, view, GMV, tệp follower, đơn của shop UpBase) cho Creator matching, trang creator và tab Dữ liệu.',
     todo: [
-      'Nên xin team Data một tài khoản Metabase riêng cho Booking Hub (chỉ cần quyền chạy SQL native trên database clickhouse), để việc đổi mật khẩu tài khoản DX không làm dừng job.',
+      'Nên xin team Data một tài khoản Metabase riêng cho Booking Hub, để khi tài khoản DX đổi mật khẩu thì số liệu không dừng cập nhật.',
     ],
     items: [
       { key: 'METABASE_URL', label: 'URL Metabase', hint: 'https://metabase.upbase.asia' },
@@ -84,8 +84,8 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: 'ai', code: 'AI', name: 'API AI (Claude)',
-    what: 'Claude cho: Creator matching (đọc brief để điền yêu cầu đợt, chấm độ hợp nội dung của KOC) và viết brief nháp cho job. Đặt hạn mức chi tiêu ở Anthropic Console.',
-    todo: ['AI đọc transcript / chấm video khi nghiệm thu: cần nguồn transcript.', 'Tìm KOC theo đối thủ / hashtag / xu hướng và tìm kênh khác của KOC bằng AI (Kalodata, TikTok Shop): chưa làm.'],
+    what: 'Claude đọc brief để điền yêu cầu đợt matching, chấm độ hợp nội dung của KOC và viết brief nháp cho job. Đặt hạn mức chi tiêu ở Anthropic Console.',
+    todo: ['AI chấm video khi nghiệm thu: cần nguồn lời thoại (transcript) của video.', 'Tìm KOC theo đối thủ / hashtag / xu hướng và tìm kênh khác của KOC bằng AI (Kalodata, TikTok Shop): chưa làm.'],
     items: [{ key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key', secret: true }],
   },
 ];

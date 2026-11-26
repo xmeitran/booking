@@ -85,7 +85,7 @@ export async function syncListings() {
     }
   }
   // Đổi tên / định dạng cột trên Lark thì mọi dòng ra rỗng: không được xoá hết đợt đang có.
-  if (!drafts.length) throw new Error(`Đọc ${rows} dòng Lark nhưng không ra dòng listing nào (đổi tên / định dạng cột?), không đồng bộ để tránh xoá nhầm.`);
+  if (!drafts.length) throw new Error(`Lark có ${rows} dòng nhưng không đọc được dòng nào (có thể cột trên Lark bị đổi tên). Đã dừng để không xoá nhầm dữ liệu.`);
 
   await db.user.upsert({ where: { id: LARK_USER }, create: { id: LARK_USER, larkUserId: 'lark-system', name: 'Lark Base', role: 'STAFF', active: false }, update: {} });
   const users = await db.user.findMany({ where: { active: true }, select: { id: true, larkUserId: true, name: true } });
@@ -159,9 +159,6 @@ export async function syncListings() {
 /** Một lượt đồng bộ listing từ Lark, trả câu tóm tắt lưu ở SyncState (cron :00 mỗi giờ, nút "Đồng bộ ngay" ở tab Listing). */
 export async function syncListingsJob() {
   const r = await syncListings();
-  const f = r.filled;
-  const filled = [f.phone && `${f.phone} SĐT`, f.email && `${f.email} email`, f.address && `${f.address} địa chỉ`].filter(Boolean).join(', ');
-  return `${r.batches} đợt · ${r.items} KOC · ${r.created} mới · ${r.updated} cập nhật · ${r.removed} xoá · ${r.newKocs} KOC mới vào Danh bạ`
-    + `${r.skipped ? ` · ${r.skipped} dòng không có ID kênh TikTok hợp lệ` : ''}${r.incomplete ? ` · ${r.incomplete} dòng thiếu tháng / brand` : ''}`
-    + `${filled ? ` · Danh bạ điền thêm ${filled}` : ''}`;
+  return `${r.batches} đợt · ${r.items} KOC`
+    + `${r.skipped ? ` · ${r.skipped} dòng trên Lark chưa hiện vì thiếu ID kênh TikTok` : ''}${r.incomplete ? ` · ${r.incomplete} dòng thiếu tháng hoặc brand` : ''}`;
 }

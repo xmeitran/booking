@@ -77,39 +77,39 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
     <>
       <div className="mb-4">
         <h1 className="text-xl font-semibold">Chào {name || 'bạn'}</h1>
-        <p className="text-[13px] text-ink-2">{new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' })}</p>
+        <p className="text-[13px] text-ink-2">{new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' })} · việc cần làm của bạn và số liệu booking theo tháng</p>
       </div>
 
       <h2 className="mb-2 text-base font-semibold">Việc của bạn</h2>
-      <h3 className="mb-2 text-[13px] font-semibold text-ink-2">Listing, job và plan (quản lý trong app)</h3>
+      <h3 className="mb-2 text-[13px] font-semibold text-ink-2">Listing, job và plan</h3>
       <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Card title="Listing chờ Brand chọn" count={listings.length} href="/listing" empty="Không có đợt listing nào chờ Brand.">
           {listings.slice(0, 5).map((l) => (
             <Line key={l.id} href={`/listing/${l.id}`} main={l.name}
-              sub={!l.items.length ? 'Chưa thêm KOC' : `${l.items.filter((i) => !i.brandChoice).length}/${l.items.length} KOC chưa chọn${l.shareToken ? ' · đã gửi link' : ' · chưa gửi link'}`} />
+              sub={!l.items.length ? 'Chưa thêm KOC' : `${l.items.filter((i) => !i.brandChoice).length}/${l.items.length} KOC chưa chọn${l.shareToken ? ' · đã gửi link cho brand' : ' · chưa gửi link cho brand'}`} />
           ))}
         </Card>
-        <Card title="Job trễ deadline" tone="critical" count={jobsLate.length} href="/jobs?mine=1&late=1" empty="Không có job trễ.">
+        <Card title="Job trễ hạn" tone="critical" count={jobsLate.length} href="/jobs?mine=1&late=1" empty="Không có job trễ hạn.">
           {jobsLate.slice(0, 5).map((j) => jobLine(j, `hạn ${fmtDate(j.deadline)} · ${j.stage}`))}
         </Card>
         <Card title="Job chờ nghiệm thu" tone="warning" count={jobsReview.length} href="/jobs?mine=1" empty="Không có video chờ nghiệm thu.">
           {jobsReview.slice(0, 5).map((j) => jobLine(j, 'KOC đã nộp link'))}
         </Card>
-        <Card title="Job chờ đề nghị thanh toán" count={jobsPay.length} href="/payments" empty="Không có job chờ ĐNTT.">
+        <Card title="Job chờ đề nghị thanh toán (ĐNTT)" count={jobsPay.length} href="/payments" empty="Không có job chờ ĐNTT.">
           {jobsPay.slice(0, 5).map((j) => jobLine(j, 'nghiệm thu đạt'))}
         </Card>
-        <Card title="Dòng plan chưa đủ KOC" tone="warning" count={linesShort.length} href="/plan" empty="Các dòng plan của bạn đã đủ job.">
+        <Card title="Dòng plan chưa đủ KOC" tone="warning" count={linesShort.length} href="/plan" empty="Các dòng plan của bạn đã đủ KOC.">
           {linesShort.slice(0, 5).map((l) => (
             <Line key={l.id} href={`/plan/${l.plan.id}`} main={`${l.brand?.name ?? '—'} · ${l.plan.name}`} sub={`${l._count.jobs}/${l.quantity} KOC${l.week ? ` · tuần ${l.week}` : ''}${l.tier ? ` · ${l.tier}` : ''}`} />
           ))}
         </Card>
       </div>
-      <h3 className="mb-2 text-[13px] font-semibold text-ink-2">Booking trên Lark Base</h3>
+      <h3 className="mb-2 text-[13px] font-semibold text-ink-2">Booking trên Lark</h3>
       <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card title="Trễ air" tone="critical" count={airLate.length} href={`${myBookings}&flag=airLate`} empty="Không có booking trễ air.">
           {airLate.slice(0, 5).map((b) => <BookingLine key={b.id} b={b} note={`dự kiến ${fmtDate(b.planAirDate)}`} />)}
         </Card>
-        <Card title="Air trong 7 ngày tới" count={soon.length} href={myBookings} empty="Chưa có lịch air tuần này.">
+        <Card title="Air trong 7 ngày tới" count={soon.length} href={myBookings} empty="Không có booking air trong 7 ngày tới.">
           {soon.slice(0, 5).map((b) => <BookingLine key={b.id} b={b} note={fmtDate(b.planAirDate)} />)}
         </Card>
         <Card title="Đã air, thiếu link" tone="warning" count={noLink.length} href={`${myBookings}&flag=noLink`} empty="Booking đã air đều có link.">
@@ -121,9 +121,9 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
           ))}
         </Card>
       </div>
-      {!name && <p className="-mt-4 mb-6 text-xs text-ink-3">Tài khoản chưa có tên Lark nên không khớp được booking của bạn.</p>}
+      {!name && <p className="-mt-4 mb-6 text-xs text-ink-3">Tài khoản của bạn chưa có tên Lark nên chưa tìm được booking của bạn.</p>}
 
-      <h2 className="mb-2 text-base font-semibold">Hàng đợi cả team</h2>
+      <h2 className="mb-2 text-base font-semibold">Việc chung của team</h2>
       <div className="mb-6 flex flex-wrap gap-1.5">
         {flagCounts.map(([k, n]) => (
           <Link key={k} href={`/booking?flag=${k}`} className={`pill px-2.5 py-1 ${n ? 'bg-warning-soft text-warning' : 'bg-surface text-ink-3 ring-1 ring-line'}`}>
@@ -153,7 +153,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
         <AggTable title="Theo brand" rows={byBrand} label={(a) => a.brand} link={(v) => `/booking?month=${encodeURIComponent(month)}&brand=${encodeURIComponent(v)}`} />
         <AggTable title="Theo người phụ trách" rows={byOwner} label={(a) => a.owner} link={(v) => `/booking?month=${encodeURIComponent(month)}&owner=${encodeURIComponent(v)}`} />
       </div>
-      <p className="mt-2 text-xs text-ink-3">Theo cột Tháng plan trên Lark. View / GMV 30 ngày do team điền trên Lark; booking chưa điền số tính là 0.</p>
+      <p className="mt-2 text-xs text-ink-3">Tính theo tháng plan trên Lark. Booking chưa điền view / GMV trên Lark được tính là 0.</p>
     </>
   );
 }
@@ -207,7 +207,7 @@ function AggTable({ title, rows, label, link }: { title: string; rows: Agg[]; la
             const v = label(a);
             return (
               <tr key={v ?? '(trống)'}>
-                <td>{v ? <Link href={link(v)} className="link">{v}</Link> : <span className="text-ink-3">(trống)</span>}</td>
+                <td>{v ? <Link href={link(v)} className="link">{v}</Link> : <span className="text-ink-3">—</span>}</td>
                 <td className="text-right tabular-nums">{fmtNum(a.n)}</td>
                 <td className="text-right tabular-nums">{fmtShort(a.cost)}</td>
                 <td className="text-right tabular-nums">{fmtPct(a.n ? a.aired / a.n : null, 0)}</td>

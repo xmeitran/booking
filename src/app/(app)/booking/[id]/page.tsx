@@ -44,8 +44,8 @@ export default async function BookingDetail({ params }: { params: Promise<{ id: 
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-mono text-xl font-semibold">{b.code}</h1>
             {b.pipeline && <span className={`pill ${PIPELINE_TONE[b.pipeline] ?? 'bg-sunken text-ink-2'}`}>{b.pipeline}</span>}
-            {b.slaLate && b.pipeline !== 'Done' && <span className="pill bg-critical-soft text-critical">Lark: trễ SLA</span>}
-            {b.paymentStatus && <span className={`pill ${isPayIssue(b.paymentStatus) ? 'bg-critical-soft text-critical' : 'bg-sunken text-ink-2'}`}>Phiếu TT: {b.paymentStatus}</span>}
+            {b.slaLate && b.pipeline !== 'Done' && <span className="pill bg-critical-soft text-critical">Cảnh báo trễ SLA</span>}
+            {b.paymentStatus && <span className={`pill ${isPayIssue(b.paymentStatus) ? 'bg-critical-soft text-critical' : 'bg-sunken text-ink-2'}`}>Phiếu thanh toán: {b.paymentStatus}</span>}
           </div>
           <p className="mt-1 text-[13px] text-ink-2">{[b.brand, b.store, x.product].filter(Boolean).join(' · ')}</p>
         </div>
@@ -66,7 +66,7 @@ export default async function BookingDetail({ params }: { params: Promise<{ id: 
               <Avatar src={koc.avatarUrl} name={koc.nickname ?? koc.name} size={40} />
               <div className="min-w-0">
                 <div className="font-medium">{koc.nickname ?? koc.name}</div>
-                <div className="text-xs text-ink-3">@{koc.handle} · {fmtShort(koc.followers)} follower · {koc.bookingCount} booking với UB</div>
+                <div className="text-xs text-ink-3">@{koc.handle} · {fmtShort(koc.followers)} follower · {koc.bookingCount} booking với UpBase</div>
               </div>
             </Link>
           ) : <p className="mb-3 text-[13px] text-ink-3">Kênh {b.channel ?? '—'} chưa có trong Danh bạ.</p>}
@@ -77,7 +77,7 @@ export default async function BookingDetail({ params }: { params: Promise<{ id: 
           ]} />
         </Section>
 
-        <Section title="Mốc thời gian" meta="Kế hoạch theo công thức trên Lark">
+        <Section title="Mốc thời gian">
           <table className="tbl">
             <thead><tr><th>Mốc</th><th>Kế hoạch</th><th>Thực tế</th><th /></tr></thead>
             <tbody>
@@ -88,7 +88,7 @@ export default async function BookingDetail({ params }: { params: Promise<{ id: 
                   <tr key={m.label}>
                     <td>{m.label}</td>
                     <td>{fmtDate(m.plan)}</td>
-                    <td>{m.actual ? fmtDate(m.actual) : passed ? <span className="text-ink-3">Đã qua chặng</span> : '—'}</td>
+                    <td>{m.actual ? fmtDate(m.actual) : passed ? <span className="text-ink-3">Đã xong</span> : '—'}</td>
                     <td className="text-right">
                       {late && <span className="pill bg-critical-soft text-critical">Quá hạn</span>}
                       {m.note && <span className={`pill ${m.note === 'Trễ' ? 'bg-warning-soft text-warning' : 'bg-positive-soft text-positive'}`}>{m.note}</span>}
@@ -104,7 +104,7 @@ export default async function BookingDetail({ params }: { params: Promise<{ id: 
         <Section title="Chi phí & thanh toán">
           <Info rows={[
             ['Chi phí booking', fmtVnd(b.cost)],
-            ['Kèm thuế TNCN', personal && b.cost ? fmtVnd(b.cost / FEE_DIVISOR) : '—'],
+            ['Gồm thuế TNCN', personal && b.cost ? fmtVnd(b.cost / FEE_DIVISOR) : '—'],
             ['Loại tài khoản', x.accountType],
             ['Tạm ứng trước', num(x.advance) ? fmtVnd(num(x.advance)) : '—'],
             ['Trạng thái tạm ứng', x.advanceStatus],
@@ -135,13 +135,10 @@ export default async function BookingDetail({ params }: { params: Promise<{ id: 
   );
 }
 
-function Section({ title, meta, children }: { title: string; meta?: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-lg border border-line bg-surface px-5 py-4">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {meta && <span className="text-xs text-ink-3">{meta}</span>}
-      </div>
+      <h2 className="mb-3 text-base font-semibold">{title}</h2>
       {children}
     </section>
   );

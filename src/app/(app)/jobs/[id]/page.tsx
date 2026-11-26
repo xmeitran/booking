@@ -60,7 +60,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
               {j.reviewResult && <span className={`pill ${RESULT_TONE[j.reviewResult]}`}>Nghiệm thu: {j.reviewResult}</span>}
             </div>
             <p className="text-[13px] text-ink-2">
-              <Link href={`/creator/${j.koc.handle}`} className="link">{j.koc.nickname ?? j.koc.name}</Link> (@{j.koc.handle}{kl ? ` · ${kl}` : ''}) · {j.brand?.name ?? 'chưa gắn brand'}{j.product ? ` · ${j.product.name}` : ''}
+              <Link href={`/creator/${j.koc.handle}`} className="link">{j.koc.nickname ?? j.koc.name}</Link> (@{j.koc.handle}{kl ? ` · ${kl}` : ''}) · {j.brand?.name ?? 'chưa có brand'}{j.product ? ` · ${j.product.name}` : ''}
             </p>
           </div>
         </div>
@@ -97,7 +97,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
         <Section title="Thông tin job" meta={[j.listingItem && `từ listing "${j.listingItem.batch.name}"`, j.planLine && `plan "${j.planLine.plan.name}"`].filter(Boolean).join(' · ')}>
           <ActionForm action={updateJob} className="grid gap-3 sm:grid-cols-2">
             <input type="hidden" name="id" value={j.id} />
-            <F label="PIC">
+            <F label="Người phụ trách">
               <select name="picId" defaultValue={j.picId ?? ''} className="input">
                 <option value="">—</option>{users.map((u) => <option key={u.id} value={u.id}>{u.name}{u.jobRole ? ` · ${u.jobRole}` : ''}</option>)}
               </select>
@@ -110,12 +110,12 @@ export default async function JobPage({ params, searchParams }: { params: Promis
             <F label="Loại giá">
               <select name="priceType" defaultValue={j.priceType} className="input">{PRICE_TYPES.map((t) => <option key={t}>{t}</option>)}</select>
             </F>
-            <F label={`Giá net (₫)${tier ? ` · khung ${kl}: ${fmtShort(tier.minPrice)}–${fmtShort(tier.maxPrice)}` : ''}`}>
+            <F label={`Giá KOC nhận (₫)${tier ? ` · khung giá ${kl}: ${fmtShort(tier.minPrice)}–${fmtShort(tier.maxPrice)}` : ''}`}>
               <input name="price" inputMode="numeric" defaultValue={j.price ?? ''} className={`input ${priceOut ? 'ring-2 ring-warning' : ''}`} />
-              {priceOut && <span className="text-xs text-warning">Ngoài khung giá tier {kl}.</span>}
-              {j.price != null && <span className="block text-xs text-ink-3">Nếu trả cho cá nhân, kèm thuế TNCN: {fmtVnd(Math.round(j.price / FEE_DIVISOR))}</span>}
+              {priceOut && <span className="text-xs text-warning">Ngoài khung giá {kl}.</span>}
+              {j.price != null && <span className="block text-xs text-ink-3">Chi phí gồm thuế TNCN (nếu KOC là cá nhân): {fmtVnd(Math.round(j.price / FEE_DIVISOR))}</span>}
             </F>
-            <F label="Deadline air"><input name="deadline" type="date" defaultValue={iso(j.deadline)} className="input" /></F>
+            <F label="Hạn air"><input name="deadline" type="date" defaultValue={iso(j.deadline)} className="input" /></F>
             <F label="Hàng mẫu">
               <select name="sample" defaultValue={j.sample ?? ''} className="input"><option value="">—</option>{SAMPLE.map((s) => <option key={s}>{s}</option>)}</select>
             </F>
@@ -131,11 +131,11 @@ export default async function JobPage({ params, searchParams }: { params: Promis
         <Section title="Brief" meta={j.briefApproved ? 'Đã duyệt, gửi KOC được' : j.brief ? 'Nháp, chưa duyệt' : 'Chưa có'}>
           <form action={saveBrief} className="grid gap-2">
             <input type="hidden" name="id" value={j.id} />
-            <textarea name="brief" rows={14} defaultValue={j.brief ?? ''} placeholder="Bấm &quot;Tạo brief nháp&quot; để có bản đầu từ USP, guideline của brand và checklist nghiệm thu." className="input font-mono text-xs" />
+            <textarea name="brief" rows={14} defaultValue={j.brief ?? ''} placeholder="Bấm &quot;Tạo brief từ mẫu&quot; để có bản đầu từ thông tin brand, sản phẩm và tiêu chí nghiệm thu." className="input font-mono text-xs" />
             <div className="flex flex-wrap items-center justify-end gap-2">
               {j.brief && <CopyButton text={j.brief} />}
-              <button formAction={aiDraftBrief} formNoValidate disabled={!ai} title={ai ? 'Claude viết bản nháp từ brand, sản phẩm, KOC và checklist (~30 giây)' : 'Chưa gắn key Claude (Phân quyền → Tích hợp → API AI)'} className="btn h-8 px-3 text-xs">AI viết brief</button>
-              <button formAction={draftBrief} formNoValidate className="btn h-8 px-3 text-xs">Tạo brief nháp (mẫu)</button>
+              {ai && <button formAction={aiDraftBrief} formNoValidate title="AI viết bản nháp từ brand, sản phẩm, KOC và tiêu chí nghiệm thu (khoảng 30 giây)" className="btn h-8 px-3 text-xs">AI viết brief</button>}
+              <button formAction={draftBrief} formNoValidate className="btn h-8 px-3 text-xs">Tạo brief từ mẫu</button>
               <button name="approve" value="" className="btn h-8 px-3 text-xs">Lưu nháp</button>
               <button name="approve" value="1" className="btn btn-primary h-8 px-3 text-xs">Duyệt brief</button>
             </div>
@@ -147,7 +147,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-base font-semibold">Nghiệm thu</h2>
           <span className="text-xs text-ink-3">
-            Checklist của {j.brand?.name ?? 'brand'}{j.brand?.checklist ? '' : ' (mặc định)'}
+            Tiêu chí của {j.brand?.name ?? 'brand'}{j.brand?.checklist ? '' : ' (mặc định)'}
             {j.reviewedAt && ` · lần gần nhất ${fmtTime(j.reviewedAt)} bởi ${who.get(j.reviewedById ?? '') ?? '—'}`}
           </span>
         </div>
@@ -162,7 +162,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
             <input type="hidden" name="id" value={j.id} />
             <p className="text-[13px]">Video: <a href={j.submittedUrl} target="_blank" rel="noreferrer" className="link break-all">{j.submittedUrl}</a></p>
             <table className="tbl">
-              <thead><tr><th>Tiêu chí</th><th>Kết quả</th><th>Mốc trong video</th><th>Ghi chú / bằng chứng</th></tr></thead>
+              <thead><tr><th>Tiêu chí</th><th>Kết quả</th><th>Phút trong video</th><th>Ghi chú / bằng chứng</th></tr></thead>
               <tbody>
                 {checklist.map((c, i) => {
                   const old = review.find((r) => r.item === c);
@@ -176,7 +176,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
                           ))}
                         </div>
                       </td>
-                      <td><input name={`t${i}`} defaultValue={old?.at ?? ''} placeholder="0:15" aria-label={`Mốc thời gian: ${c}`} className="input h-7 w-20 text-xs" /></td>
+                      <td><input name={`t${i}`} defaultValue={old?.at ?? ''} placeholder="0:15" aria-label={`Phút trong video: ${c}`} className="input h-7 w-20 text-xs" /></td>
                       <td><input name={`n${i}`} defaultValue={old?.note ?? ''} aria-label={`Ghi chú: ${c}`} className="input h-7 text-xs" /></td>
                     </tr>
                   );
@@ -185,7 +185,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
             </table>
             <textarea name="reviewNote" rows={2} defaultValue={j.reviewNote ?? ''} placeholder="Nhận xét chung (gửi kèm yêu cầu sửa)" className="input text-[13px]" />
             <div className="flex items-center justify-end gap-3">
-              <span className="text-xs text-ink-3">Có tiêu chí &quot;Không đạt&quot; → Không đạt; có &quot;Cần sửa&quot; → Cần sửa (job về &quot;Đang quay&quot;); tất cả &quot;Đạt&quot; → chờ đề nghị thanh toán.</span>
+              <span className="text-xs text-ink-3">Tất cả Đạt: job chờ thanh toán. Có mục Cần sửa / Không đạt: job về &quot;Đang quay&quot; để KOC sửa.</span>
               <button className="btn btn-primary">Xác nhận nghiệm thu</button>
             </div>
           </form>
@@ -204,11 +204,12 @@ export default async function JobPage({ params, searchParams }: { params: Promis
           {j.payment ? (
             <p className="text-[13px]">Trong <Link href={`/payments/${j.payment.id}`} className="link">ĐNTT #{j.payment.number}</Link> · {j.payment.status}</p>
           ) : j.stage === 'Nghiệm thu' ? (
-            <p className="text-[13px]">Nghiệm thu đạt. Vào <Link href="/payments?new=1" className="link">Thanh toán</Link> để gom vào đề nghị thanh toán.</p>
+            <p className="text-[13px]">Nghiệm thu Đạt. Vào <Link href="/payments?new=1" className="link">Thanh toán</Link> để đưa job vào đề nghị thanh toán (ĐNTT).</p>
           ) : (
             <p className="text-[13px] text-ink-3">Chỉ job nghiệm thu Đạt mới vào đề nghị thanh toán.</p>
           )}
-          <p className="mt-1 text-xs text-ink-3">Giá {fmtNum(j.price)} ₫{j.price != null ? ` · nếu trả cá nhân, kèm thuế TNCN ${fmtNum(Math.round(j.price / FEE_DIVISOR))} ₫` : ''}{j.koc.bankAccount ? ` · TK ${j.koc.bankName ?? ''}` : ' · KOC chưa có thông tin tài khoản'}</p>
+          <p className="mt-1 text-xs text-ink-3">Giá KOC nhận {fmtNum(j.price)} ₫{j.price != null ? ` · gồm thuế TNCN ${fmtNum(Math.round(j.price / FEE_DIVISOR))} ₫` : ''}{j.koc.bankAccount ? ` · tài khoản ${j.koc.bankName ?? ''}` : ''}</p>
+          {!j.koc.bankAccount && <p className="mt-1 text-xs text-warning">Chưa có số tài khoản KOC: bổ sung ở Danh bạ trước khi gửi duyệt ĐNTT.</p>}
         </Section>
         <Section title="Lịch sử thay đổi">
           <ol className="space-y-1 text-xs">
@@ -250,7 +251,7 @@ function AutoCheck({ id, auto }: { id: string; auto: { at: string; checks: Check
           {auto.checks.map((c) => <li key={c.check}><span className={`pill ${TONE[c.status]}`}>{VERDICT_LABEL[c.status]}</span> <b>{c.check}</b> <span className="break-all text-ink-3">{c.detail}</span></li>)}
           <li className="text-ink-3">Lúc {new Date(auto.at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}.</li>
         </ul>
-      ) : <p className="text-xs text-ink-3">Kiểm tra link còn sống, đúng kênh KOC, từ khoá / hashtag bắt buộc của brand (Danh mục) trong caption.</p>}
+      ) : <p className="text-xs text-ink-3">Kiểm tra link còn mở được, đúng kênh KOC, caption có đủ từ khoá / hashtag brand yêu cầu.</p>}
     </div>
   );
 }

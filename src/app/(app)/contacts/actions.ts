@@ -36,10 +36,10 @@ export async function saveKoc(_: string | null, fd: FormData): Promise<string | 
   const followers = optInt(fd, 'followers');
   const rateCard = optInt(fd, 'rateCard');
 
-  if (!PLATFORMS.includes(platform)) return 'Nền tảng không hợp lệ.';
+  if (!PLATFORMS.includes(platform)) return 'Chọn nền tảng trong danh sách.';
   if (platform === 'TikTok' && rawHandle && !handle) return 'ID kênh TikTok chỉ gồm chữ thường không dấu, số, dấu chấm, gạch dưới (2–24 ký tự), hoặc dán link kênh.';
   if (!handle || !name) return 'Nhập ID kênh và tên kênh.';
-  if (channelUrl && !/^https?:\/\//i.test(channelUrl)) return 'Link kênh phải bắt đầu bằng http(s)://';
+  if (channelUrl && !/^https?:\/\//i.test(channelUrl)) return 'Link kênh phải bắt đầu bằng http:// hoặc https://';
   if (Number.isNaN(followers) || Number.isNaN(rateCard)) return 'Follower và giá phải là số nguyên ≥ 0.';
 
   const phone = phoneVN(str(fd, 'phone'));
@@ -200,7 +200,7 @@ export async function saveChannels(_: string | null, fd: FormData): Promise<stri
   const added = str(fd, 'newTt');
   if (added) {
     const h = parseHandle(added);
-    if (!h) return 'Handle hoặc đường dẫn kênh TikTok không hợp lệ.';
+    if (!h) return 'Tên kênh (@...) hoặc link TikTok chưa đúng, kiểm tra lại.';
     const role = str(fd, 'newRole');
     const err = push('TikTok', h, roles.includes(role) ? role : roles[0]);
     if (err) return err;
@@ -224,8 +224,8 @@ export async function saveChannels(_: string | null, fd: FormData): Promise<stri
     ...others.map((c) => ({ platform: c.platform, handle: c.handle, name: c.koc.name, idNumber: c.koc.idNumber })),
   ].find((c) => !sameOwner(c.idNumber));
   if (hit) return hit.platform === 'TikTok'
-    ? `Kênh TikTok @${hit.handle} đang được gắn cho KOC khác (${hit.name}). Vui lòng kiểm tra hoặc gỡ khỏi KOC cũ trước.`
-    : `Kênh ${hit.platform}: ${hit.handle} đang được gắn cho KOC khác (${hit.name}).`;
+    ? `Kênh TikTok @${hit.handle} đang thuộc KOC khác (${hit.name}). Gỡ kênh khỏi KOC đó trước rồi thêm lại.`
+    : `Kênh ${hit.platform} ${hit.handle} đang thuộc KOC khác (${hit.name}). Gỡ kênh khỏi KOC đó trước rồi thêm lại.`;
   await db.$transaction([
     db.kocChannel.deleteMany({ where: { kocId: koc.id } }),
     db.kocChannel.createMany({ data: list.map((c) => ({ ...c, kocId: koc.id })) }),
@@ -277,7 +277,7 @@ export async function saveReview(_: string | null, fd: FormData): Promise<string
   if (!(await db.koc.count({ where: { id: kocId } }))) return 'Không tìm thấy KOC.';
   const verdict = VERDICTS[str(fd, 'verdict')] ? str(fd, 'verdict') : 'NOT_SUITABLE';
   const brand = str(fd, 'brand') || ALL_BRANDS_SCOPE;
-  if (brand !== ALL_BRANDS_SCOPE && !(await db.brand.count({ where: { name: brand } }))) return 'Chọn nhãn hàng (Brand) đánh giá.';
+  if (brand !== ALL_BRANDS_SCOPE && !(await db.brand.count({ where: { name: brand } }))) return 'Chọn brand cần đánh giá.';
   const allowed = REVIEW_REASONS[verdict];
   const picked = fd.getAll(`reason-${verdict}`).map(String).filter((r) => allowed.includes(r));
   const reasons = picked.length ? picked : [allowed[0]];
@@ -340,16 +340,16 @@ export async function saveLegalProfile(_: string | null, fd: FormData): Promise<
   const cccdIssuePlace = str(fd, 'cccdIssuePlace');
   const bankAccountNo = str(fd, 'bankAccount').replace(/\s+/g, '');
   const bankHolderName = str(fd, 'bankHolderName') ? upperNoAccent(str(fd, 'bankHolderName')) : '';
-  if (!holderName) return legalType === 'INDIVIDUAL' ? 'Nhập Họ và tên cá nhân đứng tên Hợp đồng.' : 'Nhập Tên pháp nhân Công ty / Hộ kinh doanh.';
+  if (!holderName) return legalType === 'INDIVIDUAL' ? 'Nhập họ tên người đứng tên hợp đồng.' : 'Nhập tên công ty / hộ kinh doanh.';
   if (legalType === 'INDIVIDUAL') {
-    if (!cccd) return 'Hồ sơ pháp lý Cá nhân bắt buộc phải nhập Số CCCD (12 chữ số).';
+    if (!cccd) return 'Nhập số CCCD (12 số).';
     const e = cccdError(cccd) ?? (cccdIssueDate && dateError(cccdIssueDate)) ?? (cccdIssuePlace && placeError(cccdIssuePlace));
     if (e) return e;
-  } else if (!taxCode && !businessLicenseNo) return 'Hồ sơ pháp lý Hộ kinh doanh / Công ty bắt buộc phải nhập Mã số thuế hoặc Số Giấy phép ĐKKD.';
+  } else if (!taxCode && !businessLicenseNo) return 'Nhập MST hoặc số đăng ký kinh doanh.';
   if (bankAccountNo && accountError(bankAccountNo)) return accountError(bankAccountNo);
   const contractStatus = ['CHƯA_KÝ', 'ĐANG_TRÌNH_KÝ', 'ĐÃ_KÝ', 'HẾT_HẠN'].includes(str(fd, 'contractStatus')) ? str(fd, 'contractStatus') : 'CHƯA_KÝ';
   const contractUrl = str(fd, 'contractUrl');
-  if (contractUrl && !/^https?:\/\//i.test(contractUrl)) return 'Link file HĐNT phải bắt đầu bằng http(s)://';
+  if (contractUrl && !/^https?:\/\//i.test(contractUrl)) return 'Link file hợp đồng phải bắt đầu bằng http:// hoặc https://';
   const vat = Number(str(fd, 'vatRatePercent'));
   const individual = legalType === 'INDIVIDUAL';
   const data = {

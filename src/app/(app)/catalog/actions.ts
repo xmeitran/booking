@@ -26,7 +26,7 @@ export async function saveBrand(_: string | null, fd: FormData): Promise<string 
   const name = str(fd, 'name');
   const logoUrl = url(fd, 'logoUrl');
   if (!name) return 'Nhập tên brand.';
-  if (logoUrl === undefined) return 'Link logo phải bắt đầu bằng http(s)://';
+  if (logoUrl === undefined) return 'Link logo phải bắt đầu bằng http:// hoặc https://';
   const data = {
     name, logoUrl, usp: opt(fd, 'usp'), guideline: opt(fd, 'guideline'), checklist: opt(fd, 'checklist'), keywords: opt(fd, 'keywords'), note: opt(fd, 'note'),
     // Thông tin brand dùng cho Creator matching
@@ -83,8 +83,8 @@ export async function saveStore(_: string | null, fd: FormData): Promise<string 
   const crText = str(fd, 'cr').replace(',', '.').replace('%', '');
   const cr = crText ? Number(crText) / 100 : null;
   if (!name) return 'Nhập tên gian hàng.';
-  if (link === undefined) return 'Link gian hàng phải bắt đầu bằng http(s)://';
-  if (Number.isNaN(aov) || (cr != null && !(cr > 0 && cr <= 1))) return 'AOV là số ≥ 0, CR là % từ 0 tới 100.';
+  if (link === undefined) return 'Link gian hàng phải bắt đầu bằng http:// hoặc https://';
+  if (Number.isNaN(aov) || (cr != null && !(cr > 0 && cr <= 1))) return 'Giá trị 1 đơn là số ≥ 0, tỉ lệ chuyển đổi là % từ 0 tới 100.';
   const data = { brandId, name, platform: str(fd, 'platform') || 'TikTok Shop', url: link, aov, cr };
   try {
     if (id) await db.store.update({ where: { id }, data });
@@ -106,7 +106,7 @@ export async function saveProduct(_: string | null, fd: FormData): Promise<strin
   const link = url(fd, 'link');
   const price = optInt(fd, 'price');
   if (!name) return 'Nhập tên sản phẩm.';
-  if (imageUrl === undefined || link === undefined) return 'Link ảnh / link sản phẩm phải bắt đầu bằng http(s)://';
+  if (imageUrl === undefined || link === undefined) return 'Link ảnh / link sản phẩm phải bắt đầu bằng http:// hoặc https://';
   if (Number.isNaN(price)) return 'Giá là số nguyên ≥ 0.';
   const storeId = str(fd, 'storeId') || null;
   if (storeId && !(await db.store.count({ where: { id: storeId, brandId } }))) return 'Gian hàng không thuộc brand này.';
@@ -114,7 +114,7 @@ export async function saveProduct(_: string | null, fd: FormData): Promise<strin
   const ageMin = optInt(fd, 'ageMin'), ageMax = optInt(fd, 'ageMax');
   const femaleMin = optNum(fd, 'femaleMin'), age18_34Min = optNum(fd, 'age18_34Min'), regionMin = optNum(fd, 'regionMin');
   if ([ageMin, ageMax].some(Number.isNaN) || (ageMin != null && ageMax != null && ageMin > ageMax)) return 'Độ tuổi mục tiêu: nhập số, "từ" không lớn hơn "đến".';
-  if ([femaleMin, age18_34Min, regionMin].some((x) => Number.isNaN(x) || (x != null && x > 100))) return 'Ngưỡng % follower nhập từ 0 tới 100.';
+  if ([femaleMin, age18_34Min, regionMin].some((x) => Number.isNaN(x) || (x != null && x > 100))) return '% follower tối thiểu nhập từ 0 tới 100.';
   const gender = str(fd, 'targetGender');
   const data = {
     brandId, name, storeId, imageUrl, link, price, usp: opt(fd, 'usp'),
@@ -191,12 +191,12 @@ export async function saveRules(_: string | null, fd: FormData): Promise<string 
     if (KL_METRICS.some(([k]) => row[k] != null) || row.approver) kl[lv] = row;
   }
   const group0 = GROUP0.map((c) => ({ id: c.id, mode: str(fd, `g0|${c.id}`) })).filter((g) => g.mode === 'must' || g.mode === 'score') as BrandRules['group0'];
-  if (group0.length && (group0.length < 3 || group0.length > 5)) return `Nhóm 0: chọn 3–5 tiêu chí (đang chọn ${group0.length}), hoặc không chọn để lấy điểm nhóm A.`;
+  if (group0.length && (group0.length < 3 || group0.length > 5)) return `Yêu cầu riêng của brand: chọn 3–5 mục (đang chọn ${group0.length}), hoặc bỏ trống hết.`;
   const ints = ['industryGmvMin', 'industryContentMin', 'cooldownDays', 'priceBand', 'adsCodeDays', 'holdDays', 'competitorDays'] as const;
   const vals: Partial<Record<(typeof ints)[number], number>> = {};
   for (const k of ints) {
     const v = optInt(fd, k);
-    if (Number.isNaN(v)) return 'Các ô số ở quy tắc brand phải là số nguyên ≥ 0.';
+    if (Number.isNaN(v)) return 'Các ô số trong quy tắc phải là số nguyên ≥ 0.';
     if (v != null) vals[k] = v;
   }
   const rules = parseRules({

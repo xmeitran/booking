@@ -24,10 +24,10 @@ export async function savePlan(_: string | null, fd: FormData): Promise<string |
   const name = str(fd, 'name');
   const month = str(fd, 'month');
   const budget = optInt(fd, 'budget');
-  if (fromLark(id)) return 'Plan đồng bộ từ Lark Base, sửa trên Lark.';
+  if (fromLark(id)) return 'Plan này lấy từ Lark, hãy sửa trên Lark.';
   if (!name) return 'Nhập tên plan.';
   if (!/^\d{4}-\d{2}$/.test(month)) return 'Chọn tháng.';
-  if (Number.isNaN(budget)) return 'Ngân sách là số nguyên ≥ 0.';
+  if (Number.isNaN(budget)) return 'Ngân sách phải là số nguyên từ 0 trở lên.';
   const data = { name, month, budget, note: str(fd, 'note') || null };
   const p = id ? await db.plan.update({ where: { id }, data }) : await db.plan.create({ data: { ...data, createdById: me.id } });
   await audit(me.id, 'Plan', p.id, id ? 'Sửa' : 'Tạo', data);
@@ -54,14 +54,14 @@ export async function saveLine(_: string | null, fd: FormData): Promise<string |
   const quantity = optInt(fd, 'quantity');
   const budget = optInt(fd, 'budget');
   const tier = str(fd, 'tier');
-  if (fromLark(id)) return 'Dòng đồng bộ từ Lark Base, sửa trên Lark.';
+  if (fromLark(id)) return 'Dòng này lấy từ Lark, hãy sửa trên Lark.';
   if (!brandId) return 'Chọn brand.';
-  if (Number.isNaN(week) || (week != null && (week < 1 || week > 5))) return 'Tuần từ 1 tới 5.';
+  if (Number.isNaN(week) || (week != null && (week < 1 || week > 5))) return 'Tuần phải từ 1 tới 5.';
   if (quantity == null || Number.isNaN(quantity)) return 'Nhập số KOC cần book (0 nếu dòng chỉ giữ ngân sách).';
-  if (Number.isNaN(budget)) return 'Ngân sách là số nguyên ≥ 0.';
-  if (!quantity && !budget) return 'Dòng plan cần số KOC hoặc ngân sách.';
+  if (Number.isNaN(budget)) return 'Ngân sách phải là số nguyên từ 0 trở lên.';
+  if (!quantity && !budget) return 'Nhập số KOC hoặc ngân sách cho dòng.';
   const productId = str(fd, 'productId') || null;
-  if (productId && !(await db.product.count({ where: { id: productId, brandId } }))) return 'Sản phẩm không thuộc brand đã chọn.';
+  if (productId && !(await db.product.count({ where: { id: productId, brandId } }))) return 'Sản phẩm không thuộc brand đã chọn, hãy chọn lại.';
   // PIC trống: lấy Booking PIC của brand (Danh mục → brand → Nhân sự phụ trách).
   const picId = str(fd, 'picId') || (await db.brandMember.findFirst({ where: { brandId, role: 'Booking PIC' } }))?.userId || null;
   const data = {
