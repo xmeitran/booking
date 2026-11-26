@@ -140,21 +140,30 @@ async function refreshSource(s: Source, ours: Set<string>): Promise<SourceStats>
   for (let part = 0; part < (s.wh!.parts ?? 1); part++) {
     const creators = new Map<string, { m: number[]; shops: ShopRow[] }>();
     const fresh: { key: string; handle: string; m: number[] }[] = [];
-    for await (const r of warehouseQuery(pairsSql(s.wh!, n, part))) {
-      const m = Array.from({ length: n }, (_, i) => Number(r[`m${i}`] ?? 0));
-      const h = String(r.u), key = String(r.k), shop = String(r.shop || `Shop #${key}`);
-      const c = creators.get(h) ?? { m: zeros(s), shops: [] };
-      c.m = mergeMetrics(s, c.m, m);
-      c.shops.push({ key, shop, m });
-      creators.set(h, c);
-      const sh = shops.get(key) ?? { key, shop, creators: 0, m: zeros(s), top: [] };
-      sh.creators++;
-      sh.m = mergeMetrics(s, sh.m, m);
-      shops.set(key, sh);
-      fresh.push({ key, handle: h, m });
-      rows += Number(r.n);
-      if (r.d0 && (!from || String(r.d0) < from)) from = String(r.d0);
-      if (r.d1 && (!to || String(r.d1) > to)) to = String(r.d1);
+    // Proxy trước Metabase trả 504 khi kho bận (> ~60 giây). Chưa nhận dòng nào thì chờ 30 giây chạy lại phần đó một lần.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        for await (const r of warehouseQuery(pairsSql(s.wh!, n, part))) {
+          const m = Array.from({ length: n }, (_, i) => Number(r[`m${i}`] ?? 0));
+          const h = String(r.u), key = String(r.k), shop = String(r.shop || `Shop #${key}`);
+          const c = creators.get(h) ?? { m: zeros(s), shops: [] };
+          c.m = mergeMetrics(s, c.m, m);
+          c.shops.push({ key, shop, m });
+          creators.set(h, c);
+          const sh = shops.get(key) ?? { key, shop, creators: 0, m: zeros(s), top: [] };
+          sh.creators++;
+          sh.m = mergeMetrics(s, sh.m, m);
+          shops.set(key, sh);
+          fresh.push({ key, handle: h, m });
+          rows += Number(r.n);
+          if (r.d0 && (!from || String(r.d0) < from)) from = String(r.d0);
+          if (r.d1 && (!to || String(r.d1) > to)) to = String(r.d1);
+        }
+        break;
+      } catch (e) {
+        if (fresh.length || attempt >= 2 || !/504|Gateway|time-?out/i.test(String(e))) throw e;
+        await new Promise((r) => setTimeout(r, 30_000));
+      }
     }
     if (fresh.length >= METABASE_MAX) throw new Error(`Bảng ${s.name} vượt ${METABASE_MAX.toLocaleString('vi-VN')} dòng creator × shop một lượt (giới hạn Metabase): tăng parts`);
     for (const c of creators.values()) c.shops = c.shops.sort(byM0).slice(0, SHOPS_KEPT);
