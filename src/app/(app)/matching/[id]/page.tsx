@@ -267,7 +267,7 @@ function Filters({ sp, step, codes }: { sp: Search; step: number; codes?: { code
         </select>
       )}
       {sortable && (
-        <select name="sort" defaultValue={sp.sort ?? ''} aria-label="Sắp xếp" className="input h-8 w-48 text-[13px]">
+        <select name="sort" defaultValue={sp.sort ?? ''} aria-label="Sắp xếp" className="input h-8 w-60 text-[13px]">
           <option value="">Xếp theo điểm</option><option value="fit">Xếp theo hợp nội dung (AI)</option>
         </select>
       )}
