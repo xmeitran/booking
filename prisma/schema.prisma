@@ -282,7 +282,8 @@ model MatchBrief {
   brand       String?
   guideline   String?  // Brand guideline: link tài liệu + ghi chú
   strategy    String?  // Content strategy
-  plan        String?  // Content plan
+  plan        String?  // brief / content plan brand gửi (dán vào, AI đọc)
+  needs       Json     @default("{}") // yêu cầu nội dung của đợt: tệp khách, tone, đối thủ, từ cấm, từ khoá tìm KOC (spec.ts Needs)
   note        String?  // ghi chú
   criteria    Json     @default("{}")
   brandId     String?

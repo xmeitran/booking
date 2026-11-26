@@ -55,13 +55,13 @@ export async function CandidateDialog({ cid, brief, me, step, page, close, err }
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <StageChip stage={c.stage} /><TierChip score={s} />
-              {c.kocId ? <Link href={`/contacts/${c.kocId}`} className="link text-xs">Hồ sơ Danh bạ</Link> : <span className="pill bg-accent-soft text-accent">Chỉ có trong kho</span>}
+              {c.kocId ? <Link href={`/contacts/${c.kocId}`} className="link text-xs">Hồ sơ Danh bạ</Link> : <span className="pill bg-sunken text-ink-2">Ngoài Danh bạ</span>}
               {c.rejectCode && <span className="text-xs text-critical">{koLabel(c.rejectCode)}: {c.reason}</span>}
-              {c.exception && <span className="text-xs text-warning">Ngoại lệ: {c.exception}</span>}
+              {c.exception && <span className="text-xs text-warning">Được giữ lại: {c.exception}</span>}
             </div>
           </div>
         </div>
-        <div className="text-right text-[13px]"><Total score={s} /><div className="text-xs text-ink-3">{s?.action}</div></div>
+        <div className="text-right text-[13px]"><div className="text-xs text-ink-3">Điểm / 100</div><div className="text-xl"><Total score={s} /></div><div className="max-w-60 text-xs text-ink-3">{s?.action}</div></div>
       </div>
 
       <Sec title="Số liệu kênh">
@@ -69,73 +69,74 @@ export async function CandidateDialog({ cid, brief, me, step, page, close, err }
           <>
             <dl className="grid gap-x-6 gap-y-1 text-[13px] sm:grid-cols-3">
               {([
-                ['Nguồn', `${m.source}${m.at ? ` · ${fmtDate(new Date(m.at))}` : ''}`], ['Follower', fmtNum(m.followers)], ['View trung vị', fmtNum(m.medianViews)],
-                ['ER', m.er == null ? '—' : fmtPct(m.er)], ['Video 30 ngày · gắn giỏ', `${m.videos30 ?? '—'} · ${m.ecVideos ?? '—'}`], ['Lượt bán 30 ngày', fmtNum(m.unitsSold)],
-                ['GMV 30 ngày', fmtVnd(m.gmv)], ['GPM', fmtVnd(m.gpm)], ['GMV / người mua', fmtVnd(m.aov)],
+                ['Nguồn số liệu', `${m.source}${m.at ? ` · ${fmtDate(new Date(m.at))}` : ''}`], ['Follower', fmtNum(m.followers)], ['View trung bình / video', fmtNum(m.medianViews)],
+                ['Tỷ lệ tương tác', m.er == null ? '—' : fmtPct(m.er)], ['Video 30 ngày · có gắn giỏ', `${m.videos30 ?? '—'} · ${m.ecVideos ?? '—'}`], ['Sản phẩm bán 30 ngày', fmtNum(m.unitsSold)],
+                ['GMV 30 ngày', fmtVnd(m.gmv)], ['GMV / 1.000 view', fmtVnd(m.gpm)], ['GMV / người mua', fmtVnd(m.aov)],
                 ['Follower nữ', fmtPct(m.female)], ['18–24 · 25–34', m.ages ? `${fmtPct(m.ages['18-24'])} · ${fmtPct(m.ages['25-34'])}` : '—'], ['Brand đã hợp tác', m.brandCount == null ? '—' : String(m.brandCount)],
-                ['Giá tham chiếu', d.price ? `${fmtVnd(d.price)} (${d.priceSource})` : '—'], ['Booking với UpBase', String(d.bookings ?? 0)], ['Lượt chấm sao', String(d.ratings ?? 0)],
+                ['Giá tham khảo', d.price ? `${fmtVnd(d.price)} (${d.priceSource})` : '—'], ['Số lần book với UpBase', String(d.bookings ?? 0)], ['Số lần được chấm sao', String(d.ratings ?? 0)],
               ] as const).map(([k, v]) => <div key={k}><dt className="text-xs text-ink-3">{k}</dt><dd className="tabular-nums">{v}</dd></div>)}
             </dl>
-            {m.categories?.length ? <p className="mt-2 text-xs">Tỷ trọng GMV theo ngành: {m.categories.map((x) => `${x.name} ${fmtPct(x.share, 0)}`).join(' · ')}</p> : null}
+            {d.kwHits?.length ? <p className="mt-2 text-xs text-accent">Khớp từ khoá của đợt: {d.kwHits.join(', ')}</p> : null}
+            {m.categories?.length ? <p className="mt-2 text-xs">Bán theo ngành (% GMV): {m.categories.map((x) => `${x.name} ${fmtPct(x.share, 0)}`).join(' · ')}</p> : null}
             {m.locations?.length ? <p className="mt-1 text-xs">Follower theo tỉnh: {m.locations.map((x) => `${x.name} ${fmtPct(x.share, 0)}`).join(' · ')}</p> : null}
-            {m.brands.length ? <p className="mt-1 text-xs">Brand đối tác: {m.brands.join(', ')}</p> : null}
+            {m.brands.length ? <p className="mt-1 text-xs">Brand từng hợp tác: {m.brands.join(', ')}</p> : null}
             {m.topVideos.length > 0 && (
               <ul className="mt-2 space-y-0.5 text-xs">
                 {m.topVideos.map((v, i) => <li key={i}>{v.url ? <a href={v.url} target="_blank" rel="noreferrer" className="link">{v.title || 'Video'}</a> : v.title} <span className="text-ink-3">· {fmtShort(v.views)} view{v.date ? ` · ${v.date}` : ''}</span></li>)}
               </ul>
             )}
           </>
-        ) : <p className="text-[13px] text-ink-3">Chưa có số liệu kênh (KOC chưa có trong kho và chưa tra TikTok Shop).</p>}
+        ) : <p className="text-[13px] text-ink-3">Kho dữ liệu chưa có số liệu của kênh này.</p>}
       </Sec>
 
-      <Sec title="Knock-out (bước 3) và cảnh báo">
-        <Findings list={ko} empty="Không trượt mã loại nào bằng dữ liệu." />
+      <Sec title="Lý do bị loại và cảnh báo">
+        <Findings list={ko} empty="Hệ thống không loại KOC này." />
         {flags.length > 0 && <div className="mt-2 rounded-md bg-sunken px-3 py-2"><Findings list={flags} /></div>}
         <div className="mt-3 flex flex-wrap gap-3">
           {(c.stage === 'KO' || c.stage === 'OUT') && canKeep && (
             <form action={keepException} className="flex gap-1.5">{common}
-              <input name="reason" required placeholder="Lý do giữ ngoại lệ (I-26)" className="input h-8 w-64 text-[13px]" />
+              <input name="reason" required placeholder="Lý do giữ lại KOC này" className="input h-8 w-64 text-[13px]" />
               <button className="btn h-8 px-3 text-xs">Giữ lại</button>
             </form>
           )}
-          {c.stage === 'REJECTED' && <form action={restoreCandidate}>{common}<button className="btn h-8 px-3 text-xs">Khôi phục về pool</button></form>}
+          {c.stage === 'REJECTED' && <form action={restoreCandidate}>{common}<button className="btn h-8 px-3 text-xs">Khôi phục</button></form>}
           {!['REJECTED', 'KO', 'OUT'].includes(c.stage) && (
             <form action={rejectCandidate} className="flex flex-wrap gap-1.5">{common}
-              <select name="code" aria-label="Mã loại" className="input h-8 w-52 text-[13px]">{Object.entries(KO).map(([k, v]) => <option key={k} value={k}>{k} · {v.label}</option>)}</select>
+              <select name="code" required defaultValue="" aria-label="Lý do loại" className="input h-8 w-56 text-[13px]"><option value="" disabled>— Chọn lý do loại —</option>{Object.entries(KO).filter(([k]) => k !== 'POOL').map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
               <input name="reason" required placeholder="Lý do loại" className="input h-8 w-56 text-[13px]" />
-              <button className="btn btn-danger h-8 px-3 text-xs">Loại</button>
+              <button className="btn btn-danger h-8 px-3 text-xs">Loại KOC này</button>
             </form>
           )}
         </div>
       </Sec>
 
-      <Sec title="Bước 4 · Kiểm tra nội dung kênh">
+      <Sec title="Kiểm tra nội dung kênh (bước 4)">
         <form action={saveChecks} className="grid gap-2">{common}
           {codes.map((k) => (
             <div key={k} className="grid items-start gap-2 sm:grid-cols-[14rem_10rem_1fr]">
               <div className="text-[13px]"><b>{koLabel(k)}</b><div className="text-xs text-ink-3">{KO[k].rule}</div></div>
               <select name={`check|${k}`} defaultValue={checks[k] ? (checks[k].ok ? 'ok' : 'fail') : ''} aria-label={`Kết quả ${k}`} className="input h-8 text-[13px]">
-                <option value="">Chưa kiểm</option><option value="ok">Đạt</option><option value="fail">Không đạt (loại)</option>
+                <option value="">Chưa kiểm</option><option value="ok">Không vi phạm</option><option value="fail">Có vi phạm (loại)</option>
               </select>
-              <input name={`note|${k}`} defaultValue={checks[k]?.note ?? ''} placeholder={checks[k] ? `${checks[k].by ?? ''} ${checks[k].at ? fmtDate(new Date(checks[k].at!)) : ''}` : 'Ghi chú / bằng chứng (link video)'} aria-label={`Ghi chú ${k}`} className="input h-8 text-[13px]" />
+              <input name={`note|${k}`} defaultValue={checks[k]?.note ?? ''} placeholder={checks[k] ? `${checks[k].by ?? ''} ${checks[k].at ? fmtDate(new Date(checks[k].at!)) : ''}` : 'Ghi chú hoặc link video làm bằng chứng'} aria-label={`Ghi chú ${k}`} className="input h-8 text-[13px]" />
             </div>
           ))}
-          <div className="flex justify-end"><button className="btn h-8 px-3 text-xs">Lưu kiểm tra</button></div>
+          <div className="flex justify-end"><button className="btn btn-primary h-8 px-3 text-xs">Lưu kết quả kiểm tra</button></div>
         </form>
       </Sec>
 
       {late && (
-        <Sec title="Bước 6 · KOC báo giá và xác nhận">
+        <Sec title="Giá và cam kết của KOC (bước 6)">
           <form action={saveDeclare} className="grid gap-3 sm:grid-cols-3">{common}
-            <F label="Giá KOC báo, net (₫) · I-52"><input name="quote" inputMode="numeric" defaultValue={dc.quote ?? ''} className="input" /></F>
+            <F label="Giá KOC báo (₫, chưa thuế)"><input name="quote" inputMode="numeric" defaultValue={dc.quote ?? ''} className="input" /></F>
             <F label="Loại giá"><select name="priceType" defaultValue={dc.priceType ?? 'Video'} className="input">{PRICE_TYPES.map((p) => <option key={p}>{p}</option>)}</select></F>
-            <F label="Cam kết không đăng đối thủ sau air · I-40 (K8)"><YesNo name="noCompetitor" v={dc.noCompetitor} /></F>
-            <F label={`Đồng ý ads code / Spark Ads · I-39${brief.gmvMax ? ' (K14)' : ''}`}><YesNo name="adsCode" v={dc.adsCode} /></F>
-            <F label={`Số ngày ads code (yêu cầu ${rules.adsCodeDays})`}><input name="adsDays" inputMode="numeric" defaultValue={dc.adsDays ?? ''} className="input" /></F>
-            <F label="Số vòng sửa kịch bản / demo nhận"><input name="revisions" inputMode="numeric" defaultValue={dc.revisions ?? ''} className="input" /></F>
-            {brief.expertClaim && <F label="Chứng chỉ hành nghề · I-41 (K12)"><input name="certificate" defaultValue={dc.certificate ?? ''} placeholder="Chứng chỉ dược sĩ số..." className="input" /></F>}
-            <F label="Có sample / nhận wave"><YesNo name="sample" v={dc.sample} /></F>
-            <fieldset className="col-span-full"><legend className="label">Kênh reup đồng ý</legend>
+            <F label="Cam kết không đăng sản phẩm đối thủ sau air"><YesNo name="noCompetitor" v={dc.noCompetitor} /></F>
+            <F label={`Cho chạy ads code / Spark Ads${brief.gmvMax ? ' (bắt buộc: brand chạy GMV Max)' : ''}`}><YesNo name="adsCode" v={dc.adsCode} /></F>
+            <F label={`Số ngày cho chạy ads (brand cần ${rules.adsCodeDays})`}><input name="adsDays" inputMode="numeric" defaultValue={dc.adsDays ?? ''} className="input" /></F>
+            <F label="Số lần nhận sửa kịch bản / video"><input name="revisions" inputMode="numeric" defaultValue={dc.revisions ?? ''} className="input" /></F>
+            {brief.expertClaim && <F label="Chứng chỉ hành nghề"><input name="certificate" defaultValue={dc.certificate ?? ''} placeholder="Chứng chỉ dược sĩ số..." className="input" /></F>}
+            <F label="Đã có hàng mẫu"><YesNo name="sample" v={dc.sample} /></F>
+            <fieldset className="col-span-full"><legend className="label">Đồng ý đăng lại video ở kênh</legend>
               <div className="flex flex-wrap gap-x-4 text-[13px]">{REUP.map((r) => <label key={r} className="flex items-center gap-1.5"><input type="checkbox" name="reup" value={r} defaultChecked={dc.reup?.includes(r)} />{r}</label>)}</div>
             </fieldset>
             <F label="Ghi chú" wide><input name="note" defaultValue={dc.note ?? ''} className="input" /></F>
@@ -147,20 +148,20 @@ export async function CandidateDialog({ cid, brief, me, step, page, close, err }
         </Sec>
       )}
 
-      <Sec title="Điểm 6 nhóm · chấm tay (bước 7)" id="manual">
+      <Sec title="Bảng điểm: mục nào trống thì chấm 1–5 (bước 7)" id="manual">
         <form action={saveManual}>{common}
           <div className="overflow-x-auto">
             <table className="tbl">
-              <thead><tr><th>Tiêu chí</th><th>Số liệu / cách tính</th><th className="text-center">Điểm</th><th>Booker chấm</th></tr></thead>
+              <thead><tr><th>Mục chấm</th><th>Số liệu · thang điểm</th><th className="text-center">Điểm</th><th>Chấm tay (đè điểm tự động)</th></tr></thead>
               <tbody>
                 {(s?.groups ?? []).map((g) => (
-                  <GroupRows key={g.group} label={`${GROUP_LABEL[g.group]} · ${g.weight}% · ${g.score == null ? 'chưa có' : `${g.score}/5`}`} note={g.note}>
+                  <GroupRows key={g.group} label={`${GROUP_LABEL[g.group]} · chiếm ${g.weight}% điểm · ${g.score == null ? 'chưa có điểm' : `${g.score}/5`}`} note={g.note}>
                     {g.parts.map((p) => {
                       const cr = criterion(p.id);
                       return (
                         <tr key={p.id} className="align-top">
                           <td className="text-[13px]">{p.label}{p.must && <span className="ml-1 pill bg-critical-soft text-critical">Bắt buộc</span>}<div className="text-xs text-ink-3">{cr?.measure}</div></td>
-                          <td className="max-w-72 text-xs">{p.value ?? <span className="text-ink-3">Chưa có số liệu</span>}<div className="text-ink-3">1: {cr?.scale[0]} · 3: {cr?.scale[1]} · 5: {cr?.scale[2]}</div></td>
+                          <td className="max-w-72 text-xs">{manual[p.id]?.by === 'AI' && manual[p.id]?.note ? <div className="text-accent">AI: {manual[p.id]!.note}</div> : null}{p.value ?? <span className="text-ink-3">Chưa có số liệu</span>}<div className="text-ink-3">1: {cr?.scale[0]} · 3: {cr?.scale[1]} · 5: {cr?.scale[2]}</div></td>
                           <td className="text-center tabular-nums">{p.score ?? '·'}</td>
                           <td>
                             <div className="flex gap-1">
@@ -178,27 +179,27 @@ export async function CandidateDialog({ cid, brief, me, step, page, close, err }
               </tbody>
             </table>
           </div>
-          {s?.mustFail.length ? <p className="mt-2 text-xs text-critical">Không đạt tiêu chí Bắt buộc: {s.mustFail.join(', ')}</p> : null}
-          <div className="mt-2 flex justify-end"><button className="btn h-8 px-3 text-xs">Lưu điểm và chấm lại</button></div>
+          {s?.mustFail.length ? <p className="mt-2 text-xs text-critical">Trượt yêu cầu bắt buộc của brand: {s.mustFail.join(', ')}</p> : null}
+          <div className="mt-2 flex justify-end"><button className="btn btn-primary h-8 px-3 text-xs">Lưu điểm</button></div>
         </form>
       </Sec>
 
       {c.stage === 'APPROVED' && (
-        <Sec title="Bước 10 · Đánh giá sau air" id="outcome">
+        <Sec title="Kết quả sau khi air (bước 10)" id="outcome">
           <form action={saveOutcome} className="grid gap-3 sm:grid-cols-3">{common}
             <F label="Đạt KPI view / GMV"><YesNo name="kpiMet" v={o.kpiMet} /></F>
-            <F label="Trả kịch bản, demo, air đúng hạn"><YesNo name="onTime" v={o.onTime} /></F>
-            <F label="Nghiệm thu đạt lần 1"><YesNo name="firstPass" v={o.firstPass} /></F>
-            <F label="Giữ video công khai ≥ 90 ngày"><YesNo name="keptPublic" v={o.keptPublic} /></F>
-            <F label="Lỗi content">
+            <F label="Nộp kịch bản, video, air đúng hạn"><YesNo name="onTime" v={o.onTime} /></F>
+            <F label="Nghiệm thu đạt ngay lần đầu"><YesNo name="firstPass" v={o.firstPass} /></F>
+            <F label="Giữ video công khai từ 90 ngày"><YesNo name="keptPublic" v={o.keptPublic} /></F>
+            <F label="Lỗi nội dung">
               <select name="contentError" defaultValue={o.contentError ?? ''} className="input"><option value="">Không</option>{Object.entries(CONTENT_ERRORS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
             </F>
-            <F label="Quyết định">
+            <F label="Lần sau">
               <select name="decision" defaultValue={o.decision ?? ''} className="input"><option value="">—</option>{Object.entries(DECISIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
             </F>
             {c.kocId && (
               <>
-                <F label="Rating Booker (sao)">
+                <F label="Chấm sao KOC">
                   <select name="stars" defaultValue={rating?.stars ?? ''} className="input"><option value="">—</option>{[5, 4, 3, 2, 1].map((x) => <option key={x} value={x}>{'★'.repeat(x)}</option>)}</select>
                 </F>
                 <fieldset className="col-span-2"><legend className="label">Nhận định</legend>

@@ -8,10 +8,11 @@ import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
 import { audit } from '@/lib/booking/catalog';
 import { airDateOf, loadBrief } from '@/lib/matching/data';
-import { contentChecksFor, rescore, runMatching, stageAfterRun } from '@/lib/matching/run';
+import { contentChecksFor, rescore, rescoreMany, runMatching, stageAfterRun } from '@/lib/matching/run';
+import { aiOn, rankFit, readBrief, type FitInput } from '@/lib/matching/ai';
 import {
-  ALL_CRITERIA, CHANNELS, CONTENT_ERRORS, DECISIONS, KL_LEVELS, KO, OBJECTIVES, parseRules,
-  type Check, type Declare, type Manual, type Outcome, type Slot,
+  ALL_CRITERIA, CHANNELS, CONTENT_ERRORS, DECISIONS, KL_LEVELS, KO, OBJECTIVES, parseNeeds, parseRules,
+  type Check, type Needs, type Declare, type Manual, type Outcome, type Slot,
 } from '@/lib/matching/spec';
 import { RATING_TAGS } from '@/lib/koc/kocDirectory';
 import { can, requireUser, type Me } from '@/lib/auth/session';
@@ -20,7 +21,19 @@ const back = (briefId: string, step: number | string, extra = '') => `/matching/
 const handles = (s: string) => [...new Set(s.split(/[\s,;]+/).map((h) => h.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i, '').split(/[/?]/)[0].toLowerCase()).filter(Boolean))];
 const pctIn = (fd: FormData, k: string) => { const v = str(fd, k).replace(',', '.').replace('%', ''); if (!v) return null; const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= 100 ? n / 100 : NaN; };
 
-// ---------------------------------------------------------------- Bước 1: đợt matching (Khối 4)
+const list = (s: string) => [...new Set(s.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean))];
+
+/** Yêu cầu nội dung trong form đợt (các ô needs_*). */
+function needsOf(fd: FormData): Needs {
+  const int = (k: string) => { const v = optInt(fd, k); return v && !Number.isNaN(v) ? v : undefined; };
+  return parseNeeds({
+    summary: str(fd, 'needs_summary'), targetGender: str(fd, 'needs_targetGender'), ageMin: int('needs_ageMin'), ageMax: int('needs_ageMax'),
+    regions: list(str(fd, 'needs_regions')), tone: str(fd, 'needs_tone'), usp: str(fd, 'needs_usp'), competitors: list(str(fd, 'needs_competitors')),
+    bannedWords: list(str(fd, 'needs_bannedWords')), exclusions: list(str(fd, 'needs_exclusions')), keywords: list(str(fd, 'needs_keywords')),
+  });
+}
+
+// ---------------------------------------------------------------- Bước 1: đợt matching
 export async function saveBrief(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
   const id = str(fd, 'id');
@@ -49,6 +62,7 @@ export async function saveBrief(_: string | null, fd: FormData): Promise<string 
     ...ints, objective, gmvMax: str(fd, 'gmvMax') === '1', channel, slots: slots as unknown as Prisma.InputJsonArray,
     airMonth: airMonth || null, format: str(fd, 'format') || null, includeHandles: handles(str(fd, 'includeHandles')), excludeHandles: handles(str(fd, 'excludeHandles')),
     crTarget, ctrTarget, expertClaim: str(fd, 'expertClaim') === '1', note: str(fd, 'note') || null,
+    plan: str(fd, 'plan').slice(0, 30000) || null, needs: needsOf(fd) as Prisma.InputJsonObject,
   };
   const b = id ? await db.matchBrief.update({ where: { id }, data }) : await db.matchBrief.create({ data: { ...data, createdById: me.id } });
   await audit(me.id, 'MatchBrief', b.id, id ? 'Sửa đầu vào' : 'Tạo đợt matching');
@@ -79,6 +93,98 @@ export async function runNow(fd: FormData) {
   await audit(me.id, 'MatchBrief', id, 'Chạy matching', { msg });
   revalidatePath(`/matching/${id}`);
   redirect(back(id, msg.startsWith('Lỗi') ? 1 : 2, `&msg=${encodeURIComponent(msg)}`));
+}
+
+// ---------------------------------------------------------------- AI
+/** Dán brief của brand → AI điền yêu cầu đợt. Đợt mới thì tạo luôn rồi mở form để Booker xem lại; đợt có sẵn thì chỉ điền ô trống. */
+export async function aiFillBrief(_: string | null, fd: FormData): Promise<string | null> {
+  const me = await requireUser();
+  if (!(await aiOn())) return 'Chưa gắn key Claude (Phân quyền → Tích hợp → API AI).';
+  const text = str(fd, 'brief').slice(0, 30000);
+  if (text.length < 30) return 'Dán nội dung brief (ít nhất vài câu).';
+  const brands = await db.brand.findMany({ select: { id: true, name: true, category: true, products: { select: { id: true, name: true } } }, orderBy: { name: 'asc' } });
+  let d;
+  try {
+    d = await readBrief(text, brands.map((b) => ({ name: b.name, products: b.products.map((p) => p.name) })));
+  } catch (e) {
+    return `AI chưa đọc được brief: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  const norm = (x: string) => x.trim().toLowerCase();
+  const brand = brands.find((b) => norm(b.name) === norm(d.brand)) ?? null;
+  const product = brand?.products.find((p) => norm(p.name) === norm(d.product)) ?? null;
+  const slots: Slot[] = d.slots.filter((x) => (KL_LEVELS as readonly string[]).includes(x.kl) && x.count > 0).map((x) => ({ kl: x.kl, role: x.role, count: x.count }));
+  const needs = parseNeeds(d);
+  const id = str(fd, 'id');
+  const old = id ? await db.matchBrief.findUnique({ where: { id } }) : null;
+  const pos = (n: number) => (n > 0 ? n : null);
+  const fill = {
+    brandId: old?.brandId ?? brand?.id ?? null, brand: old?.brand ?? brand?.name ?? null, category: old?.category ?? null, productId: old?.productId ?? product?.id ?? null,
+    channel: old?.channel && old.channel !== 'TikTok' ? old.channel : (CHANNELS as readonly string[]).includes(d.channel) ? d.channel : 'TikTok',
+    objective: (OBJECTIVES as readonly string[]).includes(d.objective) ? d.objective : 'Convert',
+    airMonth: old?.airMonth ?? (/^\d{4}-\d{2}$/.test(d.airMonth) ? d.airMonth : null), airWeek: old?.airWeek ?? (d.airWeek >= 1 && d.airWeek <= 5 ? d.airWeek : null),
+    budget: old?.budget ?? pos(d.budget), feeCap: old?.feeCap ?? pos(d.feeCap), gmvTarget: old?.gmvTarget ?? pos(d.gmvTarget), dealPrice: old?.dealPrice ?? pos(d.dealPrice),
+    format: old?.format ?? (d.format || null), plan: text,
+    needs: { ...parseNeeds(old?.needs), ...Object.fromEntries(Object.entries(needs).filter(([, v]) => (Array.isArray(v) ? v.length : v))) } as Prisma.InputJsonObject,
+    ...(slots.length && !(Array.isArray(old?.slots) && old.slots.length) ? { slots: slots as unknown as Prisma.InputJsonArray } : {}),
+  };
+  if (brand?.category && !old?.category) fill.category = brand.category;
+  const b = old
+    ? await db.matchBrief.update({ where: { id: old.id }, data: fill })
+    : await db.matchBrief.create({ data: { ...fill, name: d.name || 'Đợt mới', createdById: me.id } });
+  await audit(me.id, 'MatchBrief', b.id, 'AI đọc brief');
+  revalidatePath('/matching');
+  const miss = [!b.brandId && 'brand', !b.productId && 'sản phẩm', !b.airMonth && 'tháng air'].filter(Boolean);
+  redirect(back(b.id, 1, `&edit=1&msg=${encodeURIComponent(`AI đã điền yêu cầu từ brief. Kiểm tra lại rồi bấm Lưu${miss.length ? `; còn thiếu: ${miss.join(', ')}` : ''}.`)}`));
+}
+
+/** AI chấm "Hợp nội dung brand" (1–5, kèm lý do) cho top N KOC đang xét / đang liên hệ chưa được AI chấm. */
+export async function aiScoreFit(_: string | null, fd: FormData): Promise<string | null> {
+  const me = await requireUser();
+  if (!(await aiOn())) return 'Chưa gắn key Claude (Phân quyền → Tích hợp → API AI).';
+  const briefId = str(fd, 'briefId');
+  const top = Math.min(Math.max(optInt(fd, 'top') || 100, 1), 200);
+  const b = await loadBrief(briefId);
+  if (!b) return 'Không có đợt này.';
+  const nd = parseNeeds(b.needs);
+  const requirement = [
+    `Brand: ${b.brandRef?.name ?? b.brand ?? '—'}${b.product ? ` · sản phẩm: ${b.product.name}` : ''}${b.brandRef?.category ? ` · ngành: ${b.brandRef.category}` : ''}`,
+    nd.summary && `Yêu cầu: ${nd.summary}`, nd.usp && `Thông điệp: ${nd.usp}`, nd.tone && `Tone: ${nd.tone}`,
+    (nd.targetGender || nd.ageMin || nd.ageMax) && `Khách mục tiêu: ${[nd.targetGender, nd.ageMin || nd.ageMax ? `${nd.ageMin ?? '?'}–${nd.ageMax ?? '?'} tuổi` : ''].filter(Boolean).join(', ')}`,
+    nd.competitors?.length && `Đối thủ: ${nd.competitors.join(', ')}`, nd.exclusions?.length && `Không muốn: ${nd.exclusions.join('; ')}`,
+    !nd.summary && b.plan && `Brief: ${b.plan.slice(0, 3000)}`,
+  ].filter(Boolean).join('\n');
+  const cands = await db.$queryRaw<{ id: string }[]>`
+    select id from "MatchCandidate" where "briefId" = ${briefId} and stage in ('POOL', 'SHORTLIST', 'CONFIRMED')
+      and coalesce(manual->'A3'->>'by', '') <> 'AI'
+    order by total desc nulls last, (score->>'total')::float desc nulls last limit ${top}`;
+  if (!cands.length) return 'Không còn KOC nào cần AI chấm (KOC đang xét đều đã được chấm).';
+  const rows = await db.matchCandidate.findMany({ where: { id: { in: cands.map((c) => c.id) } } });
+  const items: FitInput[] = rows.map((c) => {
+    const d = (c.data ?? {}) as { name?: string; kwHits?: string[]; metrics?: { followers?: number | null; gmv?: number | null; female?: number | null; categories?: { name: string; share: number }[] | null; brands?: string[]; topVideos?: { title: string; products?: string | null }[] } | null };
+    const m = d.metrics;
+    return {
+      handle: c.handle, name: d.name ?? c.handle, followers: m?.followers ?? null, gmv30: m?.gmv ? Math.round(m.gmv) : null,
+      categories: (m?.categories ?? []).slice(0, 3).map((x) => `${x.name} ${Math.round(x.share * 100)}%`),
+      videos: (m?.topVideos ?? []).slice(0, 5).map((v) => `${v.title.slice(0, 100)}${v.products ? ` [SP: ${v.products.slice(0, 80)}]` : ''}`),
+      brands: (m?.brands ?? []).slice(0, 10), audience: m?.female != null ? `${Math.round(m.female * 100)}% nữ` : null, keywordHits: d.kwHits ?? [],
+    };
+  });
+  let fits;
+  try {
+    fits = await rankFit(requirement, items);
+  } catch (e) {
+    return `AI chưa chấm được: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  const byHandle = new Map(rows.map((c) => [c.handle, c.id]));
+  const patches = new Map<string, Manual>();
+  for (const f of fits) {
+    const id = byHandle.get(f.handle);
+    if (id) patches.set(id, { A3: { score: f.score, note: f.reason.slice(0, 300), by: 'AI' } });
+  }
+  const n = await rescoreMany(briefId, patches);
+  await audit(me.id, 'MatchBrief', briefId, 'AI chấm độ hợp nội dung', { n });
+  revalidatePath(`/matching/${briefId}`);
+  redirect(back(briefId, 5, `&msg=${encodeURIComponent(`AI đã chấm độ hợp nội dung ${n} KOC. Điểm tổng đã tính lại.`)}`));
 }
 
 // ---------------------------------------------------------------- Thao tác trên ứng viên
@@ -142,14 +248,14 @@ export async function shortlist(fd: FormData) {
   const list = top
     ? await db.matchCandidate.findMany({ where: { briefId, stage: 'POOL' }, orderBy: [{ total: { sort: 'desc', nulls: 'last' } }], take: top })
     : await db.matchCandidate.findMany({ where: { briefId, stage: 'POOL', id: { in: ids } } });
-  if (!list.length) redirect(back(briefId, 5, `&msg=${encodeURIComponent('Chưa chọn ứng viên nào trong pool.')}`));
+  if (!list.length) redirect(back(briefId, 5, `&msg=${encodeURIComponent('Chưa tick KOC nào (chỉ chọn được KOC đang xét).')}`));
   for (const c of list) {
     await ensureKoc(c);
     await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'SHORTLIST', updatedById: me.id } });
   }
   await audit(me.id, 'MatchBrief', briefId, 'Shortlist', { n: list.length });
   revalidatePath(`/matching/${briefId}`);
-  redirect(back(briefId, 6, `&msg=${encodeURIComponent(`Đã đưa ${list.length} KOC vào shortlist.`)}`));
+  redirect(back(briefId, 6, `&msg=${encodeURIComponent(`Đã chọn ${list.length} KOC để liên hệ. Giờ hỏi giá từng KOC.`)}`));
 }
 
 export async function unshortlist(fd: FormData) {
@@ -175,7 +281,7 @@ export async function saveDeclare(fd: FormData) {
   if (ko) await reject(c.id, me, ko.code, ko.detail);
   else if (str(fd, 'confirm') === '1') {
     if (!declare.quote) redirect(`${ret}&err=${encodeURIComponent('Nhập giá KOC báo trước khi xác nhận.')}`);
-    if (declare.noCompetitor === undefined) redirect(`${ret}&err=${encodeURIComponent('Ghi KOC có cam kết không đăng đối thủ sau air không (K8).')}`);
+    if (declare.noCompetitor === undefined) redirect(`${ret}&err=${encodeURIComponent('Ghi rõ KOC có cam kết không đăng sản phẩm đối thủ sau air không.')}`);
     await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'CONFIRMED', updatedById: me.id } });
   }
   await db.matchCandidate.update({ where: { id: c.id }, data: { updatedById: me.id } });
@@ -225,7 +331,7 @@ export async function restoreCandidate(fd: FormData) {
 /** Giữ lại KOC bị loại tự động (ngoại lệ, I-26). */
 export async function keepException(fd: FormData) {
   const { me, c, ret } = await candidate(fd);
-  if (!(await canException(me, c.briefId))) redirect(`${ret}&err=${encodeURIComponent('Chỉ người duyệt ngoại lệ của brand hoặc người có quyền duyệt list được giữ KOC bị loại.')}`);
+  if (!(await canException(me, c.briefId))) redirect(`${ret}&err=${encodeURIComponent('Chỉ trưởng nhóm hoặc người duyệt của brand được giữ lại KOC bị loại.')}`);
   const reason = str(fd, 'reason');
   if (!reason) redirect(`${ret}&err=${encodeURIComponent('Ghi lý do giữ ngoại lệ.')}`);
   await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'POOL', exception: `${reason} · ${me.name ?? me.id} ${new Date().toLocaleDateString('vi-VN')}`, updatedById: me.id } });
@@ -242,7 +348,7 @@ export async function approve(fd: FormData) {
   const ids = fd.getAll('cid').map(String);
   const action = str(fd, 'action');
   const reason = str(fd, 'reason');
-  if (!ids.length) redirect(back(briefId, 8, `&msg=${encodeURIComponent('Tick chọn KOC.')}`));
+  if (!ids.length) redirect(back(briefId, 8, `&msg=${encodeURIComponent('Tick chọn KOC trước.')}`));
   if (action === 'approve') {
     await db.matchCandidate.updateMany({ where: { briefId, id: { in: ids }, stage: 'CONFIRMED' }, data: { stage: 'APPROVED', approvedById: me.id, approvedAt: new Date(), updatedById: me.id } });
   } else if (action === 'return') {

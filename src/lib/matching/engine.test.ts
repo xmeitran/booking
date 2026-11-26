@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ageShare, evaluate, inferKl, regionShare, type Context, type Metrics, type Subject } from './engine';
+import { ageShare, evaluate, inferKl, outOfPool, regionShare, type Context, type Metrics, type Subject } from './engine';
 import { band, BANDS, DEFAULT_RULES, parseRules } from './spec';
 import { brandKey } from '../booking/listing';
 import { stageAfterRun } from './run';
@@ -19,7 +19,7 @@ const subject = (s: Partial<Subject> = {}): Subject => ({
 const ctx = (c: Partial<Context> = {}): Context => ({
   brandName: 'pH Care', channel: 'TikTok', objective: 'Convert', gmvMax: false, expertClaim: false, category: 'Beauty', competitors: [], bannedClaims: [],
   groupKeys: new Set(), rules: { ...DEFAULT_RULES }, product: null, dealPrice: null, airAt: day('2026-12-10'), airMonth: '2026-12',
-  benchmarks: { '*': { gmvPerVideo: 8_000_000, views: 10_000, cpv: 200, n: 20 } }, include: new Set(), exclude: new Set(), neededKls: [], now: day('2026-11-26'), ...c,
+  benchmarks: { '*': { gmvPerVideo: 8_000_000, views: 10_000, cpv: 200, n: 20 } }, include: new Set(), exclude: new Set(), neededKls: [], now: day('2026-11-26'), keywords: [], ...c,
 });
 const codes = (e: ReturnType<typeof evaluate>) => e.ko.map((k) => k.code);
 
@@ -50,7 +50,7 @@ test('K9 Must loại, Nice to have chỉ cảnh báo; KL suy theo follower', () 
   const rules = parseRules({ kl: { KL3: { followersMin: 50_000, viewsMin: 20_000, unitsSoldMin: 1000, must: ['followersMin', 'viewsMin'] }, KL4: { followersMin: 200_000 } } });
   const e = evaluate(subject(), ctx({ rules }));
   assert.deepEqual(codes(e), ['K9']); // view 15K < 20K
-  assert.ok(e.flags.some((f) => f.code === 'K9' && f.detail.includes('Nice to have')));
+  assert.ok(e.flags.some((f) => f.code === 'K9' && f.detail.includes('chỉ cảnh báo')));
   assert.equal(inferKl(120_000, rules), 'KL3');
   assert.equal(inferKl(250_000, rules), 'KL4');
   assert.equal(inferKl(1_000, rules), null);
@@ -105,4 +105,11 @@ test('lượt chạy không xoá KOC: ngoài pool / bị loại chỉ đổi tr�
   assert.equal(stageAfterRun({ stage: 'OUT', exception: null }, { outOfPool: null }, false, false), 'POOL');
   assert.equal(stageAfterRun({ stage: 'SHORTLIST', exception: null }, { outOfPool: 'x' }, true, false), 'SHORTLIST');
   assert.equal(stageAfterRun(undefined, { outOfPool: 'x' }, true, true), 'POOL'); // brand chỉ định
+});
+
+test('tìm KOC: creator khớp từ khoá của đợt không bị loại vì sai ngành, nhưng vẫn theo cấp KOC cần book', () => {
+  const offCategory = subject({ metrics: metrics({ categories: [{ name: 'Đồ gia dụng', share: 0.9 }, { name: 'Beauty', share: 0.1 }] }) });
+  assert.match(outOfPool(offCategory, ctx(), 'KL3') ?? '', /Beauty/);
+  assert.equal(outOfPool({ ...offCategory, kwHits: ['kem chống nắng'] }, ctx(), 'KL3'), null);
+  assert.match(outOfPool({ ...offCategory, kwHits: ['kem chống nắng'] }, ctx({ neededKls: ['KL5'] }), 'KL3') ?? '', /KL3/);
 });

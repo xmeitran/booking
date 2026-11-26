@@ -29,6 +29,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
     },
   });
   if (!j) notFound();
+  const ai = await aiEnabled();
   const [users, logs, tier] = await Promise.all([
     db.user.findMany({ where: { active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, jobRole: true } }),
     db.auditLog.findMany({ where: { entity: 'Job', entityId: id }, orderBy: { at: 'desc' }, take: 30 }),
@@ -133,7 +134,7 @@ export default async function JobPage({ params, searchParams }: { params: Promis
             <textarea name="brief" rows={14} defaultValue={j.brief ?? ''} placeholder="Bấm &quot;Tạo brief nháp&quot; để có bản đầu từ USP, guideline của brand và checklist nghiệm thu." className="input font-mono text-xs" />
             <div className="flex flex-wrap items-center justify-end gap-2">
               {j.brief && <CopyButton text={j.brief} />}
-              <button formAction={aiDraftBrief} formNoValidate disabled={!aiEnabled()} title={aiEnabled() ? 'Claude viết bản nháp từ brand, sản phẩm, KOC và checklist (~30 giây)' : 'Chưa cấu hình ANTHROPIC_API_KEY'} className="btn h-8 px-3 text-xs">AI viết brief</button>
+              <button formAction={aiDraftBrief} formNoValidate disabled={!ai} title={ai ? 'Claude viết bản nháp từ brand, sản phẩm, KOC và checklist (~30 giây)' : 'Chưa gắn key Claude (Phân quyền → Tích hợp → API AI)'} className="btn h-8 px-3 text-xs">AI viết brief</button>
               <button formAction={draftBrief} formNoValidate className="btn h-8 px-3 text-xs">Tạo brief nháp (mẫu)</button>
               <button name="approve" value="" className="btn h-8 px-3 text-xs">Lưu nháp</button>
               <button name="approve" value="1" className="btn btn-primary h-8 px-3 text-xs">Duyệt brief</button>

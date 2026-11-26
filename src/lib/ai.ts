@@ -1,10 +1,11 @@
 // Content Copilot: Claude viết brief nháp cho job; B2C sửa và duyệt trước khi gửi KOC.
-// Bật khi có ANTHROPIC_API_KEY. Chỉ gửi thông tin công khai của KOC (kênh, tệp, số TikTok) và của brand / sản phẩm;
+// Bật khi có ANTHROPIC_API_KEY (.env hoặc Phân quyền → Tích hợp → API AI). Chỉ gửi thông tin công khai của KOC (kênh, tệp, số TikTok) và của brand / sản phẩm;
 // không gửi SĐT, địa chỉ, tài khoản, CCCD.
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
+import { cfg, configured } from './integrations';
 
-export const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY);
+export const aiEnabled = () => configured('ai');
 
 const SYSTEM = `Bạn là chuyên viên booking KOC của team MKT B2C UpBase. Viết brief gửi KOC TikTok bằng tiếng Việt: rõ ràng, thân thiện, đọc trên điện thoại được.
 Chỉ dùng thông tin trong dữ liệu được cung cấp. Thiếu thông tin nào thì ghi "(cần bổ sung: ...)" đúng chỗ đó, không tự bịa USP, giá, ưu đãi hay công dụng.
@@ -26,7 +27,7 @@ export type BriefInput = {
 };
 
 export async function aiBrief(input: BriefInput): Promise<string> {
-  const client = new Anthropic();
+  const client = new Anthropic({ apiKey: await cfg('ANTHROPIC_API_KEY') });
   const res = await client.beta.messages.create({
     model: 'claude-opus-5-5',
     max_tokens: 16000,

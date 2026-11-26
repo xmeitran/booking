@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '../db';
 import { buildContext, loadBrief, loadSubjects, type BriefFull } from './data';
 import { evaluate, type Evaluation, type Finding, type Subject } from './engine';
-import { CONTENT_CHECKS, MIN_COVERAGE, type Check, type Declare, type Manual, type Stage } from './spec';
+import { CONTENT_CHECKS, MIN_COVERAGE, parseNeeds, type Check, type Declare, type Manual, type Stage } from './spec';
 
 /** Số liệu lưu kèm ứng viên để hiện mà không phải nạp lại. KOC bị loại tự động không giữ video nổi bật cho gọn. */
 function snapshot(s: Subject, e: Evaluation, keepVideos: boolean) {
@@ -12,7 +12,7 @@ function snapshot(s: Subject, e: Evaluation, keepVideos: boolean) {
   return {
     name: s.name, avatarUrl: s.avatarUrl, niche: s.niche, kl: e.kl, klSource: e.klSource, price: e.price, priceSource: e.priceSource,
     metrics: m && { ...m, categories: m.categories?.slice(0, 5) ?? null, locations: m.locations?.slice(0, 5) ?? null, brands: m.brands.slice(0, 10), topVideos: keepVideos ? m.topVideos : [] },
-    bookings: s.history.bookings.length, ratings: s.history.ratings.length,
+    bookings: s.history.bookings.length, ratings: s.history.ratings.length, kwHits: s.kwHits?.length ? s.kwHits : undefined,
   };
 }
 
@@ -61,7 +61,7 @@ export async function runMatching(briefId: string): Promise<string> {
   }
   if (!brief.ranAt) await migrateDecisions(briefId);
   const fmt = (x: number) => x.toLocaleString('vi-VN');
-  const note = `${fmt(pool + ko + out)} KOC (${fmt(fromWarehouse)} từ kho) · ${fmt(pool)} trong pool · ${fmt(ko)} bị loại tự động · ${fmt(out)} ngoài bộ lọc ngành / KL`;
+  const note = `Tìm được ${fmt(pool + ko + out)} KOC (${fmt(fromWarehouse)} ngoài Danh bạ): ${fmt(pool)} đang xét, ${fmt(ko)} hệ thống loại, ${fmt(out)} không khớp ngành / cấp KOC`;
   await db.matchBrief.update({ where: { id: briefId }, data: { ranAt: new Date(), runNote: note } });
   return note;
 }
@@ -119,7 +119,36 @@ export async function rescore(candidateId: string, patch: { declare?: Declare; m
   return { c, e, ctx };
 }
 
+/**
+ * Ghi điểm tay của nhiều ứng viên một lượt (AI chấm "Hợp nội dung brand") rồi chấm lại: nạp đợt, ngữ cảnh và số liệu một lần.
+ * Không đổi trạng thái; KOC trượt tiêu chí bắt buộc vẫn do Booker loại tay như chấm tay thường.
+ */
+export async function rescoreMany(briefId: string, patches: Map<string, Manual>) {
+  const brief = (await loadBrief(briefId)) as BriefFull;
+  const ctx = await buildContext(brief);
+  const cands = await db.matchCandidate.findMany({ where: { briefId, id: { in: [...patches.keys()] } } });
+  const subjects = await loadSubjects(ctx, [...new Set(cands.map((c) => c.handle))]);
+  let n = 0;
+  for (const c of cands) {
+    const s = subjects.find((x) => x.platform === c.platform && x.handle === c.handle);
+    if (!s) continue;
+    const manual = { ...((c.manual ?? {}) as Manual), ...patches.get(c.id) };
+    const e = evaluate(s, ctx, (c.declare ?? {}) as Declare, manual);
+    await db.matchCandidate.update({
+      where: { id: c.id },
+      data: {
+        manual: manual as Prisma.InputJsonObject, kl: e.kl, data: snapshot(s, e, c.stage !== 'KO' && c.stage !== 'OUT') as Prisma.InputJsonObject,
+        knockouts: autoKo(e) as unknown as Prisma.InputJsonArray, flags: e.flags as unknown as Prisma.InputJsonArray,
+        score: e.score as unknown as Prisma.InputJsonObject, total: rankTotal(e), tier: e.score.tier,
+      },
+    });
+    n++;
+  }
+  return n;
+}
+
 /** Mã kiểm tra nội dung áp cho đợt: K3 khi brand bật, K11 khi SKU có trường hợp loại. */
 export const contentChecksFor = (b: BriefFull) =>
-  CONTENT_CHECKS.filter((k) => (k !== 'K3' || (b.brandRef?.rules as { k3?: boolean } | null)?.k3 === true) && (k !== 'K11' || (b.product?.exclusions.length ?? 0) > 0));
+  CONTENT_CHECKS.filter((k) => (k !== 'K3' || (b.brandRef?.rules as { k3?: boolean } | null)?.k3 === true)
+    && (k !== 'K11' || (b.product?.exclusions.length ?? 0) > 0 || (parseNeeds(b.needs).exclusions?.length ?? 0) > 0));
 export const checksDone = (checks: Record<string, Check>, codes: readonly string[]) => codes.filter((k) => checks[k]).length;

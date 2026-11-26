@@ -6,7 +6,7 @@ import { db } from '../db';
 import { brandKey } from '../booking/listing';
 import { profileInsights, USD_VND } from '../koc/kocInsights';
 import type { Benchmark, Context, History, Metrics, PastBooking, Share, Subject, Video } from './engine';
-import { CHANNEL_PLATFORMS, CHANNELS, parseRules, parseSlots, type Channel, type Outcome } from './spec';
+import { CHANNEL_PLATFORMS, CHANNELS, parseNeeds, parseRules, parseSlots, type Channel, type Outcome } from './spec';
 
 // ponytail: pool từ kho giới hạn theo GMV / follower sau khi lọc ngành và follower tối thiểu; nâng khi kho đủ sạch và cần rộng hơn.
 export const POOL_CAP = 3000;
@@ -50,6 +50,8 @@ export async function buildContext(b: BriefFull): Promise<Context> {
   const brand = b.brandRef;
   const rules = parseRules(brand?.rules);
   const p = b.product;
+  const nd = parseNeeds(b.needs);
+  const uniq = (xs: string[]) => [...new Map(xs.map((x) => [x.toLowerCase(), x])).values()];
   const peerWhere: Prisma.BrandWhereInput[] = [
     ...(brand?.group ? [{ group: { equals: brand.group, mode: 'insensitive' as const } }] : []),
     ...(brand?.subCategory ? [{ subCategory: { equals: brand.subCategory, mode: 'insensitive' as const } }] : []),
@@ -62,14 +64,18 @@ export async function buildContext(b: BriefFull): Promise<Context> {
   const lower = (xs: string[]) => new Set(xs.map((h) => h.trim().replace(/^@/, '').toLowerCase()).filter(Boolean));
   return {
     brandName: brand?.name ?? b.brand, channel, objective: b.objective, gmvMax: b.gmvMax, expertClaim: b.expertClaim,
-    category: brand?.category ?? b.category ?? null, competitors: brand?.competitors ?? [], bannedClaims: brand?.bannedClaims ?? [],
+    category: brand?.category ?? b.category ?? null, competitors: uniq([...(brand?.competitors ?? []), ...(nd.competitors ?? [])]), bannedClaims: brand?.bannedClaims ?? [],
     groupKeys: new Set(peers.map((x) => brandKey(x.name))), rules,
-    product: p ? {
-      price: p.price, targetGender: p.targetGender, ageMin: p.ageMin, ageMax: p.ageMax, femaleMin: p.femaleMin, age18_34Min: p.age18_34Min,
-      regions: p.regions, regionMin: p.regionMin, channelTypes: p.channelTypes, exclusions: p.exclusions, bannedWords: p.bannedWords,
+    // Sản phẩm ở Danh mục là chính; yêu cầu của đợt (AI đọc brief hoặc Booker nhập) bổ sung chỗ còn trống.
+    product: p || nd.targetGender || nd.ageMin || nd.ageMax || nd.regions?.length || nd.bannedWords?.length || nd.exclusions?.length ? {
+      price: p?.price ?? b.dealPrice ?? null, targetGender: p?.targetGender ?? (nd.targetGender === 'Nữ' || nd.targetGender === 'Nam' ? nd.targetGender : null),
+      ageMin: p?.ageMin ?? nd.ageMin ?? null, ageMax: p?.ageMax ?? nd.ageMax ?? null, femaleMin: p?.femaleMin ?? null, age18_34Min: p?.age18_34Min ?? null,
+      regions: p?.regions.length ? p.regions : nd.regions ?? [], regionMin: p?.regionMin ?? null, channelTypes: p?.channelTypes ?? [],
+      exclusions: uniq([...(p?.exclusions ?? []), ...(nd.exclusions ?? [])]), bannedWords: uniq([...(p?.bannedWords ?? []), ...(nd.bannedWords ?? [])]),
     } : null,
     dealPrice: b.dealPrice, airAt: airDateOf(b.airMonth, b.airWeek), airMonth: b.airMonth, benchmarks,
     include: lower(b.includeHandles), exclude: lower(b.excludeHandles), neededKls: [...new Set(parseSlots(b.slots).map((s) => s.kl))], now: new Date(),
+    keywords: [...new Set((nd.keywords ?? []).map((k) => k.toLowerCase()).filter((k) => k.length >= 3))],
   };
 }
 
@@ -133,6 +139,14 @@ async function loadHistories(handles: string[], kocIds: string[]) {
  * Hồ sơ ứng viên của đợt. Không truyền handles: cả pool (bước 2) = mọi KOC Danh bạ trên nền tảng của kênh + creator trong kho
  * (lọc ngành, follower tối thiểu, tối đa POOL_CAP). Có handles: chỉ các ứng viên đó (chấm lại một KOC).
  */
+const KW_CAP = 1000;
+/** Từ khoá của đợt có trong tiêu đề / sản phẩm gắn của video nổi bật. */
+function keywordHits(w: WarehouseCreator, keywords: string[]) {
+  if (!keywords.length || !Array.isArray(w.topVideos)) return [];
+  const text = (w.topVideos as { title?: string; products?: string | null }[]).map((v) => `${v.title ?? ''} ${v.products ?? ''}`).join(' ').toLowerCase();
+  return keywords.filter((k) => text.includes(k));
+}
+
 export async function loadSubjects(ctx: Context, handles?: string[]): Promise<Subject[]> {
   const platforms = CHANNEL_PLATFORMS[ctx.channel];
   const onlyThese = handles ? { handle: { in: handles } } : {};
@@ -153,15 +167,21 @@ export async function loadSubjects(ctx: Context, handles?: string[]): Promise<Su
     const mins = ctx.neededKls.map((kl) => ctx.rules.kl[kl]?.followersMin);
     const minF = mins.length && mins.every((x) => x != null) ? Math.min(...(mins as number[])) : 0;
     const cat = ctx.category ? `%${ctx.category.toLowerCase()}%` : null;
-    const [pool, known] = await Promise.all([
+    // Creator có video / sản phẩm gắn khớp từ khoá của đợt: thêm vào dù không đúng ngành (tối đa KW_CAP người, GMV cao trước).
+    const kwPatterns = ctx.keywords.map((k) => `%${k}%`);
+    const [pool, known, byKeyword] = await Promise.all([
       db.$queryRaw<WarehouseCreator[]>`
         select * from "WarehouseCreator" w where w.platform = any(${platforms}) and coalesce(w.followers, 0) >= ${minF}
           and (${cat}::text is null or w.categories is null or exists (
             select 1 from jsonb_array_elements(w.categories) e where lower(e->>'name') like ${cat} and (e->>'share')::float * 100 >= ${ctx.rules.industryGmvMin}))
         order by w.gmv desc nulls last, w.followers desc nulls last limit ${POOL_CAP}`,
       dirHandles.length ? db.warehouseCreator.findMany({ where: { platform: { in: platforms }, handle: { in: dirHandles } } }) : [],
+      kwPatterns.length ? db.$queryRaw<WarehouseCreator[]>`
+        select * from "WarehouseCreator" w where w.platform = any(${platforms}) and coalesce(w.followers, 0) >= ${minF}
+          and w."topVideos"::text ilike any(${kwPatterns}::text[])
+        order by w.gmv desc nulls last, w.followers desc nulls last limit ${KW_CAP}` : [],
     ]);
-    wh = [...new Map([...pool, ...known].map((w) => [`${w.platform}|${w.handle}`, w])).values()];
+    wh = [...new Map([...pool, ...known, ...byKeyword].map((w) => [`${w.platform}|${w.handle}`, w])).values()];
   }
   const whBy = new Map(wh.map((w) => [`${w.platform}|${w.handle}`, w]));
   const keys = [...new Set([...dir.keys(), ...whBy.keys()])];
@@ -177,7 +197,7 @@ export async function loadSubjects(ctx: Context, handles?: string[]): Promise<Su
       platform, handle, name: k?.nickname ?? k?.name ?? w?.nickname ?? handle, kocId: k?.id ?? null, avatarUrl: k?.avatarUrl ?? w?.avatarUrl ?? null,
       kl: k?.kl ?? k?.klAuto ?? null, niche: k?.niche ?? null, blacklisted: k?.blacklisted ?? false, blacklistReason: k?.blacklistReason ?? null,
       rateCard: k?.rateCard ?? null, metrics: w ? metricsFromWarehouse(w) : k ? metricsFromKoc(k) : null,
-      history: hist(historyKey(key), k?.id ?? null),
+      history: hist(historyKey(key), k?.id ?? null), kwHits: w ? keywordHits(w, ctx.keywords) : [],
     };
   });
 }

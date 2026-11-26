@@ -29,6 +29,7 @@ export type Subject = {
   platform: string; handle: string; name: string; kocId: string | null; avatarUrl: string | null;
   kl: string | null; niche: string | null; blacklisted: boolean; blacklistReason: string | null; rateCard: number | null;
   metrics: Metrics | null; history: History;
+  kwHits?: string[]; // từ khoá của đợt khớp video / sản phẩm của creator (tìm thêm KOC ngoài ngành)
 };
 export type Benchmark = { gmvPerVideo: number | null; views: number | null; cpv: number | null; n: number };
 export type Product = {
@@ -43,6 +44,7 @@ export type Context = {
   airAt: Date; airMonth: string | null; // "2026-12"
   benchmarks: Record<string, Benchmark>; // theo KL, "*" = mọi KL
   include: Set<string>; exclude: Set<string>; neededKls: string[]; now: Date;
+  keywords: string[]; // từ khoá của đợt (chữ thường): tìm thêm creator có video / sản phẩm khớp
 };
 export type Finding = { code: string; detail: string };
 
@@ -119,12 +121,13 @@ function conduct(h: History, now: Date) {
   };
 }
 
-/** Bước 2: creator có thuộc pool không (lọc ngành I-21 và KL cần book I-32). Trả lý do nếu không. Brand chỉ định thì luôn vào. */
+/** Bước 2: creator có khớp yêu cầu không (ngành của brand, cấp KOC cần book). Trả lý do nếu không. Brand chỉ định thì luôn vào;
+ * creator khớp từ khoá của đợt thì bỏ qua điều kiện ngành. */
 export function outOfPool(s: Subject, ctx: Context, kl: string | null): string | null {
   if (ctx.include.has(s.handle)) return null;
   const { max } = categoryShare(s.metrics?.categories ?? null, ctx.category);
-  if (max != null && max * 100 < ctx.rules.industryGmvMin) return `GMV ngành ${ctx.category} tối đa ${pct(max)} < ${ctx.rules.industryGmvMin}%`;
-  if (ctx.neededKls.length && kl && !ctx.neededKls.includes(kl)) return `${kl} không nằm trong số KOC cần book`;
+  if (!s.kwHits?.length && max != null && max * 100 < ctx.rules.industryGmvMin) return `Hàng ngành ${ctx.category} chỉ chiếm tối đa ${pct(max)} GMV của kênh (cần từ ${ctx.rules.industryGmvMin}%)`;
+  if (ctx.neededKls.length && kl && !ctx.neededKls.includes(kl)) return `Cấp ${kl} không nằm trong số KOC cần book`;
   return null;
 }
 
@@ -148,7 +151,7 @@ export function dataKnockouts(s: Subject, ctx: Context, kl: string | null, d: De
     const near = dates.sort((a, b) => Math.abs(+a.at - +ctx.airAt) - Math.abs(+b.at - +ctx.airAt))[0];
     if (near) {
       const days = Math.round(Math.abs(+ctx.airAt - +near.at) / DAY);
-      if (days < ctx.rules.cooldownDays) ko.push({ code: 'K6', detail: `Book ${ctx.brandName} ngày ${near.at.toLocaleDateString('vi-VN')} (${near.what}), cách ngày air ${days} ngày < ${ctx.rules.cooldownDays}` });
+      if (days < ctx.rules.cooldownDays) ko.push({ code: 'K6', detail: `Đã book ${ctx.brandName} ngày ${near.at.toLocaleDateString('vi-VN')} (${near.what}), chỉ cách ngày air ${days} ngày (cần từ ${ctx.rules.cooldownDays} ngày)` });
     }
   }
   // K7: booking cùng tháng air cho brand cùng tập đoàn / ngành con.
@@ -177,7 +180,7 @@ export function dataKnockouts(s: Subject, ctx: Context, kl: string | null, d: De
       const t = r[k] as number | undefined;
       if (t == null) continue;
       if (v == null) flags.push({ code: 'K9', detail: `${label}: chưa có số liệu để so ngưỡng ${kl}` });
-      else if (!ok(v, t)) (must.has(k) ? ko : flags).push({ code: 'K9', detail: `${label} ${fmt(v)} ${k.endsWith('Max') ? '>' : '<'} ngưỡng ${kl} ${fmt(t)}${must.has(k) ? '' : ' (Nice to have)'}` });
+      else if (!ok(v, t)) (must.has(k) ? ko : flags).push({ code: 'K9', detail: `${label} ${fmt(v)} ${k.endsWith('Max') ? '>' : '<'} ngưỡng ${kl} ${fmt(t)}${must.has(k) ? '' : ' (chỉ cảnh báo)'}` });
     }
   }
   // K10: tệp follower bắt buộc của SKU.
@@ -219,7 +222,7 @@ export function dataKnockouts(s: Subject, ctx: Context, kl: string | null, d: De
   const sold = (m?.topVideos ?? []).map((v) => `${v.title} ${v.products ?? ''}`.toLowerCase()); // thêm tên sản phẩm gắn trong video
   const rivals = ctx.competitors.filter((r) => r && sold.some((t) => t.includes(r.toLowerCase())));
   if (rivals.length) flags.push({ code: 'K8', detail: `Video nổi bật (tiêu đề / sản phẩm gắn) nhắc đối thủ: ${rivals.join(', ')}` });
-  if (ctx.include.has(s.handle)) flags.push({ code: 'I36', detail: 'Brand chỉ định KOC này: giữ trong pool dù có mã loại' });
+  if (ctx.include.has(s.handle)) flags.push({ code: 'I36', detail: 'Brand chỉ định KOC này: luôn giữ lại' });
   return { ko, flags };
 }
 
@@ -354,8 +357,8 @@ export function scoreSubject(s: Subject, ctx: Context, kl: string | null, d: Dec
     for (const p of parts) if (p.must && p.score != null && p.score < 3) mustFail.push(`${p.label} ${p.score}/5`);
     // Tiêu chí "Bắt buộc" chỉ dùng để lọc; điểm nhóm 0 = TB các tiêu chí "Cộng điểm" (doc: thư viện nhóm 0).
     const scored = parts.filter((p) => !p.must);
-    groups.unshift({ group: 'G0', weight: weights.G0, score: scored.length ? mean(scored) : a.score, parts, note: scored.length ? undefined : 'Chỉ có tiêu chí Bắt buộc: điểm nhóm lấy TB nhóm A' });
-  } else groups.unshift({ group: 'G0', weight: weights.G0, score: a.score, parts: [], note: 'Brand chưa chọn tiêu chí nhóm 0: lấy điểm trung bình nhóm A (I-27)' });
+    groups.unshift({ group: 'G0', weight: weights.G0, score: scored.length ? mean(scored) : a.score, parts, note: scored.length ? undefined : 'Brand chỉ chọn tiêu chí bắt buộc: điểm nhóm lấy theo "Hợp brand & tệp khách"' });
+  } else groups.unshift({ group: 'G0', weight: weights.G0, score: a.score, parts: [], note: 'Brand chưa chọn yêu cầu riêng: lấy điểm theo "Hợp brand & tệp khách"' });
 
   const filled = (gr: GroupResult) => {
     const ps = gr.parts.length ? gr.parts.filter((p) => !p.must) : a.parts;

@@ -20,10 +20,12 @@ export function NavLink({ href, children }: { href: string; children: React.Reac
 export function ActionForm({
   action,
   className,
+  pendingText,
   children,
 }: {
   action: (prev: string | null, fd: FormData) => Promise<string | null>;
   className?: string;
+  pendingText?: string; // hiện khi đang chạy (việc lâu như AI)
   children: React.ReactNode;
 }) {
   const [error, run, pending] = useActionState(action, null);
@@ -39,6 +41,7 @@ export function ActionForm({
       <fieldset disabled={pending} className="contents">
         {children}
       </fieldset>
+      {pending && pendingText && <p role="status" className="col-span-full text-xs text-accent">{pendingText}</p>}
       {error && (
         <p role="alert" className="col-span-full rounded-md bg-critical-soft px-3 py-2 text-critical">
           {error}

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Avatar } from '@/components/ui';
 import { fmtShort } from '@/lib/format';
 import type { Finding, Metrics, ScoreResult } from '@/lib/matching/engine';
-import { GROUP_LABEL, KO, koLabel, STAGES, STAGE_TONE, STEPS, type Group, type Stage } from '@/lib/matching/spec';
+import { KO, koLabel, STAGES, STAGE_TONE, STEPS, type Manual, type Stage } from '@/lib/matching/spec';
 
 /** Bước đang làm của đợt, để mở đúng tab. */
 export function currentStep(b: { ranAt: Date | null }, n: Partial<Record<Stage, number>>) {
@@ -19,56 +19,79 @@ export function Stepper({ briefId, step, counts }: { briefId: string; step: numb
   return (
     <nav aria-label="Các bước" className="mb-4 overflow-x-auto">
       <ol className="flex min-w-max gap-1">
-        {STEPS.map((s) => (
-          <li key={s.n}>
-            <Link
-              href={`/matching/${briefId}?step=${s.n}`}
-              aria-current={s.n === step ? 'step' : undefined}
-              title={s.hint}
-              className={`flex h-full flex-col rounded-md border px-2.5 py-1.5 text-xs ${s.n === step ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-surface text-ink-2 hover:border-accent'}`}
-            >
-              <span className="font-semibold">{s.n}. {s.title}</span>
-              <span className="text-ink-3">{counts[s.n] != null ? `${counts[s.n]!.toLocaleString('vi-VN')} KOC` : ' '}</span>
-            </Link>
-          </li>
-        ))}
+        {STEPS.map((s) => {
+          const on = s.n === step;
+          return (
+            <li key={s.n}>
+              <Link
+                href={`/matching/${briefId}?step=${s.n}`}
+                aria-current={on ? 'step' : undefined}
+                title={s.hint}
+                className={`flex h-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs ${on ? 'border-accent bg-accent-soft text-accent' : 'border-line bg-surface text-ink-2 hover:border-accent'}`}
+              >
+                <span className={`grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${on ? 'bg-accent text-surface' : 'bg-sunken text-ink-2'}`}>{s.n}</span>
+                <span>
+                  <span className="block font-semibold">{s.title}</span>
+                  <span className="block text-ink-3">{counts[s.n] != null ? `${counts[s.n]!.toLocaleString('vi-VN')} KOC` : ' '}</span>
+                </span>
+              </Link>
+            </li>
+          );
+        })}
       </ol>
     </nav>
   );
 }
 
-export const StageChip = ({ stage }: { stage: string }) => <span className={`pill ${STAGE_TONE[stage as Stage] ?? 'bg-sunken text-ink-2'}`}>{STAGES[stage as Stage] ?? stage}</span>;
+/** Ô "Việc cần làm" đầu mỗi bước: một câu hướng dẫn, các nút chính, link sang bước sau. */
+export function Todo({ briefId, step, children }: { briefId: string; step: number; children?: React.ReactNode }) {
+  const s = STEPS[step - 1];
+  return (
+    <section className="mb-4 rounded-lg border border-accent/30 bg-accent-soft/40 px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 max-w-3xl">
+          <h2 className="text-[13px] font-semibold text-accent">Bước {step}. {s.title}: việc cần làm</h2>
+          <p className="mt-0.5 text-[13px] text-ink-2">{s.todo}</p>
+        </div>
+        {step < 10 && <Link href={`/matching/${briefId}?step=${step + 1}`} className="btn h-8 shrink-0 px-3 text-xs">Sang bước {step + 1}: {STEPS[step].title} →</Link>}
+      </div>
+      {children && <div className="mt-3 flex flex-wrap items-end gap-2">{children}</div>}
+    </section>
+  );
+}
+
+export const StageChip = ({ stage }: { stage: string }) => <span className={`pill whitespace-nowrap ${STAGE_TONE[stage as Stage] ?? 'bg-sunken text-ink-2'}`}>{STAGES[stage as Stage] ?? stage}</span>;
 
 export function TierChip({ score }: { score: ScoreResult | null }) {
   if (!score) return <span className="text-xs text-ink-3">—</span>;
-  return <span className={`pill ${score.tone}`} title={score.action}>{score.tier}</span>;
+  return <span className={`pill whitespace-nowrap ${score.tone}`} title={score.action}>{score.tier}</span>;
 }
 
-/** Tổng điểm + độ phủ số liệu. */
+/** Điểm trên 100. Di chuột: điểm tính trên bao nhiêu phần số liệu. */
 export function Total({ score }: { score: ScoreResult | null }) {
   if (!score || score.total == null) return <span className="text-ink-3">—</span>;
+  const cov = Math.round(score.coverage * 100);
   return (
-    <span className="tabular-nums" title={`Độ phủ số liệu ${Math.round(score.coverage * 100)}% trọng số`}>
-      <b>{score.total.toFixed(1).replace('.', ',')}</b>
-      <span className="ml-1 text-[11px] text-ink-3">{Math.round(score.coverage * 100)}%</span>
+    <span className={`font-semibold tabular-nums ${cov < 50 ? 'text-ink-3' : ''}`} title={`Điểm trên 100, tính trên ${cov}% các mục có số liệu`}>
+      {Math.round(score.total)}
     </span>
   );
 }
 
-/** Điểm 1–5 của 6 nhóm, ô trống = chưa có số liệu. */
-export function GroupCells({ score }: { score: ScoreResult | null }) {
-  const by = new Map((score?.groups ?? []).map((g) => [g.group, g.score]));
+/** Điểm "Hợp nội dung brand" do AI hoặc Booker chấm. */
+export function FitCell({ manual }: { manual: unknown }) {
+  const a3 = ((manual ?? {}) as Manual).A3;
+  if (!a3) return <span className="text-xs text-ink-3">Chưa chấm</span>;
+  const tone = a3.score >= 4 ? 'text-positive' : a3.score <= 2 ? 'text-critical' : 'text-ink';
   return (
-    <>
-      {(['G0', 'A', 'B', 'C', 'D', 'E'] as Group[]).map((g) => {
-        const v = by.get(g);
-        return <td key={g} className={`text-center tabular-nums ${v == null ? 'text-ink-3' : v >= 4 ? 'text-positive' : v < 2.5 ? 'text-critical' : ''}`} title={GROUP_LABEL[g]}>{v == null ? '·' : v.toFixed(1).replace('.', ',')}</td>;
-      })}
-    </>
+    <div className="max-w-72 text-xs">
+      <b className={tone}>{a3.score}/5</b>{a3.by === 'AI' && <span className="ml-1 pill bg-accent-soft text-accent">AI</span>}
+      {a3.note && <div className="text-ink-2">{a3.note}</div>}
+    </div>
   );
 }
-export const GROUP_HEADS = (['G0', 'A', 'B', 'C', 'D', 'E'] as Group[]).map((g) => <th key={g} className="text-center" title={GROUP_LABEL[g]}>{g === 'G0' ? '0' : g}</th>);
 
+/** Lý do loại / cảnh báo bằng chữ thường. */
 export function Findings({ list, empty, hideInternal }: { list: Finding[]; empty?: string; hideInternal?: boolean }) {
   const shown = hideInternal ? list.filter((f) => !(f.code in KO && 'internal' in KO[f.code as keyof typeof KO])) : list;
   if (!shown.length) return empty ? <span className="text-xs text-ink-3">{empty}</span> : null;
@@ -81,10 +104,10 @@ export function Findings({ list, empty, hideInternal }: { list: Finding[]; empty
 
 export type CandData = {
   name?: string; avatarUrl?: string | null; niche?: string | null; kl?: string | null; klSource?: string | null; price?: number | null; priceSource?: string | null;
-  metrics?: Metrics | null; bookings?: number; ratings?: number;
+  metrics?: Metrics | null; bookings?: number; ratings?: number; kwHits?: string[];
 };
 
-/** Ô KOC: ảnh, tên, ID kênh, KL, nguồn; bấm mở chi tiết ứng viên. */
+/** Ô KOC: ảnh, tên, ID kênh, cấp KOC; bấm mở chi tiết. */
 export function KocCell({ href, handle, platform, d, kocId }: { href: string; handle: string; platform: string; d: CandData; kocId: string | null }) {
   return (
     <div className="flex items-center gap-2">
@@ -92,16 +115,15 @@ export function KocCell({ href, handle, platform, d, kocId }: { href: string; ha
       <div className="min-w-0">
         <Link href={href} scroll={false} className="font-medium hover:text-accent hover:underline">{d.name ?? handle}</Link>
         <div className="text-xs text-ink-3">
-          @{handle}{platform !== 'TikTok' && ` · ${platform}`}{d.kl && ` · ${d.kl}${d.klSource === 'Suy theo follower' ? '*' : ''}`}{d.niche && ` · ${d.niche}`}
-          {!kocId && <span className="ml-1 pill bg-accent-soft text-accent">Kho</span>}
+          @{handle}{platform !== 'TikTok' && ` · ${platform}`}{d.kl && ` · ${d.kl}`}
+          {!kocId && <span className="ml-1 pill bg-sunken text-ink-2" title="Creator lấy từ kho dữ liệu, chưa có trong Danh bạ KOC">Ngoài Danh bạ</span>}
         </div>
+        {d.kwHits?.length ? <div className="text-[11px] text-accent" title="Video / sản phẩm của creator có từ khoá của đợt">Khớp: {d.kwHits.slice(0, 3).join(', ')}</div> : null}
       </div>
     </div>
   );
 }
 
-export const metricCells = (m: Metrics | null | undefined) => [
-  fmtShort(m?.followers), fmtShort(m?.medianViews), m?.er == null ? '—' : `${(m.er * 100).toFixed(1).replace('.', ',')}%`, fmtShort(m?.gmv),
-];
+export const metricCells = (m: Metrics | null | undefined) => [fmtShort(m?.followers), fmtShort(m?.medianViews), fmtShort(m?.gmv)];
 export const channelUrl = (platform: string, handle: string) =>
   platform === 'TikTok' ? `https://www.tiktok.com/@${handle}` : platform === 'Threads' ? `https://www.threads.net/@${handle}` : platform === 'Instagram' ? `https://www.instagram.com/${handle}` : null;

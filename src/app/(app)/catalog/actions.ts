@@ -29,7 +29,7 @@ export async function saveBrand(_: string | null, fd: FormData): Promise<string 
   if (logoUrl === undefined) return 'Link logo phải bắt đầu bằng http(s)://';
   const data = {
     name, logoUrl, usp: opt(fd, 'usp'), guideline: opt(fd, 'guideline'), checklist: opt(fd, 'checklist'), keywords: opt(fd, 'keywords'), note: opt(fd, 'note'),
-    // Khối 1. Brand Profile cho Creator matching
+    // Thông tin brand dùng cho Creator matching
     category: opt(fd, 'category'), subCategory: opt(fd, 'subCategory'), group: opt(fd, 'group'), audience: opt(fd, 'audience'), tone: opt(fd, 'tone'),
     rtb: opt(fd, 'rtb'), bannedClaims: list(fd, 'bannedClaims'), competitors: list(fd, 'competitors'),
   };
@@ -110,7 +110,7 @@ export async function saveProduct(_: string | null, fd: FormData): Promise<strin
   if (Number.isNaN(price)) return 'Giá là số nguyên ≥ 0.';
   const storeId = str(fd, 'storeId') || null;
   if (storeId && !(await db.store.count({ where: { id: storeId, brandId } }))) return 'Gian hàng không thuộc brand này.';
-  // Khối 2. SKU Config cho Creator matching
+  // Thông tin sản phẩm dùng cho Creator matching
   const ageMin = optInt(fd, 'ageMin'), ageMax = optInt(fd, 'ageMax');
   const femaleMin = optNum(fd, 'femaleMin'), age18_34Min = optNum(fd, 'age18_34Min'), regionMin = optNum(fd, 'regionMin');
   if ([ageMin, ageMax].some(Number.isNaN) || (ageMin != null && ageMax != null && ageMin > ageMax)) return 'Độ tuổi mục tiêu: nhập số, "từ" không lớn hơn "đến".';
@@ -174,7 +174,7 @@ export async function saveTierPrices(_: string | null, fd: FormData): Promise<st
   redirect('/catalog?tab=prices');
 }
 
-/** Khối 3. Ngưỡng và quy tắc lọc KOC của brand (I-09, I-19 – I-27, I-56). */
+/** Quy tắc lọc KOC của brand (ngưỡng theo cấp KOC, chống trùng, đối thủ, yêu cầu riêng). */
 export async function saveRules(_: string | null, fd: FormData): Promise<string | null> {
   const me = await editor();
   const brandId = str(fd, 'brandId');

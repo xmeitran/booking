@@ -183,7 +183,7 @@ export async function aiDraftBrief(fd: FormData) {
   const id = str(fd, 'id');
   await guard(me, 'job', id);
   const { aiBrief, aiEnabled } = await import('@/lib/ai');
-  if (!aiEnabled()) redirect(`/jobs/${id}?err=${encodeURIComponent('Chưa cấu hình AI (biến ANTHROPIC_API_KEY trên Render).')}`);
+  if (!(await aiEnabled())) redirect(`/jobs/${id}?err=${encodeURIComponent('Chưa gắn key Claude (Phân quyền → Tích hợp → API AI).')}`);
   const j = await db.job.findUniqueOrThrow({ where: { id }, include: { koc: true, brand: true, product: true } });
   let brief: string;
   try {

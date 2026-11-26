@@ -83,8 +83,8 @@ export const INTEGRATIONS: Integration[] = [
     ],
   },
   {
-    id: 'ai', code: 'AI', name: 'API AI (Content Copilot)',
-    what: 'AI viết brief cho job (Claude). Tài liệu liệt kê thêm Gemini, OpenAI: chỉ cần khi muốn đổi nhà cung cấp.',
+    id: 'ai', code: 'AI', name: 'API AI (Claude)',
+    what: 'Claude cho: Creator matching (đọc brief để điền yêu cầu đợt, chấm độ hợp nội dung của KOC) và viết brief nháp cho job. Đặt hạn mức chi tiêu ở Anthropic Console.',
     todo: ['AI đọc transcript / chấm video khi nghiệm thu: cần nguồn transcript.', 'Tìm KOC theo đối thủ / hashtag / xu hướng và tìm kênh khác của KOC bằng AI (Kalodata, TikTok Shop): chưa làm.'],
     items: [{ key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key', secret: true }],
   },

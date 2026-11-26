@@ -3,17 +3,18 @@
 // trọng số theo kênh, thang kết luận, tiêu chí riêng Threads. Chỉ là dữ liệu; cách tính ở engine.ts.
 // Doc chỉ cho mốc 1 / 3 / 5 điểm; khoảng giữa hai mốc (vd view rate 5–10%) được 2 hoặc 4 điểm.
 
+// title: tên bước; todo: việc người dùng cần làm ở bước đó (hiện trong ô "Việc cần làm").
 export const STEPS = [
-  { n: 1, title: 'Đầu vào', hint: 'Brand, cấu hình SKU và nhu cầu đợt (Khối 1–4)' },
-  { n: 2, title: 'Pool ứng viên', hint: 'Danh bạ KOC + kho creator, lọc ngành và ngưỡng kênh' },
-  { n: 3, title: 'Loại bằng dữ liệu', hint: 'K6, K7, K9, K10, K13, K15 tự động' },
-  { n: 4, title: 'Loại theo nội dung', hint: 'K1, K2, K3, K4, K5, K8, K11 trên 20–30 video gần nhất' },
-  { n: 5, title: 'Chấm sơ bộ & shortlist', hint: 'Chấm A–E, lấy top N để liên hệ' },
-  { n: 6, title: 'KOC báo giá & xác nhận', hint: 'Rate card, ads code, cam kết đối thủ, chứng chỉ (K8, K12, K14)' },
-  { n: 7, title: 'Chấm hoàn chỉnh', hint: 'Tính CPV theo giá báo, nhóm 0, nhóm D, tổng 0–100' },
-  { n: 8, title: 'B2C duyệt', hint: 'Duyệt list, kiểm tra ngân sách, số KOC theo KL, mục tiêu GMV' },
-  { n: 9, title: 'Xuất list', hint: 'Ẩn K15; kèm điểm 6 nhóm, mức kết luận và lý do chính' },
-  { n: 10, title: 'Đánh giá sau air', hint: 'GMV/video, CPV, ROI → book lại, vào core hoặc dừng' },
+  { n: 1, title: 'Nhập yêu cầu', hint: 'Brand, sản phẩm, cần bao nhiêu KOC, air khi nào, yêu cầu nội dung', todo: 'Kiểm tra yêu cầu của đợt. Thiếu gì thì bấm "Sửa yêu cầu" (hoặc dán brief để AI điền giúp), xong bấm "Tìm KOC".' },
+  { n: 2, title: 'Tìm KOC', hint: 'Lấy KOC từ Danh bạ và kho dữ liệu, đúng ngành và cấp KOC', todo: 'Xem danh sách KOC hệ thống tìm được. Không cần làm gì thêm, sang bước 3.' },
+  { n: 3, title: 'Lọc tự động', hint: 'Hệ thống loại KOC vừa book, trùng brand cùng tập đoàn, dưới ngưỡng follower…', todo: 'Xem KOC bị loại và lý do. KOC nào vẫn muốn dùng thì bấm "Giữ lại" (cần người có quyền duyệt).' },
+  { n: 4, title: 'Kiểm tra nội dung', hint: 'Xem video gần đây: phốt, nói quá, đăng sản phẩm đối thủ', todo: 'Mở kênh từng KOC điểm cao, xem video gần đây. Không có vấn đề thì bấm "Không vi phạm"; có thì mở "Kiểm chi tiết" để loại.' },
+  { n: 5, title: 'Chọn KOC liên hệ', hint: 'Chọn KOC điểm cao, hợp nội dung để hỏi giá', todo: 'Bấm "AI chấm độ hợp nội dung" (nếu có), rồi tick KOC muốn liên hệ hoặc lấy nhanh top theo điểm.' },
+  { n: 6, title: 'Hỏi giá KOC', hint: 'Ghi giá, ads code, cam kết không đăng đối thủ', todo: 'Liên hệ từng KOC đã chọn, bấm "Ghi giá" để nhập giá báo và cam kết. Đủ thông tin thì bấm "Xác nhận đã báo giá".' },
+  { n: 7, title: 'Chấm điểm', hint: 'Chấm thêm phần hệ thống chưa tự chấm được', todo: 'Mở "Chấm điểm" ở KOC còn thiếu mục, chấm 1–5 các mục hệ thống không có số liệu (chất lượng video, tone…).' },
+  { n: 8, title: 'Trưởng nhóm duyệt', hint: 'Duyệt list trong ngân sách và đủ số KOC', todo: 'Xem tổng chi phí so ngân sách, tick KOC rồi bấm "Duyệt". KOC chưa ổn thì "Trả về hỏi lại giá" hoặc "Loại".' },
+  { n: 9, title: 'Gửi brand', hint: 'Tải Excel hoặc chuyển sang Listing cho brand duyệt', todo: 'Tải Excel gửi brand, hoặc bấm "Chuyển sang Listing" để brand duyệt online.' },
+  { n: 10, title: 'Sau khi air', hint: 'Ghi kết quả: book lại, vào KOC core hay dừng', todo: 'Khi video đã air, bấm "Ghi kết quả" ở từng KOC: đạt KPI không, đúng hạn không, và quyết định lần sau.' },
 ] as const;
 
 /**
@@ -21,13 +22,13 @@ export const STEPS = [
  * và xếp xuống dưới (OUT = không khớp bộ lọc pool, vẫn giữ để xem).
  */
 export const STAGES = {
-  APPROVED: 'B2C đã duyệt',
+  APPROVED: 'Đã duyệt',
   CONFIRMED: 'Đã báo giá',
-  SHORTLIST: 'Shortlist',
-  POOL: 'Trong pool',
+  SHORTLIST: 'Đang liên hệ',
+  POOL: 'Đang xét',
   REJECTED: 'Đã loại',
-  KO: 'Bị loại tự động',
-  OUT: 'Ngoài pool',
+  KO: 'Hệ thống loại',
+  OUT: 'Không khớp yêu cầu',
 } as const;
 export type Stage = keyof typeof STAGES;
 /** Thứ tự xếp danh sách ở mọi bước: đi xa nhất lên đầu, trong cùng trạng thái xếp theo điểm. */
@@ -37,6 +38,8 @@ export const STEP_PICKED: Record<number, Stage[]> = {
   2: ['APPROVED', 'CONFIRMED', 'SHORTLIST', 'POOL', 'REJECTED', 'KO'], 3: ['APPROVED', 'CONFIRMED', 'SHORTLIST', 'POOL'], 4: ['APPROVED', 'CONFIRMED', 'SHORTLIST', 'POOL'],
   5: ['APPROVED', 'CONFIRMED', 'SHORTLIST'], 6: ['APPROVED', 'CONFIRMED'], 7: ['APPROVED', 'CONFIRMED', 'SHORTLIST'], 8: ['APPROVED'], 9: ['APPROVED'], 10: ['APPROVED'],
 };
+/** KOC đang chờ thao tác ở bước (chưa qua nhưng không làm mờ): bước 5 chọn từ KOC đang xét, bước 6 hỏi giá KOC đang liên hệ, bước 8 duyệt KOC đã báo giá. */
+export const STEP_WORKING: Record<number, Stage[]> = { 5: ['POOL'], 6: ['SHORTLIST'], 8: ['CONFIRMED'] };
 export const STAGE_TONE: Record<Stage, string> = {
   KO: 'bg-critical-soft text-critical', POOL: 'bg-sunken text-ink-2', SHORTLIST: 'bg-accent-soft text-accent', OUT: 'bg-sunken text-ink-3',
   CONFIRMED: 'bg-warning-soft text-warning', APPROVED: 'bg-positive-soft text-positive', REJECTED: 'bg-critical-soft text-critical',
@@ -47,31 +50,32 @@ export const STAGE_TONE: Record<Stage, string> = {
  * 6 = theo KOC khai báo, 0 = quy tắc của app / brand. internal: không xuất ra list gửi brand (K15).
  */
 export const KO = {
-  K1: { label: 'Scandal', step: 4, rule: 'Có phốt chưa xử lý trong 12 tháng, hoặc tin phốt / lừa đảo / phát ngôn phản cảm trong cửa sổ brand đặt' },
-  K2: { label: 'QC hàng nhạy cảm, hàng giả', step: 4, rule: 'Trong 6 tháng có QC cờ bạc, vay tiền, hàng fake, TPCN claim chữa bệnh; hoặc hàng giả / không rõ nguồn gốc trong top 5 SP bán 90 ngày' },
-  K3: { label: 'Uy tín brand đã hợp tác', step: 4, rule: '< 50% brand hợp tác 90 ngày có gian Mall / Official (chỉ khi brand bật)' },
-  K4: { label: 'Claim quá, từ cấm', step: 4, rule: '≥ 1 từ cấm trong 10 video gắn giỏ gần nhất, hoặc từng dính phốt nói quá' },
-  K5: { label: 'Ngôn ngữ, hình ảnh nhạy cảm', step: 4, rule: '≥ 2/20 video hở hang phản cảm, từ tục, câu view gây tranh cãi (Mẹ & bé, sức khoẻ: ≥ 1)' },
-  K6: { label: 'Trùng KOC trong brand', step: 3, rule: 'Số ngày từ lần book gần nhất cùng brand < cửa sổ chống trùng' },
-  K7: { label: 'Trùng cùng tập đoàn / ngành con', step: 3, rule: 'Đang chạy cho brand cùng tập đoàn hoặc ngành con tại UpBase trong tháng air' },
-  K8: { label: 'Đăng đối thủ', step: 4, rule: 'Có video SP đối thủ cùng công dụng, giá ±30% trong cửa sổ trước air; hoặc không cam kết sau air' },
-  K9: { label: 'Ngưỡng kênh', step: 3, rule: 'Dưới ngưỡng follower / view trung vị (và các ngưỡng Must have) brand đặt cho KL; không áp Threads' },
-  K10: { label: 'Tệp follower bắt buộc', step: 3, rule: '% nữ, % 18–34, % khu vực dưới ngưỡng của SKU' },
-  K11: { label: 'Trường hợp loại riêng SKU', step: 4, rule: 'Rơi vào "Các TH loại" của SKU' },
-  K12: { label: 'Chuyên môn', step: 6, rule: 'Nội dung có claim chuyên môn mà KOC không có chứng chỉ hành nghề' },
-  K13: { label: 'Tài khoản bán hàng', step: 3, rule: 'Không có quyền gắn giỏ hoặc có cảnh báo vi phạm 90 ngày (chỉ khi mục tiêu Convert)' },
-  K14: { label: 'Ads code / reup', step: 6, rule: 'Không đồng ý ads code / Spark Ads khi brand chạy GMV Max' },
-  K15: { label: 'Tác phong (nội bộ)', step: 3, internal: true, rule: 'Huỷ job; trễ > 2 ngày từ 2 lần trong 3 job gần nhất; phản ánh thái độ trong 6 tháng' },
-  POOL: { label: 'Ngoài bộ lọc pool', step: 2, rule: 'GMV ngành dưới ngưỡng (I-21) hoặc KL không nằm trong số KOC cần book (I-32)' },
-  BL: { label: 'Blacklist', step: 0, rule: 'KOC đang trong blacklist của Danh bạ' },
-  BR: { label: 'Đã đánh giá không phù hợp brand', step: 0, rule: 'Lượt đánh giá kênh mới nhất cho brand này là "Không phù hợp"' },
-  I36: { label: 'Brand loại', step: 0, rule: 'Nằm trong danh sách KOC brand cấm (I-36)' },
-  G0: { label: 'Không đạt yêu cầu bắt buộc của brand', step: 5, rule: 'Tiêu chí nhóm 0 gắn nhãn "Bắt buộc" dưới mức 3 điểm' },
-  SCORE: { label: 'Điểm thấp', step: 5, rule: 'Booker loại vì nhóm điểm thấp' },
+  K1: { label: 'Có phốt', step: 4, rule: 'Có phốt chưa xử lý trong 12 tháng, hoặc tin phốt / lừa đảo / phát ngôn phản cảm gần đây' },
+  K2: { label: 'Quảng cáo hàng nhạy cảm / hàng giả', step: 4, rule: '6 tháng gần đây có quảng cáo cờ bạc, vay tiền, hàng fake, thực phẩm chức năng nói chữa bệnh; hoặc bán hàng không rõ nguồn gốc' },
+  K3: { label: 'Hay làm cho brand kém uy tín', step: 4, rule: 'Dưới một nửa brand đã hợp tác 90 ngày có gian Mall / Official' },
+  K4: { label: 'Nói quá / dùng từ cấm', step: 4, rule: 'Có từ cấm trong 10 video bán hàng gần nhất, hoặc từng dính phốt nói quá công dụng' },
+  K5: { label: 'Hình ảnh, lời nói phản cảm', step: 4, rule: 'Từ 2/20 video hở hang, nói tục, câu view gây tranh cãi (Mẹ & bé, sức khoẻ: từ 1 video)' },
+  K6: { label: 'Vừa book cho brand này', step: 3, rule: 'Lần book gần nhất cho cùng brand chưa đủ số ngày chống trùng' },
+  K7: { label: 'Đang làm cho brand cùng tập đoàn / ngành', step: 3, rule: 'Đang chạy cho brand cùng tập đoàn hoặc cùng ngành con tại UpBase trong tháng air' },
+  K8: { label: 'Đăng sản phẩm đối thủ', step: 4, rule: 'Có video sản phẩm đối thủ cùng công dụng, cùng tầm giá trước ngày air; hoặc không cam kết sau air' },
+  K9: { label: 'Dưới ngưỡng follower / view', step: 3, rule: 'Follower, view hoặc lượt bán dưới mức brand đặt cho cấp KOC này' },
+  K10: { label: 'Tệp follower không khớp', step: 3, rule: '% nữ, % 18–34 tuổi hoặc % ở khu vực yêu cầu thấp hơn mức của sản phẩm' },
+  K11: { label: 'Rơi vào trường hợp loại của sản phẩm', step: 4, rule: 'Thuộc các trường hợp loại khai cho sản phẩm' },
+  K12: { label: 'Thiếu chứng chỉ chuyên môn', step: 6, rule: 'Nội dung có nói về chuyên môn (y, dược…) mà KOC không có chứng chỉ hành nghề' },
+  K13: { label: 'Không bán hàng được', step: 3, rule: 'Không có quyền gắn giỏ hàng hoặc bị cảnh báo vi phạm 90 ngày (chỉ khi mục tiêu bán hàng)' },
+  K14: { label: 'Không cho chạy ads code', step: 6, rule: 'Không đồng ý ads code / Spark Ads khi brand chạy GMV Max' },
+  K15: { label: 'Tác phong (nội bộ)', step: 3, internal: true, rule: 'Huỷ job; trễ trên 2 ngày từ 2 lần trong 3 job gần nhất; bị phản ánh thái độ trong 6 tháng' },
+  POOL: { label: 'Không khớp ngành / cấp KOC', step: 2, rule: 'Bán ít hàng ngành của brand, hoặc cấp KOC không nằm trong số cần book' },
+  BL: { label: 'Trong blacklist', step: 0, rule: 'KOC đang trong blacklist của Danh bạ' },
+  BR: { label: 'Đã đánh giá không hợp brand', step: 0, rule: 'Lần đánh giá gần nhất cho brand này là "Không phù hợp"' },
+  I36: { label: 'Brand không muốn dùng', step: 0, rule: 'Nằm trong danh sách KOC brand cấm' },
+  G0: { label: 'Trượt yêu cầu bắt buộc của brand', step: 5, rule: 'Một tiêu chí brand đánh dấu "Bắt buộc" dưới 3 điểm' },
+  SCORE: { label: 'Điểm thấp', step: 5, rule: 'Loại vì điểm thấp' },
   OTHER: { label: 'Lý do khác', step: 0, rule: '' },
 } as const satisfies Record<string, { label: string; step: number; rule: string; internal?: boolean }>;
 export type KoCode = keyof typeof KO;
-export const koLabel = (code: string) => (code in KO ? `${code} · ${KO[code as KoCode].label}` : code);
+/** Tên lý do loại bằng chữ thường (mã chỉ dùng nội bộ). */
+export const koLabel = (code: string) => (code in KO ? KO[code as KoCode].label : code);
 /** Mã Booker kiểm tay ở bước 4. K3 chỉ khi brand bật, K11 chỉ khi SKU có trường hợp loại. */
 export const CONTENT_CHECKS = ['K1', 'K2', 'K3', 'K4', 'K5', 'K8', 'K11'] as const;
 export type ContentCheck = (typeof CONTENT_CHECKS)[number];
@@ -81,11 +85,12 @@ export type Channel = (typeof CHANNELS)[number];
 /** Kênh của đợt → nền tảng của KOC / creator. */
 export const CHANNEL_PLATFORMS: Record<Channel, string[]> = { TikTok: ['TikTok'], Shopee: ['Shopee'], 'FB-IG': ['Facebook', 'Instagram'], Threads: ['Threads'] };
 export const OBJECTIVES = ['Convert', 'Awareness'] as const;
+export const OBJECTIVE_LABEL: Record<string, string> = { Convert: 'Bán hàng', Awareness: 'Tăng nhận diện' };
 
 export const GROUPS = ['G0', 'A', 'B', 'C', 'D', 'E'] as const;
 export type Group = (typeof GROUPS)[number];
 export const GROUP_LABEL: Record<Group, string> = {
-  G0: '0. Yêu cầu riêng brand', A: 'A. Fit thương hiệu & tệp', B: 'B. Reach & tương tác', C: 'C. Chuyển đổi', D: 'D. Chất lượng nội dung', E: 'E. Hợp tác, chi phí & lịch sử',
+  G0: 'Yêu cầu riêng của brand', A: 'Hợp brand & tệp khách', B: 'Lượt xem & tương tác', C: 'Khả năng bán hàng', D: 'Chất lượng video', E: 'Giá & lịch sử hợp tác',
 };
 /** Trọng số nhóm theo kênh (%), cộng 100. */
 export const WEIGHTS: Record<Channel, Record<Group, number>> = {
@@ -107,7 +112,7 @@ export type Criterion = { id: string; group: Group; label: string; measure: stri
 export const CRITERIA: Criterion[] = [
   { id: 'A1', group: 'A', label: 'Tệp follower khớp TA', measure: '% follower khớp giới tính, tuổi, vùng của SKU', scale: ['< 40%', '50–70%', '> 70%'], auto: true },
   { id: 'A2', group: 'A', label: 'Niche & ngành', measure: 'Tỷ trọng GMV ngành của brand (thay % video cùng ngành); khớp tệp kênh ưu tiên của SKU', scale: ['< 20%', '30–60%', '> 60%'], auto: true },
-  { id: 'A3', group: 'A', label: 'Tone khớp brand', measure: 'So tone với top 10 brand đối thủ trực tiếp và gián tiếp', scale: ['Lệch tone', 'Trung tính', 'Có thể là gương mặt brand'] },
+  { id: 'A3', group: 'A', label: 'Hợp nội dung brand', measure: 'Nội dung kênh hợp yêu cầu của đợt (AI chấm từ video nổi bật, sản phẩm đã bán; Booker sửa được)', scale: ['Lệch', 'Liên quan một phần', 'Rất hợp, có thể làm gương mặt brand'] },
   { id: 'B1', group: 'B', label: 'View rate', measure: 'View trung vị ÷ follower', scale: ['< 5%', '10–20%', '> 30%'], auto: true, notChannels: ['Threads'] },
   { id: 'B2', group: 'B', label: 'Engagement rate', measure: '(like + comment + share) ÷ view', scale: ['< 2%', '4–6%', '> 8%'], auto: true, notChannels: ['Threads'] },
   { id: 'B3', group: 'B', label: 'Độ ổn định view', measure: 'Số video trong 10 video gần nhất đạt ≥ 50% view trung vị', scale: ['≤ 4/10', '6–7/10', '≥ 8/10'], notChannels: ['Threads'] },
@@ -166,12 +171,12 @@ export const BANDS = {
 
 /** Thang kết luận. KOC fail knock-out bị loại bất kể tổng điểm. */
 export const TIERS = [
-  { min: 80, label: 'Ưu tiên book / KOC core', action: 'Book theo kế hoạch, đề xuất ký HĐ nguyên tắc + SOW, ưu tiên book lại', recommend: 'Must Have', tone: 'bg-positive-soft text-positive' },
-  { min: 65, label: 'Book test', action: 'Book thử 1–2 video, xét lại theo GMV/video và CPV trong Report phễu', recommend: 'Recommend', tone: 'bg-accent-soft text-accent' },
-  { min: 50, label: 'Chỉ mời TAP / hoa hồng', action: 'Không trả fee; gửi mẫu + hoa hồng, theo dõi đơn', recommend: 'Optional', tone: 'bg-warning-soft text-warning' },
-  { min: 0, label: 'Không hợp tác', action: 'Ghi lý do (mã K hoặc nhóm điểm thấp) vào lịch sử KOC', recommend: null, tone: 'bg-critical-soft text-critical' },
+  { min: 80, label: 'Nên book', action: 'Book theo kế hoạch, ưu tiên book lại lần sau', recommend: 'Must Have', tone: 'bg-positive-soft text-positive' },
+  { min: 65, label: 'Book thử', action: 'Book thử 1–2 video, xem GMV và chi phí / view rồi quyết định', recommend: 'Recommend', tone: 'bg-accent-soft text-accent' },
+  { min: 50, label: 'Chỉ gửi mẫu + hoa hồng', action: 'Không trả phí; gửi mẫu và hoa hồng, theo dõi đơn', recommend: 'Optional', tone: 'bg-warning-soft text-warning' },
+  { min: 0, label: 'Không hợp tác', action: 'Không book lần này', recommend: null, tone: 'bg-critical-soft text-critical' },
 ] as const;
-export const NO_DATA_TIER = { label: 'Chưa đủ dữ liệu', action: 'Bổ sung số liệu hoặc Booker chấm tay các tiêu chí còn trống', recommend: null, tone: 'bg-sunken text-ink-3' };
+export const NO_DATA_TIER = { label: 'Chưa đủ số liệu', action: 'Kho thiếu số liệu kênh này: chấm thêm ở bước 7 hoặc xem kênh trực tiếp', recommend: null, tone: 'bg-sunken text-ink-3' };
 /**
  * Kho chưa có nội dung video nên nhóm D và nhiều tiêu chí nhóm 0 chỉ có khi Booker chấm tay. Tổng điểm quy về 100 trên
  * phần trọng số có số liệu; độ phủ dưới mức này thì không xếp mức kết luận (tránh điểm cao nhờ có ít số liệu).
@@ -274,5 +279,24 @@ export type Outcome = {
 };
 export const DECISIONS = { rebook: 'Book lại', core: 'Vào KOC core', stop: 'Dừng hợp tác' } as const;
 export const CONTENT_ERRORS = {
-  M1: 'M1: sửa trước air (tối đa 2 lỗi vẫn duyệt)', M2: 'M2: sửa và duyệt lại; đã air thì gỡ / sửa trong 24 giờ', M3: 'M3: không duyệt; đã air thì gỡ ngay (cờ K4 / K15)',
+  M1: 'Lỗi nhẹ: sửa trước khi air', M2: 'Lỗi vừa: phải sửa và duyệt lại', M3: 'Lỗi nặng: không duyệt / gỡ video',
 } as const;
+
+/**
+ * Yêu cầu nội dung của đợt (MatchBrief.needs): AI đọc từ brief hoặc Booker nhập. Bổ sung cho cấu hình brand / sản phẩm
+ * ở Danh mục: tệp khách dùng khi sản phẩm chưa khai, đối thủ / từ cấm cộng thêm; keywords dùng tìm thêm KOC trong kho.
+ */
+export type Needs = {
+  summary?: string; targetGender?: string; ageMin?: number; ageMax?: number; regions?: string[]; tone?: string; usp?: string;
+  competitors?: string[]; bannedWords?: string[]; exclusions?: string[]; keywords?: string[];
+};
+export function parseNeeds(raw: unknown): Needs {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const str = (k: string) => (typeof r[k] === 'string' && (r[k] as string).trim() ? (r[k] as string).trim() : undefined);
+  const int = (k: string) => (typeof r[k] === 'number' && Number.isInteger(r[k]) && (r[k] as number) > 0 ? (r[k] as number) : undefined);
+  const list = (k: string) => (Array.isArray(r[k]) ? [...new Set((r[k] as unknown[]).filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean))].slice(0, 30) : []);
+  return {
+    summary: str('summary'), targetGender: str('targetGender'), ageMin: int('ageMin'), ageMax: int('ageMax'), regions: list('regions'), tone: str('tone'), usp: str('usp'),
+    competitors: list('competitors'), bannedWords: list('bannedWords'), exclusions: list('exclusions'), keywords: list('keywords'),
+  };
+}
