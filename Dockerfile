@@ -11,7 +11,8 @@ RUN npm run build
 FROM node:22-bookworm-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
-ENV NODE_ENV=production PORT=3000
+# Heap tối đa 1 GB: job tổng hợp kho (~3 phút) chạy trong 512 MB; giới hạn để GC dọn sớm, không chiếm RAM của server dùng chung.
+ENV NODE_ENV=production PORT=3000 NODE_OPTIONS=--max-old-space-size=1024
 COPY --from=build /app ./
 EXPOSE 3000
 # Như Render: đồng bộ schema (chỉ thêm bảng / cột) rồi chạy app.

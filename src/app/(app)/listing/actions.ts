@@ -3,7 +3,6 @@ import { randomBytes } from 'node:crypto';
 import { after } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { refreshKoc } from '@/lib/koc/creatorStats';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
 import { BRAND_CHOICE, COLS, CONTACT_STATUS, fromLarkListing, loadListing, LARK_LISTING_READONLY, parseHandle, PRICE_TYPES, RECOMMEND } from '@/lib/booking/listing';
@@ -101,9 +100,6 @@ export async function addKocs(_: string | null, fd: FormData): Promise<string | 
     data: kocs.map((k) => ({ batchId, kocId: k.id, createdById: me.id, priceType })),
     skipDuplicates: true,
   });
-  // KOC chưa có số TikTok: tra luôn sau khi trả trang (vài kênh đầu; còn lại để lượt mỗi giờ).
-  const fresh = kocs.filter((k) => !k.ttsCheckedAt).slice(0, 3);
-  if (fresh.length) after(async () => { for (const k of fresh) await refreshKoc(k.id).catch(() => {}); });
   revalidatePath(`/listing/${batchId}`);
   redirect(`/listing/${batchId}`);
 }

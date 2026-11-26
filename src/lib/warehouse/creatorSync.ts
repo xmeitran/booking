@@ -4,7 +4,9 @@
 // Bảng PeerDB (ReplacingMergeTree): đọc FINAL, bỏ dòng _peerdb_is_deleted = 1 và dòng xoá mềm (deleted_at khác 1970-01-01).
 // Cấu hình ở Phân quyền → Tích hợp → Kho dữ liệu; thiếu thì job không chạy và phần giao diện liên quan không hiện.
 import { db } from '../db';
-import { configured, requireCfg, cfg } from '../integrations';
+import { USD_VND } from '../koc/kocInsights';
+import { configured } from '../integrations';
+import { warehouseQuery, type Row } from './query';
 
 const PLATFORM: Record<string, string> = { tiktok: 'TikTok', shopee: 'Shopee', facebook: 'Facebook', instagram: 'Instagram', threads: 'Threads', youtube: 'YouTube' };
 const ALIVE = (t = '') => `${t}_peerdb_is_deleted = 0 AND (${t}deleted_at IS NULL OR toYear(${t}deleted_at) = 1970)`;
@@ -35,11 +37,11 @@ SELECT ch.channel_code AS channel_code, ch.handle AS handle, ch.nickname AS nick
        toFloat64(p.follower_gender_female) AS female, toFloat64(p.age_18_24_follower_rate) AS a1, toFloat64(p.age_25_34_follower_rate) AS a2,
        toFloat64(p.age_35_44_follower_rate) AS a3, toFloat64(p.age_45_54_follower_rate) AS a4, toFloat64(p.age_55_plus_follower_rate) AS a5,
        p.follower_state_location, p.brand_collaboration_count, p.partnered_brands, p.promoted_product_num,
+       p.avg_ec_live_view_count, p.content_gmv_distribution, toFloat64(p.follower_gender_male) AS male,
        toJSONString(cat.cats) AS cats, toJSONString(top.vids) AS vids -- Metabase không trả được mảng tuple, đổi sẵn sang JSON
 FROM ch LEFT JOIN p ON p.creator_channel_id = ch.id LEFT JOIN cat ON cat.cid = ch.id LEFT JOIN top ON top.cid = ch.id
 SETTINGS join_use_nulls = 1`;
 
-type Row = Record<string, unknown>;
 const n = (v: unknown) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 const int = (v: unknown) => { const x = n(v); return x == null ? null : Math.round(x); };
 // Đơn vị kiểm tra trên kho ngày 2026-11-26: ER là chuỗi % ("1.73"), % nữ là % (0..100). Tỷ lệ tuổi và tỷ trọng ngành (gmv_rate)
@@ -56,6 +58,13 @@ function shares(list: unknown, key = 'key'): { name: string; share: number }[] |
     .filter((x): x is { name: string; v: number } => !!x.name && x.v != null);
   const max = Math.max(...rows.map((x) => x.v));
   return rows.length ? rows.map((x) => ({ name: x.name, share: ratio(x.v, max)! })).sort((a, b) => b.share - a.share) : null;
+}
+
+/** Tỷ trọng GMV theo kênh [{ content_type: video_gmv / live_gmv / showcase_gmv, value: % }] → { video, live, showcase } 0..1. */
+function mix(list: unknown) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const get = (t: string) => pct(list.find((x) => x?.content_type === t)?.value) ?? 0;
+  return { video: get('video_gmv'), live: get('live_gmv'), showcase: get('showcase_gmv') };
 }
 
 /** Mã video TikTok → link trang video (link CDN trong kho có hạn dùng); nền tảng khác giữ link gốc. */
@@ -84,10 +93,11 @@ export function toCreator(r: Row, syncedAt: Date) {
   return {
     platform, handle,
     nickname: (r.nickname as string) || null, avatarUrl: (r.avatar_url as string) || null, url: (r.url as string) || null,
-    followers: int(r.follower_count) || null, medianViews: int(r.avg_video_play_count) || null, ecViews: int(r.avg_ec_video_play_count),
+    followers: int(r.follower_count) || null, medianViews: int(r.avg_video_play_count) || null, ecViews: int(r.avg_ec_video_play_count) || null,
     er: pct(r.video_engagement_rate), videos30: int(r.video_count_30d), ecVideos: int(r.ec_video_count), unitsSold: int(r.units_sold),
-    gmv, gmvHidden: hidden, gpm: n(r.gpm_amount), aov: n(r.avg_gmv_per_buyer_amount),
-    female: audience ? pct(r.female) : null,
+    gmv, gmvHidden: hidden, gpm: n(r.gpm_amount) || null, aov: n(r.avg_gmv_per_buyer_amount) || null, // 0 = kho chưa có số
+    female: audience ? pct(r.female) : null, male: audience ? pct(r.male) : null, liveViews: int(r.avg_ec_live_view_count) || null,
+    gmvMix: mix(json(r.content_gmv_distribution)),
     ages: audience ? Object.fromEntries(['18-24', '25-34', '35-44', '45-54', '55+'].map((k, i) => [k, ages[i] ?? 0])) : null,
     locations: shares(json(r.follower_state_location)),
     categories: shares(json(r.cats)),
@@ -100,48 +110,6 @@ export function toCreator(r: Row, syncedAt: Date) {
 }
 type Creator = NonNullable<ReturnType<typeof toCreator>>;
 const COLS = Object.keys(toCreator({ channel_code: 'tiktok', handle: 'x' }, new Date())!) as (keyof Creator)[];
-
-const mbError = (t: string) => { try { const j = JSON.parse(t); return String(j.error ?? j.via?.[0]?.error ?? j.message ?? t); } catch { return t; } };
-
-/** Chạy SQL native qua Metabase. Dùng API export JSON: không bị giới hạn 2.000 dòng như /api/dataset, và Metabase ghi mỗi dòng
- *  kết quả trên một dòng văn bản ("[", "{…},", …, "]") nên đọc theo luồng, không phải giữ cả trăm MB trong bộ nhớ. */
-async function* query(sql: string): AsyncGenerator<Row> {
-  const c = await requireCfg('warehouse', 'METABASE_URL', 'METABASE_USER', 'METABASE_PASSWORD');
-  const base = c.METABASE_URL.replace(/\/+$/, '');
-  const login = await fetch(`${base}/api/session`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
-    body: JSON.stringify({ username: c.METABASE_USER, password: c.METABASE_PASSWORD }),
-  });
-  if (!login.ok) throw new Error(`Metabase đăng nhập lỗi ${login.status}: ${mbError(await login.text()).slice(0, 200)}`);
-  const headers = { 'X-Metabase-Session': ((await login.json()) as { id: string }).id };
-  try {
-    const q = { database: Number(await cfg('METABASE_DATABASE_ID')) || 2, type: 'native', native: { query: sql } };
-    const res = await fetch(`${base}/api/dataset/json`, { method: 'POST', headers, body: new URLSearchParams({ query: JSON.stringify(q), format_rows: 'false' }), cache: 'no-store' });
-    if (!res.ok || !res.body) throw new Error(`Metabase ${res.status}: ${mbError(await res.text()).slice(0, 300)}`);
-    const decoder = new TextDecoder();
-    let buf = '';
-    const parse = (line: string) => {
-      const t = line.trim().replace(/,$/, '');
-      if (!t || t === '[' || t === ']') return null;
-      const r = JSON.parse(t) as Row;
-      if ('error' in r && !('handle' in r)) throw new Error(`Metabase: ${String(r.error).slice(0, 300)}`); // lỗi giữa chừng
-      return r;
-    };
-    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-      buf += decoder.decode(chunk, { stream: true });
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const r = parse(buf.slice(0, i));
-        buf = buf.slice(i + 1);
-        if (r) yield r;
-      }
-    }
-    const r = parse(buf);
-    if (r) yield r;
-  } finally {
-    await fetch(`${base}/api/session`, { method: 'DELETE', headers }).catch(() => {});
-  }
-}
 
 async function upsert(rows: Creator[]) {
   if (!rows.length) return;
@@ -162,7 +130,7 @@ export async function syncWarehouseCreators() {
   const batch = new Map<string, Creator>();
   let total = 0;
   const stat = { followers: 0, er: [Infinity, -Infinity], female: [Infinity, -Infinity], cats: 0 };
-  for await (const r of query(CREATOR_SQL)) {
+  for await (const r of warehouseQuery(CREATOR_SQL)) {
     const c = toCreator(r, started);
     if (!c) continue;
     batch.set(`${c.platform}|${c.handle}`, c); // username trùng trong cùng lô: giữ dòng sau
@@ -176,9 +144,38 @@ export async function syncWarehouseCreators() {
   await upsert([...batch.values()]);
   // Lượt này ít hơn một nửa lần trước thì nghi kho lỗi: giữ creator cũ thay vì xoá hàng loạt.
   const removed = total >= before / 2 ? await db.warehouseCreator.deleteMany({ where: { syncedAt: { lt: started } } }) : null;
+  const kocs = await syncKocStats();
   const range = ([a, b]: number[]) => (a === Infinity ? '—' : `${a.toFixed(3)}–${b.toFixed(3)}`);
   // Khoảng giá trị ghi vào thông báo để kiểm tra đơn vị (ER, % nữ phải nằm trong 0..1).
-  return `${total.toLocaleString('vi-VN')} creator · ${stat.followers.toLocaleString('vi-VN')} có follower · ${stat.cats.toLocaleString('vi-VN')} có tỷ trọng ngành · ER ${range(stat.er)} · nữ ${range(stat.female)} · ${removed ? `xoá ${removed.count}` : `chỉ ${total} so với ${before} lần trước, giữ creator cũ`}`;
+  return `${total.toLocaleString('vi-VN')} creator · ${stat.followers.toLocaleString('vi-VN')} có follower · ${stat.cats.toLocaleString('vi-VN')} có tỷ trọng ngành · ER ${range(stat.er)} · nữ ${range(stat.female)} · ${kocs} KOL Danh bạ cập nhật số · ${removed ? `xoá ${removed.count}` : `chỉ ${total} so với ${before} lần trước, giữ creator cũ`}`;
+}
+
+/**
+ * Ghi số kho vào hồ sơ KOC Danh bạ (TikTok): follower, view TB video / LIVE bán hàng, sản phẩm bán, GPM, chân dung follower.
+ * Listing, xuất Excel, trang review cho brand, AI brief đọc các cột này như trước (trước đây do Data-tiktok ghi).
+ * ttsProfile lưu dạng { source: 'warehouse', … } (profileInsights đọc được cả dạng TikTok cũ). Số đổi thì lưu một ảnh chụp.
+ * KOL không có trong kho giữ số cũ.
+ */
+export async function syncKocStats() {
+  const n = await db.$executeRaw`
+    update "Koc" k set
+      followers = coalesce(w.followers, k.followers), "avgViews" = w."ecViews", "avgLiveViews" = w."liveViews", "unitsSold" = w."unitsSold",
+      "gpmUsd" = w.gpm / ${USD_VND}::float,
+      "gmvRange" = case when w."gmvHidden" and w.gmv is not null then case when w.gmv < 1e6 then '< 1 tr ₫' else '~' || round(w.gmv / 1e6)::text || ' tr ₫' end end,
+      nickname = coalesce(w.nickname, k.nickname), "avatarUrl" = coalesce(w."avatarUrl", k."avatarUrl"),
+      "statsAt" = coalesce(w."sourceAt", w."syncedAt"), "ttsCheckedAt" = now(),
+      "ttsProfile" = jsonb_build_object('source', 'warehouse', 'female', w.female, 'male', w.male, 'ages', w.ages, 'locations', w.locations,
+        'categories', w.categories, 'gmvMix', w."gmvMix", 'gmv', case when w."gmvHidden" then null else w.gmv end, 'aov', w.aov, 'er', w.er, 'brandCount', w."brandCount")
+    from "WarehouseCreator" w
+    where k.platform = 'TikTok' and w.platform = 'TikTok' and w.handle = lower(k.handle)`;
+  await db.$executeRaw`
+    insert into "KocSnapshot" (id, "kocId", at, followers, "avgViews", "avgLiveViews", "unitsSold", "gmvRange", "gpmUsd")
+    select md5(random()::text || k.id), k.id, now(), k.followers, k."avgViews", k."avgLiveViews", k."unitsSold", k."gmvRange", k."gpmUsd"
+    from "Koc" k
+    left join lateral (select * from "KocSnapshot" s where s."kocId" = k.id order by s.at desc limit 1) last on true
+    where k.platform = 'TikTok' and k."ttsCheckedAt" > now() - interval '1 hour' and k."statsAt" is not null
+      and (last.id is null or last.followers is distinct from k.followers or last."avgViews" is distinct from k."avgViews" or last."unitsSold" is distinct from k."unitsSold")`;
+  return n;
 }
 
 /** Thời điểm và kết quả lượt đồng bộ gần nhất, cho trang Creator matching. */

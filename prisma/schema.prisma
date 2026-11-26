@@ -369,6 +369,7 @@ model WarehouseCreator {
   followers   Int?
   medianViews Int?      // avg_video_play_count: trung vị lượt xem mọi video (crawler)
   ecViews     Int?      // avg_ec_video_play_count: lượt phát TB video gắn sản phẩm
+  liveViews   Int?      // avg_ec_live_view_count: lượt xem TB phiên LIVE bán hàng
   er          Float?    // video_engagement_rate, 0.05 = 5%
   videos30    Int?      // video_count_30d
   ecVideos    Int?      // ec_video_count
@@ -378,9 +379,11 @@ model WarehouseCreator {
   gpm         Float?    // VND / 1.000 lượt xem
   aov         Float?    // GMV trung bình / người mua, VND
   female      Float?    // 0..1
+  male        Float?    // 0..1
   ages        Json?     // { "18-24": 0.3, "25-34": ..., "35-44", "45-54", "55+" } 0..1
   locations   Json?     // [{ name, share }] 0..1
   categories  Json?     // [{ name, share }] tỷ trọng GMV theo ngành, 0..1
+  gmvMix      Json?     // { video, live, showcase } tỷ trọng GMV theo kênh bán, 0..1
   brandCount  Int?
   brands      String[]  @default([])
   products    Int?      // promoted_product_num

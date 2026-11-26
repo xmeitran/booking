@@ -40,8 +40,16 @@ export function parseVndRange(s: string | null | undefined): [number | null, num
   return [one(a), b ? one(b) : null];
 }
 
+type Share = { name: string; share: number };
+export type Insights = {
+  male: number | null; female: number | null; age18_24: number | null; age25_34: number | null; locations: Share[];
+  gmvVideo: number | null; gmvLive: number | null; gmvShowcase: number | null; categories: Share[];
+  aovText: string | null; aovMid: number | null; gmvExactVnd: number | null; engagement: number | null; brandCount: number | null;
+};
+
 /** Chân dung follower và tỷ trọng GMV từ hồ sơ TikTok. Tỉ lệ trả về dạng 0..1. */
-export function profileInsights(raw: unknown) {
+export function profileInsights(raw: unknown): Insights {
+  if ((raw as { source?: string } | null)?.source === 'warehouse') return fromWarehouse(raw as WarehouseProfile);
   const p = (raw ?? {}) as Profile;
   const pick = (list: KV[] | undefined, key: string) => num(list?.find((x) => x.key?.toLowerCase() === key)?.value);
   const share = (t: string) => num(p.content_gmv_distribution?.find((x) => x.content_type === t)?.value);
@@ -65,6 +73,21 @@ export function profileInsights(raw: unknown) {
     gmvExactVnd: p.gmv?.amount && num(p.gmv.amount) != null ? Math.round(num(p.gmv.amount)! * (p.gmv.currency === 'USD' ? USD_VND : 1)) : null,
     engagement: num(p.ec_video_engagement_rate) == null ? null : num(p.ec_video_engagement_rate)! / 10_000,
     brandCount: p.brand_collaboration_count ?? null,
+  };
+}
+
+type WarehouseProfile = {
+  female: number | null; male: number | null; ages: Record<string, number> | null; locations: Share[] | null; categories: Share[] | null;
+  gmvMix: { video: number; live: number; showcase: number } | null; gmv: number | null; aov: number | null; er: number | null; brandCount: number | null;
+};
+/** Hồ sơ do job kho dữ liệu ghi (src/lib/warehouse/creatorSync.ts): tỉ lệ đã là 0..1, GMV / AOV là VND. */
+function fromWarehouse(w: WarehouseProfile): Insights {
+  return {
+    male: w.male, female: w.female, age18_24: w.ages?.['18-24'] ?? null, age25_34: w.ages?.['25-34'] ?? null,
+    locations: (w.locations ?? []).slice(0, 3).map((l) => ({ name: titleCase(l.name), share: l.share })),
+    gmvVideo: w.gmvMix?.video ?? null, gmvLive: w.gmvMix?.live ?? null, gmvShowcase: w.gmvMix?.showcase ?? null,
+    categories: (w.categories ?? []).slice(0, 3),
+    aovText: null, aovMid: w.aov == null ? null : Math.round(w.aov), gmvExactVnd: w.gmv == null ? null : Math.round(w.gmv), engagement: w.er, brandCount: w.brandCount,
   };
 }
 

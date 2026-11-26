@@ -3,7 +3,6 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { isUniqueError, optInt, str } from '@/lib/form';
-import { refreshKoc } from '@/lib/koc/creatorStats';
 import { refreshKocAggregates } from '@/lib/lark/bookingSync';
 import { audit } from '@/lib/booking/catalog';
 import { parseHandle } from '@/lib/booking/listing';
@@ -147,19 +146,6 @@ export async function mergeKoc(fd: FormData) {
   await audit(me.id, 'Koc', to.id, 'Gộp KOC trùng', { from: src.handle, fromName: src.name });
   revalidatePath('/contacts');
   redirect(`/contacts/${to.id}?merge=ok`);
-}
-
-export async function refreshFromTikTok(fd: FormData) {
-  await requireUser();
-  const id = str(fd, 'id');
-  let r: string;
-  try {
-    r = await refreshKoc(id);
-  } catch {
-    r = 'failed';
-  }
-  revalidatePath(`/contacts/${id}`);
-  redirect(`/contacts/${id}?tiktok=${r}`);
 }
 
 // Nhật ký chăm sóc: mọi vai trò được ghi. Form dùng action trực tiếp nên React tự xoá ô nhập sau khi lưu.

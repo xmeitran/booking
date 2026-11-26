@@ -9,22 +9,16 @@ import { bookingsOf, collabSummary, gmvLabel, profileInsights, USD_VND } from '@
 import { dupKey } from '@/lib/booking/listing';
 import { jobScope, scopeOf } from '@/lib/auth/scope';
 import { can, requireUser } from '@/lib/auth/session';
-import { addNote, closeFollowUp, mergeKoc, refreshFromTikTok } from '../actions';
+import { addNote, closeFollowUp, mergeKoc } from '../actions';
 import { ALL_BRANDS_SCOPE, isCoop, legalProfilesOf, reviewSummary, VERDICTS, type LegalType } from '@/lib/koc/kocDirectory';
 import { LegalDialog, LegalSection } from './legal';
 import { koLabel, STAGES, type Stage } from '@/lib/matching/spec';
 
-const TIKTOK_MSG: Record<string, string> = {
-  updated: 'Đã cập nhật số liệu từ TikTok.',
-  missing: 'Kênh không có trên TikTok Shop Creator Marketplace (hoặc chưa đủ điều kiện affiliate).',
-  limited: 'TikTok đang chặn tần suất gọi. Hệ thống sẽ tự cập nhật ở lượt mỗi giờ.',
-  failed: 'Không lấy được số liệu từ TikTok. Thử lại sau.',
-};
 
-export default async function KocPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tiktok?: string; merge?: string; lp?: string; type?: string; reveal?: string }> }) {
+export default async function KocPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ merge?: string; lp?: string; type?: string; reveal?: string }> }) {
   const me = await requireUser();
   const { id } = await params;
-  const { tiktok, merge, lp, type, reveal } = await searchParams;
+  const { merge, lp, type, reveal } = await searchParams;
   const koc = await db.koc.findUnique({ where: { id }, include: { pic: true, aliases: { select: { handle: true } }, legalProfiles: true, reviews: { select: { verdict: true, brand: true, createdAt: true } }, _count: { select: { jobs: true } } } });
   if (!koc) notFound();
 
@@ -120,10 +114,6 @@ export default async function KocPage({ params, searchParams }: { params: Promis
         </div>
         <div className="flex flex-wrap gap-2">
           {koc.platform === 'TikTok' && <Link href={`/creator/${koc.handle}`} className="btn">Hiệu quả ở mọi nguồn</Link>}
-          <form action={refreshFromTikTok}>
-            <input type="hidden" name="id" value={koc.id} />
-            <button className="btn">Cập nhật từ TikTok</button>
-          </form>
           {canEdit && <Link href={`/contacts?edit=${koc.id}`} className="btn">Sửa hồ sơ</Link>}
         </div>
       </div>
@@ -167,11 +157,8 @@ export default async function KocPage({ params, searchParams }: { params: Promis
         </div>
       )}
 
-      {tiktok && TIKTOK_MSG[tiktok] && (
-        <div role="status" className={`mb-4 rounded-md px-3 py-2.5 ${tiktok === 'updated' ? 'bg-positive-soft text-positive' : 'bg-warning-soft text-warning'}`}>{TIKTOK_MSG[tiktok]}</div>
-      )}
 
-      <Section title="Hiệu quả 30 ngày" meta={koc.statsAt ? `TikTok Shop · cập nhật ${fmtDate(koc.statsAt)}` : koc.ttsCheckedAt ? 'Không có trên Creator Marketplace' : 'Chưa tra'}>
+      <Section title="Hiệu quả 30 ngày" meta={koc.statsAt ? `Kho dữ liệu UpBase · hồ sơ ${fmtDate(koc.statsAt)}, đồng bộ mỗi sáng` : 'Kho dữ liệu chưa có creator này'}>
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
           <Stat label="Follower" value={fmtShort(koc.followers)} />
           <Stat label="View TB / video bán hàng" value={fmtNum(koc.avgViews)} />
@@ -179,14 +166,14 @@ export default async function KocPage({ params, searchParams }: { params: Promis
           <Stat label="Số món bán" value={fmtNum(koc.unitsSold)} />
           <Stat label="GMV" value={p.gmvExactVnd != null ? fmtShort(p.gmvExactVnd) + ' ₫' : koc.gmvRange ?? '—'} sub={p.gmvExactVnd != null ? koc.gmvRange ?? undefined : undefined} />
           <Stat label="GPM" value={koc.gpmUsd == null ? '—' : fmtVnd(koc.gpmUsd * USD_VND)} sub={koc.gpmUsd == null ? undefined : `${koc.gpmUsd} USD`} />
-          <Stat label="GMV / khách hàng" value={p.aovText ?? '—'} />
+          <Stat label="GMV / khách hàng" value={p.aovText ?? (p.aovMid != null ? fmtVnd(p.aovMid) : '—')} />
           <Stat label="Tỷ lệ tương tác video" value={fmtPct(p.engagement, 2)} />
         </div>
         {history.length > 0 && (
           <details className="mt-4 border-t border-line pt-3" open={history.length > 1}>
-            <summary className="cursor-pointer text-[13px] font-medium">Lịch sử chỉ số ({history.length} lần tra)</summary>
+            <summary className="cursor-pointer text-[13px] font-medium">Lịch sử chỉ số ({history.length} lần ghi nhận)</summary>
             <table className="tbl mt-2">
-              <thead><tr><th>Ngày tra</th><th className="text-right">Follower</th><th className="text-right">View TB / video</th><th className="text-right">View TB / LIVE</th><th className="text-right">Số món bán</th><th>GMV</th></tr></thead>
+              <thead><tr><th>Ngày</th><th className="text-right">Follower</th><th className="text-right">View TB / video</th><th className="text-right">View TB / LIVE</th><th className="text-right">Số món bán</th><th>GMV</th></tr></thead>
               <tbody>
                 {history.map((h, i) => {
                   const prev = history[i + 1];
@@ -208,14 +195,14 @@ export default async function KocPage({ params, searchParams }: { params: Promis
       </Section>
 
       {sources.length > 0 && (
-        <Section title="Hiệu quả theo nguồn TikTok" meta={`Trạm dữ liệu · tổng hợp ${fmtDate(sources[0].at)} · toàn bộ khoảng ngày của từng bảng`}>
+        <Section title="Hiệu quả bán cho shop UpBase" meta={`Kho dữ liệu UpBase · tổng hợp ${fmtDate(sources[0].at)} · toàn bộ khoảng ngày của từng bảng`}>
           <table className="tbl">
             <tbody>
               {sources.map(({ s, m, shops }) => (
                 <tr key={s.key} className="align-top">
                   <td className="whitespace-nowrap">
                     <Link href={`/data?src=${s.key}&ours=1`} className="link">{s.name}</Link>
-                    <div className="text-xs text-ink-3">{s.group === 'partner' ? 'Partner Center' : 'Seller Center'}</div>
+                    <div className="text-xs text-ink-3">Shop UpBase (kho)</div>
                   </td>
                   <td className="text-[13px]">
                     {s.metrics.map((x, i) => (

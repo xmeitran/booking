@@ -86,7 +86,7 @@ export function metricsFromWarehouse(w: WarehouseCreator): Metrics {
 }
 
 type KocRow = Pick<Koc, 'id' | 'handle' | 'platform' | 'name' | 'nickname' | 'avatarUrl' | 'followers' | 'avgViews' | 'unitsSold' | 'gpmUsd' | 'ttsProfile' | 'statsAt' | 'kl' | 'klAuto' | 'niche' | 'blacklisted' | 'blacklistReason' | 'rateCard'>;
-/** Số TikTok Shop (Trạm dữ liệu) đã lưu ở Danh bạ: view là lượt xem TB video gắn giỏ, tỉnh thành chỉ có top 3. */
+/** Số đã lưu ở Danh bạ (job kho ghi mỗi sáng; KOL không có trong kho còn số Data-tiktok cũ): view là lượt xem TB video gắn giỏ, tỉnh thành chỉ có top 3. */
 export function metricsFromKoc(k: KocRow): Metrics | null {
   if (!k.statsAt) return k.followers != null ? { ...EMPTY, source: 'Danh bạ', followers: k.followers } : null;
   const p = profileInsights(k.ttsProfile);

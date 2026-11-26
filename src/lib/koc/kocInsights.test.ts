@@ -79,3 +79,18 @@ test('dupKey gom các ID kênh viết khác của cùng KOC, không gom KOC khá
   assert.equal(dupKey('kimchungphan20'), dupKey('kimchungphan'));
   assert.notEqual(dupKey('cheng_review'), dupKey('chengtom02'));
 });
+
+test('profileInsights: hồ sơ do job kho dữ liệu ghi (tỉ lệ đã là 0..1)', () => {
+  const p = profileInsights({
+    source: 'warehouse', female: 0.62, male: 0.38, ages: { '18-24': 0.3, '25-34': 0.48 }, gmvMix: { video: 0.68, live: 0.31, showcase: 0.01 },
+    locations: [{ name: 'HO CHI MINH', share: 0.338 }], categories: [{ name: 'Làm đẹp & chăm sóc cá nhân', share: 0.74 }], gmv: 16_603_053.4, aov: 144_374, er: 0.0173, brandCount: 91,
+  });
+  assert.equal(p.female, 0.62);
+  assert.equal(p.age25_34, 0.48);
+  assert.equal(p.gmvLive, 0.31);
+  assert.deepEqual(p.locations, [{ name: 'Ho Chi Minh', share: 0.338 }]);
+  assert.equal(p.categories[0].share, 0.74);
+  assert.equal(p.gmvExactVnd, 16_603_053);
+  assert.equal(p.aovMid, 144_374);
+  assert.equal(p.brandCount, 91);
+});

@@ -336,7 +336,6 @@ export default async function ListingBatchPage({ params, searchParams }: { param
 
 function Row({ r, readOnly }: { r: ListingRow; readOnly?: boolean }) {
   const { koc: k, p, item } = r;
-  const pending = !k.ttsCheckedAt;
   return (
     <tr>
       <td>
@@ -356,7 +355,7 @@ function Row({ r, readOnly }: { r: ListingRow; readOnly?: boolean }) {
             <div>{fmtNum(k.avgViews)} view TB · {fmtNum(k.unitsSold)} món</div>
             <div className="text-ink-3">GMV {r.gmv30 != null ? `~${fmtShort(r.gmv30)}` : gmvLabel(k.gmvRange) ?? '—'} · GPM {fmtShort(r.f.gpmVnd)}</div>
           </>
-        ) : <span className="text-ink-3">{pending ? 'Chờ tra TikTok (lượt mỗi giờ)' : 'Không có trên Marketplace'}</span>}
+        ) : <span className="text-ink-3">Kho dữ liệu chưa có số</span>}
       </td>
       <td className="text-xs whitespace-nowrap">
         {p.female != null ? (

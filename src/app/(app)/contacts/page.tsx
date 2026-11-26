@@ -11,7 +11,7 @@ import {
 import { dupKey } from '@/lib/booking/listing';
 import { listingScope, scopeOf } from '@/lib/auth/scope';
 import { can, requireUser } from '@/lib/auth/session';
-import { deleteKoc, refreshFromTikTok, saveKoc } from './actions';
+import { deleteKoc, saveKoc } from './actions';
 import { BookDialog, ChannelsDialog, ContactDialog, ReviewDialog } from './dialogs';
 import { boHandles, loadDirectory } from './directory';
 import { KL_LEVELS, PLATFORMS } from './platforms';
@@ -73,7 +73,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     contactKoc ? db.kocNote.findMany({ where: { kocId: contactKoc.id }, include: { author: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 30 }) : [],
     reviewKoc ? db.kocReview.findMany({ where: { kocId: reviewKoc.id }, include: { reviewer: { select: { name: true } } } }) : [],
     reviewKoc ? db.brand.findMany({ select: { name: true }, orderBy: { name: 'asc' } }) : [],
-    db.syncState.findUnique({ where: { id: 'creators' } }),
+    db.syncState.findUnique({ where: { id: 'warehouse-creators' } }),
   ]);
   const listed = new Map<string, { n: number; first: (typeof listingInfo)[number]['batch'] }>();
   for (const li of listingInfo) {
@@ -115,10 +115,6 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
         <Link href={dlg('review', k.id, { verdict: 'NOT_SUITABLE' })}>Đánh giá Không phù hợp (theo Brand)</Link>
         {rs && <Link href={`${dlg('review', k.id)}#lich-su`}>Lịch sử đánh giá kênh ({rs.total})</Link>}
         <Link href={`/contacts/${k.id}`}>Đánh giá lịch sử & rủi ro</Link>
-        <form action={refreshFromTikTok}>
-          <input type="hidden" name="id" value={k.id} />
-          <button className="item">Cập nhật chỉ số</button>
-        </form>
       </Menu>
     );
   };
@@ -148,7 +144,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-xl font-semibold">Danh bạ KOC / KOL</h1>
-          {statsRun?.finishedAt && <p className="text-xs text-ink-3">Chỉ số TikTok Shop cập nhật {statsRun.finishedAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}</p>}
+          {statsRun?.finishedAt && <p className="text-xs text-ink-3">Chỉ số TikTok (kho dữ liệu) cập nhật {statsRun.finishedAt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' })}</p>}
         </div>
         <div className="flex gap-2">
           {can(me, 'data.export') && <a href={`/contacts/export${ret}`} className="btn">Tải Excel</a>}

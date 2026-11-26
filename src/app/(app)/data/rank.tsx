@@ -7,7 +7,7 @@ import { fmtNum, fmtShort } from '@/lib/format';
 import { areaOf, day, Empty, fmtTime, KindPill, MetricNotes, Panel, Segmented, SourcePicker, Status } from './ui';
 
 type Saved = SourceStats | { error: string } | undefined;
-const localOnly = (s: Source) => s.group === 'lark' || s.key === 'marketplace'; // nguồn chỉ gồm KOL Danh bạ
+const localOnly = (s: Source) => s.group === 'lark'; // nguồn chỉ gồm KOL Danh bạ (mọi kênh trong booking đều vào Danh bạ)
 const cell = (x: { money?: boolean }, v: number) => (x.money ? `${fmtNum(v)} ₫` : fmtNum(v));
 
 /** Dòng mô tả nguồn: loại số, phủ ngày nào, đến từ đâu, số trên trang lấy lúc nào. */
@@ -18,7 +18,7 @@ function SourceInfo({ s, st, at, ours }: { s: Source; st: Saved; at: Date | null
       <KindPill k={areaOf(s)} />
       <span>Nguồn <b className="font-medium text-ink-2">{placesOf(s)}</b></span>
       <span>Phủ dữ liệu <b className="font-medium text-ink-2">{st && !('error' in st) ? `${day(st.from)} – ${day(st.to)}` : '—'}</b></span>
-      <span>Số trên trang <b className="font-medium text-ink-2">{at ? `kéo sẵn lúc ${fmtTime(at)}` : localOnly(s) || ours ? 'lưu trong Booking Hub' : 'tra trực tiếp lúc mở trang'}</b> · cập nhật {o.schedule}</span>
+      <span>Số trên trang <b className="font-medium text-ink-2">{at ? `tổng hợp từ kho lúc ${fmtTime(at)}` : 'lưu trong Booking Hub'}</b> · cập nhật {o.schedule}</span>
     </div>
   );
 }
@@ -79,10 +79,10 @@ export async function RankView({ s, st, ours, shop, by }: { s: Source; st: Saved
         </div>
         {error ? (
           <Empty tone="critical">
-            Không đọc được Trạm dữ liệu: {error}.{/HTTP 5/.test(error) && ' Trạm đang bận, tải lại trang sau ít phút.'}{!ours && ' Có thể xem "Chỉ KOL Danh bạ" (số đã lưu sẵn).'}
+            Không đọc được số đã tổng hợp: {error}.
           </Empty>
         ) : !rows.length ? (
-          <Empty>Không có creator nào.</Empty>
+          <Empty>{st ? 'Không có creator nào.' : 'Chưa tổng hợp số từ kho: bấm Làm mới số kho (~2 phút).'}</Empty>
         ) : (
           <div className="overflow-x-auto">
             <table className="dt">
@@ -101,7 +101,7 @@ export async function RankView({ s, st, ours, shop, by }: { s: Source; st: Saved
                     <tr key={r.handle}>
                       <td className="text-ink-3">{n + 1}</td>
                       <td>
-                        <Link href={`/creator/${encodeURIComponent(r.handle.toLowerCase())}`} className="flex items-center gap-2" title="Xem hiệu quả ở mọi nguồn và dữ liệu gốc">
+                        <Link href={`/creator/${encodeURIComponent(r.handle.toLowerCase())}`} className="flex items-center gap-2" title="Xem hiệu quả ở mọi nguồn">
                           <Avatar src={k?.avatarUrl} name={k ? k.nickname ?? k.name : r.handle} size={24} />
                           <span className="font-medium text-ink hover:text-accent hover:underline">@{r.handle}</span>
                           {k && <Status tone="info">Danh bạ</Status>}
@@ -147,7 +147,7 @@ export async function ShopView({ s, st, by }: { s: Source; st: Saved; by: number
       <Panel flush title={`${s.name} · theo ${label.toLowerCase()}`} meta={`Mỗi ${label.toLowerCase()} có bao nhiêu creator và hiệu quả; bấm tên để xem creator của ${label.toLowerCase()} đó`}>
         <div className="border-b border-line px-4 py-3"><SourceInfo s={s} st={st} at={data.at} ours={false} /></div>
         {error ? (
-          <Empty tone="critical">Không đọc được Trạm dữ liệu: {error}.</Empty>
+          <Empty tone="critical">Không đọc được số đã tổng hợp: {error}.</Empty>
         ) : !data.rows.length ? (
           <Empty>Không có dữ liệu.</Empty>
         ) : (

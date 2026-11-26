@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Avatar } from '@/components/ui';
 import { CHECKS, QUALITY_DAYS, qualityCounts, qualityRows } from '@/lib/koc/dataQuality';
 import { db } from '@/lib/db';
-import { larkStats, marketStats, ORIGIN, sourceOf, STATION, topCreators, type Source, type SourceStats } from '@/lib/koc/dataSources';
+import { larkStats, marketStats, ORIGIN, sourceOf, WAREHOUSE, topCreators, type Source, type SourceStats } from '@/lib/koc/dataSources';
 import { fmtNum, fmtPct } from '@/lib/format';
 import { requireUser } from '@/lib/auth/session';
 import { refreshData } from './actions';
@@ -16,7 +16,7 @@ type Search = { view?: string; src?: string; ours?: string; by?: string; check?:
 type Saved = SourceStats | { error: string } | undefined;
 type Quality = Awaited<ReturnType<typeof qualityCounts>>;
 
-const DEFAULT_SRC = 'shop_creators'; // Creator hợp tác với 8 shop UpBase: câu hỏi hay gặp nhất
+const DEFAULT_SRC = 'aff_orders'; // Đơn affiliate creator bán cho shop UpBase: câu hỏi hay gặp nhất
 
 export default async function DataPage({ searchParams }: { searchParams: Promise<Search> }) {
   await requireUser();
@@ -24,7 +24,7 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
   const view = sp.check ? 'quality' : sp.view === 'shop' || sp.view === 'quality' || sp.view === 'sources' ? sp.view : sp.view === 'rank' || sp.src ? 'rank' : '';
   const [state, syncs, quality] = await Promise.all([
     db.syncState.findUnique({ where: { id: 'data-sources' } }),
-    db.syncState.findMany({ where: { id: { in: ['bookings', 'creators'] } } }),
+    db.syncState.findMany({ where: { id: { in: ['bookings', 'warehouse-creators'] } } }),
     qualityCounts(),
   ]);
   const saved = (state?.data ?? {}) as Record<string, Saved>;
@@ -50,7 +50,7 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
     <>
       <div className="mb-3">
         <h1 className="text-xl font-semibold">Dữ liệu</h1>
-        <p className="mt-0.5 text-xs text-ink-3">Số liệu creator lấy từ TikTok (đơn, video, LIVE của shop và MCN UpBase) và từ Lark (booking team nhập).</p>
+        <p className="mt-0.5 text-xs text-ink-3">Số liệu creator lấy từ kho dữ liệu UpBase (đơn, video, LIVE của các shop UpBase quản lý; hồ sơ creator TikTok) và từ Lark (booking team nhập).</p>
       </div>
       {sp.notfound && <p role="alert" className="mb-3 rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning">Không đọc được username TikTok. Nhập dạng @username hoặc dán link kênh.</p>}
       <TabNav
@@ -69,8 +69,8 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
             </form>
             <form action={refreshData}>
               <button className="btn h-8 px-3 text-xs" disabled={running}
-                title={running ? 'Đang tổng hợp số TikTok (~10 phút), tải lại trang sau' : state?.finishedAt ? `Số TikTok tổng hợp lúc ${fmtTime(state.finishedAt)}` : 'Số TikTok chưa tổng hợp'}>
-                {running ? 'Đang làm mới…' : 'Làm mới số TikTok'}
+                title={running ? 'Đang tổng hợp số từ kho (~2 phút), tải lại trang sau' : state?.finishedAt ? `Số kho tổng hợp lúc ${fmtTime(state.finishedAt)}` : 'Số kho chưa tổng hợp'}>
+                {running ? 'Đang làm mới…' : 'Làm mới số kho'}
               </button>
             </form>
           </>
@@ -83,28 +83,27 @@ export default async function DataPage({ searchParams }: { searchParams: Promise
 
 async function Overview({ saved, stationAt, syncs, quality }: { saved: Record<string, Saved>; stationAt: Date | null; syncs: { id: string; finishedAt: Date | null }[]; quality: Quality }) {
   const shopSrc = sourceOf(DEFAULT_SRC)!;
-  const keysOf = (g: string) => STATION.filter((s) => s.group === g).map((s) => s.key);
-  // KOL Danh bạ có số ở ít nhất một bảng của nhóm (số đã lưu lúc tổng hợp).
-  const coveredOf = (g: string) => db.creatorMetric.findMany({ where: { source: { in: keysOf(g) } }, distinct: ['handle'], select: { handle: true } }).then((r) => r.length);
-  const [kocTotal, lark, market, ourTop, allTop, handles, sellerCov, partnerCov] = await Promise.all([
+  // KOL Danh bạ có số ở ít nhất một bảng kho.
+  const covered = () => db.$queryRaw<{ n: number }[]>`
+    select count(distinct c.handle)::int n from "CreatorMetric" c join "Koc" k on k.platform = 'TikTok' and lower(k.handle) = c.handle
+    where c.source = any(${WAREHOUSE.map((s) => s.key)})`.then((r) => r[0]?.n ?? 0);
+  const [kocTotal, lark, market, ourTop, allTop, handles, sellerCov] = await Promise.all([
     db.koc.count({ where: { platform: 'TikTok' } }),
     larkStats(),
     marketStats(),
     topCreators(shopSrc, true, 0, 5).catch(() => null),
     topCreators(shopSrc, false, 0, 200).catch(() => null),
     db.koc.findMany({ where: { platform: 'TikTok' }, select: { handle: true } }),
-    coveredOf('seller'),
-    coveredOf('partner'),
+    covered(),
   ]);
   const inBook = new Set(handles.map((h) => h.handle));
   const outside = allTop?.rows.filter((r) => !inBook.has(r.handle.toLowerCase())).slice(0, 5) ?? null;
   const syncAt = (id: string) => syncs.find((x) => x.id === id)?.finishedAt ?? null;
-  const stationErr = (g: string) => STATION.some((s) => s.group === g && saved[s.key] && 'error' in saved[s.key]!);
+  const stationErr = () => WAREHOUSE.some((s) => saved[s.key] && 'error' in saved[s.key]!);
   const cards: { k: AreaKey; at: Date | null; error?: boolean; coverage: number }[] = [
-    { k: 'seller', at: stationAt, error: stationErr('seller'), coverage: sellerCov },
-    { k: 'partner', at: stationAt, error: stationErr('partner'), coverage: partnerCov },
+    { k: 'seller', at: stationAt, error: stationErr(), coverage: sellerCov },
     { k: 'lark', at: syncAt('bookings'), coverage: lark.ours.creators },
-    { k: 'marketplace', at: syncAt('creators'), coverage: market.ours.creators },
+    { k: 'marketplace', at: syncAt('warehouse-creators'), coverage: market.ours.creators },
   ];
   const ranking = (ours: boolean) => `/data?view=rank&src=${DEFAULT_SRC}${ours ? '&ours=1' : ''}`;
 
@@ -126,7 +125,7 @@ async function Overview({ saved, stationAt, syncs, quality }: { saved: Record<st
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <MiniRank title="KOL Danh bạ bán tốt nhất cho shop UpBase" meta="GMV affiliate bán cho 8 shop, toàn bộ khoảng ngày của bảng" s={shopSrc} rows={ourTop?.rows ?? null} more={ranking(true)} />
+        <MiniRank title="KOL Danh bạ bán tốt nhất cho shop UpBase" meta="GMV đơn affiliate bán cho các shop UpBase quản lý, toàn bộ khoảng ngày của bảng" s={shopSrc} rows={ourTop?.rows ?? null} more={ranking(true)} />
         <MiniRank title="Creator ngoài Danh bạ đang bán mạnh cho shop UpBase" meta="Đáng xem để mời hợp tác; chưa có trong Danh bạ KOC" s={shopSrc} rows={outside} more={ranking(false)} />
       </div>
 
@@ -143,7 +142,7 @@ async function MiniRank({ title, meta, s, rows, more }: { title: string; meta: s
   const kocOf = new Map(kocs.map((k) => [k.handle, k]));
   return (
     <Panel flush title={title} meta={meta} actions={<Link href={more} className="link text-xs">Xem bảng xếp hạng</Link>}>
-      {rows === null ? <Empty>Chưa đọc được số từ Trạm dữ liệu. Bấm Làm mới số TikTok hoặc xem lại sau.</Empty> : !rows.length ? <Empty>Chưa có creator nào.</Empty> : (
+      {rows === null ? <Empty>Chưa đọc được số từ kho. Bấm Làm mới số kho hoặc xem lại sau.</Empty> : !rows.length ? <Empty>Chưa có creator nào.</Empty> : (
         <table className="dt">
           <thead><tr><th className="w-8">#</th><th>Creator</th><th className="text-right">{s.metrics[0].label}</th><th className="text-right">{s.metrics[1].label}</th></tr></thead>
           <tbody>
@@ -233,7 +232,7 @@ async function Sources({ saved }: { saved: Record<string, Saved> }) {
   const statOf = (s: Source): Saved => (s.key === 'lark' ? lark : s.key === 'marketplace' ? market : saved[s.key]);
   return (
     <div className="grid gap-5">
-      <Panel flush title="Nguồn dữ liệu" meta="Các bảng chồng lấn (một đơn có thể nằm ở Đơn MCN, Đơn TAP và Đơn affiliate của shop), nên không cộng số giữa các bảng. Creator khớp Danh bạ theo username TikTok">
+      <Panel flush title="Nguồn dữ liệu" meta="Các bảng chồng lấn (đơn từ video, LIVE cũng nằm trong Đơn affiliate của shop), nên không cộng số giữa các bảng. Creator khớp Danh bạ theo username TikTok">
         <table className="dt">
           <thead><tr><th>Nguồn</th><th>Loại số</th><th>Cập nhật</th></tr></thead>
           <tbody>
@@ -269,7 +268,7 @@ async function Sources({ saved }: { saved: Record<string, Saved> }) {
                         </details>
                       </td>
                       {!st || 'error' in st ? (
-                        <td colSpan={5}><Status tone={st ? 'critical' : 'neutral'}>{st ? `Lỗi: ${st.error}` : 'Chưa tổng hợp, bấm Làm mới số TikTok'}</Status></td>
+                        <td colSpan={5}><Status tone={st ? 'critical' : 'neutral'}>{st ? `Lỗi: ${st.error}` : 'Chưa tổng hợp, bấm Làm mới số kho'}</Status></td>
                       ) : (
                         <>
                           <td className="whitespace-nowrap">{day(st.from)} – {day(st.to)}<div className="text-2xs text-ink-3">{fmtNum(st.rows)} dòng</div></td>

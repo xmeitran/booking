@@ -1,20 +1,19 @@
 // Phần hiển thị tab Dữ liệu, theo bộ component giao diện của app b2c (web-admin/src/components/ui: Panel, Status, Stat,
 // StatRow, Tabs, Chips, Segmented, DataTable). Bản server: chuyển mục bằng link thay cho onClick.
 import Link from 'next/link';
-import { LARK, MARKET, ORIGIN, STATION, type Source } from '@/lib/koc/dataSources';
+import { LARK, MARKET, ORIGIN, WAREHOUSE, type Source } from '@/lib/koc/dataSources';
 import { fmtDate, fmtShort } from '@/lib/format';
 
 export type AreaKey = keyof typeof ORIGIN;
 /** Nhóm nguồn theo việc người xem muốn biết (thay vì theo hệ thống kỹ thuật). */
 export const AREAS: { key: AreaKey; title: string; question: string; system: string; sources: Source[] }[] = [
-  { key: 'seller', title: 'Bán hàng cho shop UpBase', question: 'Creator nào bán được hàng cho 8 shop UpBase', system: 'TikTok Seller Center', sources: STATION.filter((s) => s.group === 'seller') },
-  { key: 'partner', title: 'Creator MCN / TAP của UpBase', question: 'Creator thuộc MCN, chiến dịch TAP của UpBase bán ra sao trên toàn sàn', system: 'TikTok Partner Center', sources: STATION.filter((s) => s.group === 'partner') },
+  { key: 'seller', title: 'Bán hàng cho shop UpBase', question: 'Creator nào bán được hàng cho các shop UpBase quản lý', system: 'Kho UpBase · TikTok Seller Center', sources: WAREHOUSE },
   { key: 'lark', title: 'Booking UpBase', question: 'Đã book KOL nào, chi phí bao nhiêu, team ghi nhận hiệu quả ra sao', system: 'Lark Base · 3.2 List duyệt book', sources: [LARK] },
-  { key: 'marketplace', title: 'Hồ sơ TikTok của KOL Danh bạ', question: 'Follower, lượt xem, sản phẩm bán 30 ngày của từng KOL trong Danh bạ', system: 'TikTok Creator Marketplace', sources: [MARKET] },
+  { key: 'marketplace', title: 'Hồ sơ creator TikTok', question: 'Follower, lượt xem, GMV 30 ngày của creator trên toàn sàn', system: 'Kho UpBase · hồ sơ creator', sources: [MARKET] },
 ];
 export const areaOf = (s: Source): AreaKey => (s.key === 'marketplace' ? 'marketplace' : s.group);
 /** Quá hạn khi lần cập nhật gần nhất cũ hơn 2 lần chu kỳ (giờ). */
-export const STALE_HOURS: Record<AreaKey, number> = { lark: 3, partner: 12, seller: 12, marketplace: 3 };
+export const STALE_HOURS: Record<AreaKey, number> = { lark: 3, seller: 12, marketplace: 48 };
 
 export const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 export const day = (s: string | null) => (s ? fmtDate(new Date(s)) : '—');

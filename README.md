@@ -55,33 +55,32 @@ và người phụ trách. "Của bạn" = tên Lark của bạn là người ph
 - Kênh mới trong booking được tự thêm vào Danh bạ KOC (TikTok). KOL đã có thì không ghi đè.
 - Tab Booking chỉ đọc; sửa dữ liệu trên Lark.
 
-## Chỉ số KOL từ TikTok Shop
+## Chỉ số KOL từ kho dữ liệu
 
-- Follower, lượt xem TB / video và / LIVE bán hàng, số món bán, GMV, GPM (30 ngày) từ TikTok Shop Creator Marketplace (`/affiliate_seller/202608/marketplace_creators/search` + `/202508/marketplace_creators/{open_id}`).
-- Gọi qua **Trạm dữ liệu TikTok** (`Data-tiktok`, https://mcn.mindtheoperation.com, `POST /api/console`) bằng token shop VN nó đang giữ. Booking Hub không giữ token TikTok: làm mới token ở 2 nơi sẽ làm token bên kia mất hiệu lực. Cần `DATA_TIKTOK_URL`, `DATA_TIKTOK_USER`, `DATA_TIKTOK_PASSWORD`.
-- `POST /api/cron/creator-stats` mỗi giờ (sau đồng bộ booking), tối đa ~10 phút: tra `creator_open_id` cho KOL chưa tra (ưu tiên KOL có booking gần đây), cập nhật chỉ số KOL cũ quá 7 ngày. KOL không có trên Marketplace thì 30 ngày tra lại.
-- Hạn mức tần suất tính chung với Trạm dữ liệu: gọi cách nhau 25s, bị chặn thì chờ 60s thử lại.
-- Đầu mỗi lượt, lấy sẵn `creator_open_id` từ Trạm (video gắn sản phẩm shop, chiến dịch TAP) cho KOL chưa tra: open_id ở đó
-  trùng với Creator Marketplace, nên KOL này chỉ cần 1 lượt gọi (bỏ lượt tìm kiếm). Lần đầu lấy được ~1.100 KOL.
-- Trang creator có "Chỉ số chính" (follower, view TB, số món bán và GMV 30 ngày toàn sàn, GMV bán cho 8 shop UpBase, GMV qua MCN,
-  booking) ghi rõ nguồn, và nút "Tra TikTok Shop ngay" (creator ngoài Danh bạ thì thêm vào Danh bạ rồi tra).
-- TikTok chỉ trả GMV dạng khoảng cho creator VN (vd "1M₫+"); GPM tính bằng USD.
+- Follower, lượt xem TB / video và / LIVE bán hàng, số món bán, GMV, GPM, chân dung follower (30 ngày, toàn sàn) lấy từ kho dữ liệu
+  UpBase (bảng kol-connector, xem mục "Kho dữ liệu"). Job `sync-creators` mỗi sáng ghi số vào hồ sơ KOC Danh bạ cùng handle
+  (`Koc.followers`, `avgViews`, `avgLiveViews`, `unitsSold`, `gpmUsd`, `ttsProfile` dạng `{ source: 'warehouse', … }`); KOL không có
+  trong kho giữ số cũ. Listing, xuất Excel, trang review cho brand, AI brief đọc các cột này.
+- Trước 26/11/2026 số này do Trạm dữ liệu TikTok (Data-tiktok) tra Creator Marketplace; đã bỏ hẳn, Booking Hub không gọi Data-tiktok nữa.
+- Trang creator có "Chỉ số chính" (follower, view TB, số món bán và GMV 30 ngày toàn sàn, GMV bán cho shop UpBase, GMV video, booking)
+  ghi rõ nguồn; creator ngoài Danh bạ có nút "Thêm vào Danh bạ" (chép luôn số kho).
+- Creator ẩn GMV: GMV lấy giữa khoảng TikTok trả, `gmvRange` ghi "~N tr ₫". GPM trong kho là VND, lưu vào `gpmUsd` theo `USD_VND`.
 
 ## Hồ sơ KOC (KOC 360)
 
-`/contacts/[id]`: chỉ số TikTok 30 ngày, tỷ trọng GMV video / LIVE / thẻ sản phẩm và theo ngành, chân dung follower (giới tính, tuổi, tỉnh thành), lịch sử hợp tác với UpBase (booking trên Lark), liên hệ & nhận hàng, thanh toán (chỉ Admin / Leader). Nút "Cập nhật từ TikTok" tra ngay một KOC. Độ đầy đủ hồ sơ tính theo 5 nhóm: số TikTok, cấp KOL, liên hệ, nhận hàng, thanh toán.
+`/contacts/[id]`: chỉ số TikTok 30 ngày, tỷ trọng GMV video / LIVE / thẻ sản phẩm và theo ngành, chân dung follower (giới tính, tuổi, tỉnh thành), lịch sử hợp tác với UpBase (booking trên Lark), liên hệ & nhận hàng, thanh toán (chỉ Admin / Leader). Độ đầy đủ hồ sơ tính theo 5 nhóm: số TikTok, cấp KOL, liên hệ, nhận hàng, thanh toán.
 
-- Mỗi lần tra Creator Marketplace thành công lưu một dòng `KocSnapshot` → mục "Lịch sử chỉ số" (tăng / giảm so với lần trước).
+- Mỗi lượt đồng bộ kho mà follower / view / số món bán đổi thì lưu một dòng `KocSnapshot` → mục "Lịch sử chỉ số" (tăng / giảm so với lần trước).
 - Nhật ký chăm sóc (`KocNote`): ghi chú + ngày hẹn liên hệ lại; mọi vai trò ghi được. Danh bạ có lọc nhanh "Đến hẹn liên hệ",
   "Chưa có PIC", "Chưa có số TikTok", "Thiếu liên hệ / địa chỉ / thanh toán" kèm số đếm, lọc theo cấp KOL (nhập tay, trống thì theo booking).
 
 ## Listing
 
 Thay file "Excel Listing" theo sheet *[Booking] - Requirement Excel Listing (UpAI)*:
-- Đợt listing (Brand · Store · Sản phẩm · Tháng, CR và AOV sản phẩm theo gian hàng). Dán nhiều ID kênh / link TikTok một lần; kênh chưa có trong Danh bạ được tạo và tra TikTok.
+- Đợt listing (Brand · Store · Sản phẩm · Tháng, CR và AOV sản phẩm theo gian hàng). Dán nhiều ID kênh / link TikTok một lần; kênh chưa có trong Danh bạ được tạo (số kho vào ở lượt đồng bộ sáng hôm sau).
 - Tự điền: cấp KOL (theo booking gần nhất hoặc hồ sơ), giá đã hợp tác gần nhất cùng hình thức, phí kèm TNCN (= giá / 0,9, kế toán chưa chốt), số món, GPM, AOV, tỷ trọng GMV, chân dung khán giả, View Target, GMV Target, CTR, CPV.
 - GMV Target = View Target × CTR × CR × AOV với CTR = (GPM/1000)/(CR × AOV), tức = View Target × GPM / 1000. View Target KL1–KL5 = view TB video bán hàng 30 ngày; KL6–KL7 nhập tay (API không có video không gắn giỏ).
-- GPM TikTok trả bằng USD, quy đổi theo `USD_VND` (mặc định 26.000).
+- GPM lưu bằng USD (`gpmUsd`), quy đổi theo `USD_VND` (mặc định 26.000); kho trả VND nên job chia lại khi ghi.
 - Xuất CSV theo thứ tự cột tab "Excel Listing _ Final": bản cho Brand bỏ email, Zalo, nhận hàng, ngân hàng, CCCD; ngân hàng / CCCD chỉ Admin, Leader xuất được.
 
 - Hai chế độ xem: Tóm tắt và **Bảng Excel** (đủ cột như file "Excel Listing _ Final", bật / tắt theo nhóm cột). Trong bảng sửa nhanh
@@ -92,10 +91,9 @@ Thay file "Excel Listing" theo sheet *[Booking] - Requirement Excel Listing (UpA
 ## Trang hiệu quả creator
 
 `/creator/<username>` (bấm creator ở bất kỳ bảng nào trong tab Dữ liệu, nút "Hiệu quả ở mọi nguồn" trong hồ sơ KOC, hoặc ô
-"Tra creator"): creator có mặt ở bảng nào trong 4 nguồn, số mỗi bảng kèm cách tính, theo shop / brand, booking với UpBase,
-và nút **Xem dữ liệu gốc** (50 dòng mới nhất TikTok trả về) để đối chiếu. Mỗi bảng ghi rõ dữ liệu đến từ đâu, phủ từ ngày nào,
-số kéo sẵn lúc nào hay vừa tra trực tiếp, và nhãn "Số TikTok trả về" / "Team tự điền". Số lấy từ bản kéo sẵn; creator ngoài
-Danh bạ chưa có trong bản kéo sẵn thì tra trực tiếp Trạm (~0,5 giây / bảng).
+"Tra creator"): creator có mặt ở bảng nào (Lark, 3 bảng shop UpBase trong kho, hồ sơ creator trong kho), số mỗi bảng kèm cách tính,
+theo shop / brand, booking với UpBase. Mỗi bảng ghi rõ dữ liệu đến từ đâu, phủ từ ngày nào, tổng hợp lúc nào, và nhãn
+"Số TikTok trả về" / "Team tự điền". Job gộp mọi creator nên creator ngoài Danh bạ cũng có số, không phải hỏi kho lúc mở trang.
 
 ## Luồng booking trong app (theo tài liệu chức năng B2C-Ops)
 
@@ -163,17 +161,17 @@ chưa cấu hình thì job bỏ qua và matching dùng số TikTok Shop đã lư
 ## Dữ liệu
 
 Tab `/data` cho biết mỗi nguồn có bao nhiêu creator, bao nhiêu KOL Danh bạ có mặt, và hiệu quả (GMV, đơn, lượt xem…) của họ:
-Lark Base (bảng 3.2), TikTok Partner Center (Đơn MCN, phiên live MCN, Đơn TAP, creator nhận TAP, hồ sơ creator MCN) và
-TikTok Seller Center (creator hợp tác với shop, đơn affiliate, video, LIVE, yêu cầu mẫu, Creator Marketplace do Booking Hub tự tra).
-Bảng TikTok đọc qua `POST /api/explore` của Trạm dữ liệu (`src/lib/koc/dataSources.ts`). Bảng lớn mất ~10 giây nên job
-`/api/cron/data-sources` (workflow mỗi giờ, chạy 6 giờ một lần, ~2 phút) lưu phần tổng vào `SyncState.data` và số của từng KOL
-vào bảng `CreatorMetric`; hồ sơ KOC đọc bảng này cho mục "Hiệu quả theo nguồn TikTok". Nút Làm mới chạy job ngay.
-Mỗi nguồn tách được theo **shop / brand**: bảng Seller theo 8 shop, Đơn MCN theo shop của đơn, Đơn TAP theo sản phẩm, Lark theo brand.
-Trang từng nguồn có cột "Shop đã bán / hợp tác" cho từng creator, chế độ xem "Theo shop" (mỗi shop bao nhiêu creator, hiệu quả),
-và lọc theo một shop. Job lưu tối đa 20 shop lớn nhất mỗi KOL vào `CreatorMetric.shops`; hồ sơ KOC hiện 5 shop đầu mỗi nguồn.
-Job cũng **kéo sẵn** bảng xếp hạng vào `SourceCache` (top 200 creator theo từng chỉ số, bảng theo shop, top creator của từng shop
-seller) nên trang từng nguồn chỉ đọc DB (< 1 giây). Chỉ khi lọc một shop của Đơn MCN / một sản phẩm TAP (hàng nghìn giá trị) mới
-hỏi Trạm lúc mở. Một lượt job ~10 phút.
+- **Lark Base** (bảng 3.2, team điền).
+- **Kho dữ liệu UpBase**, bảng TikTok Seller Center của các shop UpBase quản lý (`src/lib/koc/dataSources.ts`, tên shop / brand từ `dbt_prod.ecom_dim_store`):
+  Đơn affiliate của shop (`report_public_tiktok_affiliate_order`, ~2,6 triệu đơn từ 10/2025), Video gắn sản phẩm shop
+  (`report_public_tiktok_video_performance`, creator affiliate, từ 5/2026), Phiên LIVE (`report_public_report_live_koc_daily`, LIVE affiliate TikTok).
+- **Hồ sơ creator TikTok** (`WarehouseCreator`, ~62 nghìn creator, 30 ngày toàn sàn).
+
+Bảng video ~42 triệu dòng (~30 giây một lượt gộp) nên job `/api/cron/data-sources` (crontab server :20 mỗi giờ, app chạy 6 giờ một lần,
+~2 phút; nút "Làm mới số kho" chạy ngay) gộp mỗi creator × shop một dòng qua Metabase, lưu **mọi creator** vào `CreatorMetric`
+(m theo thứ tự chỉ số, `shops` = 20 shop lớn nhất), phần tổng vào `SyncState.data`, danh sách shop và top 200 creator từng shop vào
+`SourceCache`. Trang tab Dữ liệu, trang creator, hồ sơ KOC chỉ đọc DB. Metabase cắt kết quả ở 1.048.575 dòng: vượt thì job báo lỗi.
+Không còn trong kho (đã bỏ cùng Data-tiktok): Đơn MCN (CAP) toàn sàn, Đơn / creator chiến dịch TAP, yêu cầu hàng mẫu, dữ liệu gốc từng dòng.
 
 ## Tích hợp theo tài liệu giải pháp B2C-Ops Phase 1
 

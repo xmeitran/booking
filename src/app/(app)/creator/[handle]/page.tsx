@@ -3,61 +3,59 @@ import { notFound, redirect } from 'next/navigation';
 import { Avatar } from '@/components/ui';
 import { db } from '@/lib/db';
 import {
-  creatorStation, LARK, liveCreator, MARKET, ORIGIN, originOf, placesOf, rawRows, STATION,
+  creatorStation, LARK, LIVE_SOURCES, liveCreator, MARKET, ORIGIN, originOf, placesOf, rawRows, WAREHOUSE,
   type CreatorSource, type RawColumn, type ShopRow, type Source, type SourceStats,
 } from '@/lib/koc/dataSources';
-import { fmtDate, fmtNum, fmtShort, fmtVnd } from '@/lib/format';
-import { profileInsights, USD_VND } from '@/lib/koc/kocInsights';
+import { configured } from '@/lib/integrations';
+import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { requireUser } from '@/lib/auth/session';
 import { TIKTOK_USERNAME } from '@/lib/validate';
-import { lookupTikTok } from '../actions';
+import { addToDanhBa } from '../actions';
 
 const fmtTime = (d: Date) => d.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 const day = (s: string | null | undefined) => (s ? fmtDate(new Date(s)) : '—');
 const val = (x: { money?: boolean }, v: number | null | undefined) => (v == null ? '—' : x.money ? `${fmtShort(v)} ₫` : fmtShort(v));
 const num = (v: unknown) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
-const GROUPS = [
-  ['lark', 'Lark Base'], ['partner', 'TikTok Partner Center'], ['seller', 'TikTok Seller Center'], ['marketplace', 'Creator Marketplace'],
-] as const;
+const GROUPS = [['lark', 'Lark Base'], ['seller', 'Shop UpBase (kho)'], ['marketplace', 'Hồ sơ creator (kho)']] as const;
 
-type Tile = { s: Source; m: number[] | null; shops: ShopRow[]; from: CreatorSource['from'] | 'local'; known: boolean };
+type Tile = { s: Source; m: number[] | null; shops: ShopRow[]; from: 'saved' | 'live' | 'local'; known: boolean; note?: string };
 
-/** Hiệu quả của một creator ở mọi nguồn: có mặt ở đâu, số mỗi nguồn, theo shop / brand, và dữ liệu gốc để đối chiếu. */
-const TIKTOK_MSG: Record<string, [string, boolean]> = {
-  updated: ['Đã lấy số mới từ TikTok Shop.', true],
-  missing: ['TikTok Shop không có creator này trên Creator Marketplace (chưa bật bán hàng hoặc đã khoá).', false],
-  limited: ['TikTok đang chặn tần suất gọi, thử lại sau vài phút; job mỗi giờ cũng sẽ tự tra.', false],
-  failed: ['Không lấy được số từ TikTok Shop, thử lại sau.', false],
-};
-
-export default async function CreatorPage({ params, searchParams }: { params: Promise<{ handle: string }>; searchParams: Promise<{ raw?: string; tiktok?: string }> }) {
+/** Hiệu quả của một creator ở mọi nguồn: có mặt ở đâu, số mỗi nguồn, theo shop / brand. */
+export default async function CreatorPage({ params, searchParams }: { params: Promise<{ handle: string }>; searchParams: Promise<{ added?: string; raw?: string }> }) {
   await requireUser();
   const handle = decodeURIComponent((await params).handle).replace(/^@/, '').toLowerCase();
   if (!TIKTOK_USERNAME.test(handle)) notFound();
-  const { raw, tiktok } = await searchParams;
+  const { added, raw } = await searchParams;
   const alias = await db.kocAlias.findUnique({ where: { handle }, select: { koc: { select: { handle: true } } } });
   if (alias && alias.koc.handle !== handle) redirect(`/creator/${encodeURIComponent(alias.koc.handle)}`);
 
-  const [koc, cachedStation, state, bookings, booksSync] = await Promise.all([
+  const [koc, cached, w, state, bookings, booksSync, whOn] = await Promise.all([
     db.koc.findFirst({ where: { platform: 'TikTok', handle }, include: { pic: { select: { name: true } } } }),
     creatorStation(handle),
+    db.warehouseCreator.findUnique({ where: { platform_handle: { platform: 'TikTok', handle } } }),
     db.syncState.findUnique({ where: { id: 'data-sources' } }),
     db.booking.findMany({ where: { channel: { equals: handle, mode: 'insensitive' } }, orderBy: [{ airDate: { sort: 'desc', nulls: 'last' } }, { larkUpdatedAt: 'desc' }] }),
     db.syncState.findUnique({ where: { id: 'bookings' } }),
+    configured('warehouse'),
   ]);
-  const inDanhBa = Boolean(koc);
-  // KOL Danh bạ đã được đối chiếu mọi bảng: không có trong bản kéo sẵn = không có. Creator khác: tra trực tiếp bảng còn thiếu
-  // (~0,5 giây / bảng, Trạm có chỉ mục theo creator), mỗi lần 3 bảng để không dồn tải.
-  const station: CreatorSource[] = [];
-  for (let i = 0; i < cachedStation.length; i += 3) {
-    station.push(...(await Promise.all(cachedStation.slice(i, i + 3).map((c) =>
-      c.from || inDanhBa ? c : liveCreator(c.s, handle).catch((): CreatorSource => ({ ...c, from: null }))))));
-  }
+  // Đơn affiliate, LIVE: hỏi thẳng kho lúc mở trang (~1–2 giây); lỗi thì dùng bản tổng hợp sẵn. Video: bản tổng hợp sẵn.
+  const liveErr: Record<string, string> = {};
+  const station: (CreatorSource & { live?: boolean })[] = await Promise.all(cached.map(async (c) => {
+    if (!whOn || !LIVE_SOURCES.includes(c.s.key)) return c;
+    try {
+      return { ...(await liveCreator(c.s, handle)), live: true };
+    } catch (e) {
+      liveErr[c.s.key] = e instanceof Error ? e.message : String(e);
+      return c;
+    }
+  }));
+  const rawSource = raw && whOn ? WAREHOUSE.find((x) => x.key === raw) : undefined;
+  const rawData = rawSource ? await rawRows(rawSource, handle).catch((e: unknown) => (e instanceof Error ? e.message : String(e))) : null;
   const coverage = (state?.data ?? {}) as Record<string, SourceStats | { error: string }>;
   const jobCount = koc ? await db.job.count({ where: { kocId: koc.id, stage: { not: 'Đã huỷ' } } }) : 0;
   const updated = state?.finishedAt ?? null;
 
-  // Lark: booking của kênh này. Marketplace: hồ sơ 30 ngày trong Danh bạ.
+  // Lark: booking của kênh này. Hồ sơ creator: bảng kho (WarehouseCreator).
   const ex = (b: (typeof bookings)[number], k: string) => num((b.extra as Record<string, unknown>)[k]);
   const sum = (f: (b: (typeof bookings)[number]) => number | null, list = bookings) => list.reduce((a, b) => a + (f(b) ?? 0), 0);
   const larkM = [bookings.length, sum((b) => b.cost), sum((b) => ex(b, 'views30')), sum((b) => ex(b, 'gmv30')), sum((b) => ex(b, 'orders30'))];
@@ -67,41 +65,35 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
   }).sort((a, b) => b.m[0] - a.m[0]);
   const dates = bookings.map((b) => (b.airDate ?? b.planAirDate)?.getTime()).filter((x): x is number => x != null);
   const larkCov = dates.length ? { from: new Date(Math.min(...dates)).toISOString(), to: new Date(Math.max(...dates)).toISOString() } : undefined;
-  const marketM = koc?.statsAt ? [koc.followers ?? 0, koc.avgViews ?? 0, koc.avgLiveViews ?? 0, koc.unitsSold ?? 0] : null;
+  const marketM = w ? [w.followers ?? 0, w.medianViews ?? 0, w.ecViews ?? 0, w.gmv ?? 0, w.unitsSold ?? 0] : null;
+  const wAt = w ? w.sourceAt ?? w.syncedAt : null;
 
   const tiles: Tile[] = [
     { s: LARK, m: bookings.length ? larkM : null, shops: brands, from: 'local', known: true },
-    ...station.map((c) => ({ ...c, known: inDanhBa || c.from !== null })),
-    { s: MARKET, m: marketM, shops: [], from: 'local', known: Boolean(koc?.ttsCheckedAt) },
+    ...station.map((c): Tile => ({
+      s: c.s, m: c.m, shops: c.shops, from: c.live ? 'live' : 'saved', known: c.live || Boolean(coverage[c.s.key] && !('error' in coverage[c.s.key])),
+      note: liveErr[c.s.key] ? `Không hỏi được kho (${liveErr[c.s.key].slice(0, 120)}), đang hiện bản tổng hợp sẵn` : undefined,
+    })),
+    { s: MARKET, m: marketM, shops: [], from: 'local', known: true },
   ];
   const present = tiles.filter((t) => t.m);
-  const rawSource = raw ? STATION.find((s) => s.key === raw) : undefined;
-  const rawData = rawSource ? await rawRows(rawSource, handle).catch((e: unknown) => (e instanceof Error ? e.message : String(e))) : null;
-  const name = koc?.nickname ?? koc?.name ?? `@${handle}`;
+  const name = koc?.nickname ?? koc?.name ?? w?.nickname ?? `@${handle}`;
 
-  // Chỉ số chính: lấy nguồn tốt nhất có số, ghi rõ nguồn. Marketplace là số 30 ngày TikTok trả cho cả sàn; thiếu thì dùng
-  // ảnh chụp hồ sơ MCN hoặc follower lúc nhận chiến dịch TAP.
+  // Chỉ số chính, ghi rõ nguồn: hồ sơ 30 ngày trên toàn sàn (kho), bán cho shop UpBase (kho), booking (Lark).
   const m = (key: string) => station.find((c) => c.s.key === key)?.m ?? null;
-  const ins = m('seller_creator_insights'), tapc = m('tap_campaign_creators'), so = m('seller_orders'), cap = m('cap_orders');
-  const mk = koc?.statsAt ? `Creator Marketplace · 30 ngày, tra ${fmtDate(koc.statsAt)}` : null;
-  const pick = (...c: [number | null | undefined, string | null][]) => c.find(([v, src]) => v != null && src) ?? [null, null];
-  const p = profileInsights(koc?.ttsProfile);
-  const covSo = coverage.seller_orders && !('error' in coverage.seller_orders) ? `${day(coverage.seller_orders.from)} – ${day(coverage.seller_orders.to)}` : '';
-  const covCap = coverage.cap_orders && !('error' in coverage.cap_orders) ? `${day(coverage.cap_orders.from)} – ${day(coverage.cap_orders.to)}` : '';
+  const so = m('aff_orders'), vid = m('videos');
+  const cov = (key: string) => { const c = coverage[key]; return c && !('error' in c) ? `, ${day(c.from)} – ${day(c.to)}` : ''; };
+  const mk = wAt ? `Kho UpBase · hồ sơ 30 ngày, ${fmtDate(wAt)}` : null;
   const summary: { label: string; v: [number | null | undefined, string | null]; money?: boolean; text?: string | null; sub?: string; anchor?: string }[] = [
-    { label: 'Follower', v: pick([koc?.followers, mk], [ins?.[0], 'Hồ sơ creator MCN (30 ngày)'], [tapc?.[0], 'Lúc nhận chiến dịch TAP']), anchor: 'marketplace' },
-    { label: 'View TB / video bán hàng', v: pick([koc?.avgViews, mk], [ins?.[1], 'Hồ sơ creator MCN (30 ngày)']) },
-    { label: 'Số món bán 30 ngày (toàn sàn)', v: pick([koc?.unitsSold, mk], [ins?.[2], 'Hồ sơ creator MCN (30 ngày)']) },
-    // TikTok chỉ trả GMV dạng khoảng ("1M₫+") cho đa số creator VN; creator cho phép chia sẻ thì có số chính xác.
-    { label: 'GMV 30 ngày (toàn sàn)', v: [p.gmvExactVnd, mk], money: true, text: p.gmvExactVnd == null && mk ? koc?.gmvRange ?? null : null },
-    { label: 'GMV bán cho 8 shop UpBase', v: [so?.[0], so ? `Seller Center · Đơn affiliate${covSo ? `, ${covSo}` : ''}` : null], money: true, sub: so ? `${fmtNum(so[2])} món · ${fmtNum(so[1])} đơn` : undefined, anchor: 'seller_orders' },
-    { label: 'GMV qua MCN UpBase (mọi shop)', v: [cap?.[0], cap ? `Partner Center · Đơn MCN${covCap ? `, ${covCap}` : ''}` : null], money: true, sub: cap ? `${fmtNum(cap[2])} món · ${fmtNum(cap[1])} đơn` : undefined, anchor: 'cap_orders' },
+    { label: 'Follower', v: [w?.followers ?? koc?.followers, mk ?? (koc?.followers != null ? 'Danh bạ' : null)], anchor: 'marketplace' },
+    { label: 'View TB / video bán hàng', v: [w?.ecViews, mk], sub: w?.medianViews != null ? `Trung vị mọi video ${fmtNum(w.medianViews)}` : undefined },
+    { label: 'Số món bán 30 ngày (toàn sàn)', v: [w?.unitsSold, mk] },
+    { label: 'GMV 30 ngày (toàn sàn)', v: [w?.gmv, mk], money: true, sub: w?.gmvHidden ? 'Creator ẩn GMV: giữa khoảng TikTok trả' : undefined },
+    { label: 'GMV bán cho shop UpBase', v: [so?.[0], so ? `Kho · Đơn affiliate${cov('aff_orders')}` : null], money: true, sub: so ? `${fmtNum(so[2])} món · ${fmtNum(so[1])} đơn` : undefined, anchor: 'aff_orders' },
+    { label: 'GMV video gắn SP shop UpBase', v: [vid?.[2], vid ? `Kho · Video${cov('videos')}` : null], money: true, sub: vid ? `${fmtNum(vid[0])} video · ${fmtShort(vid[1])} view` : undefined, anchor: 'videos' },
     { label: 'Booking với UpBase', v: [bookings.length + jobCount || null, bookings.length + jobCount ? `Lark Base${jobCount ? ' + job trong app' : ''}` : null], sub: bookings.length || jobCount ? `${bookings.length} booking Lark · ${jobCount} job trong app · chi phí Lark ${fmtShort(larkM[1])} ₫` : undefined, anchor: 'lark' },
   ];
-  const tiktokState = !koc ? 'Chưa có trong Danh bạ nên chưa tra TikTok Shop'
-    : koc.statsAt ? `Số TikTok Shop tra ${fmtDate(koc.statsAt)}`
-    : koc.ttsCheckedAt && !koc.ttsOpenId ? 'TikTok Shop báo không có creator này trên Creator Marketplace'
-    : 'Chưa tra TikTok Shop (job mỗi giờ tra dần ~200–400 KOL / ngày)';
+  const whState = w ? `Hồ sơ kho chụp ${fmtDate(wAt)}, đồng bộ mỗi sáng` : 'Kho chưa có hồ sơ creator này (kho theo dõi ~62 nghìn creator TikTok)';
 
   return (
     <>
@@ -109,7 +101,7 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
 
       <div className="mt-2 mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Avatar src={koc?.avatarUrl} name={name} size={56} />
+          <Avatar src={koc?.avatarUrl ?? w?.avatarUrl} name={name} size={56} />
           <div>
             <h1 className="text-xl font-semibold">{name}</h1>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
@@ -121,21 +113,17 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
             </div>
           </div>
         </div>
-        {koc && <Link href={`/contacts/${koc.id}`} className="btn">Hồ sơ Danh bạ (liên hệ, chân dung follower)</Link>}
+        {koc ? <Link href={`/contacts/${koc.id}`} className="btn">Hồ sơ Danh bạ (liên hệ, chân dung follower)</Link> : (
+          <form action={addToDanhBa}><input type="hidden" name="handle" value={handle} /><button className="btn">Thêm vào Danh bạ</button></form>
+        )}
       </div>
 
-      {tiktok && TIKTOK_MSG[tiktok] && (
-        <p role="status" className={`mb-4 rounded-md px-3 py-2 ${TIKTOK_MSG[tiktok][1] ? 'bg-positive-soft text-positive' : 'bg-warning-soft text-warning'}`}>{TIKTOK_MSG[tiktok][0]}</p>
-      )}
+      {added && <p role="status" className="mb-4 rounded-md bg-positive-soft px-3 py-2 text-positive">Đã thêm vào Danh bạ{w ? ', kèm số từ kho.' : '.'}</p>}
 
       <section className="mb-6">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold">Chỉ số chính</h2>
-          <form action={lookupTikTok} className="flex items-center gap-2">
-            <span className="text-xs text-ink-3">{tiktokState}</span>
-            <input type="hidden" name="handle" value={handle} />
-            <button className="btn h-8 px-3 text-xs">{koc ? (koc.statsAt ? 'Tra lại TikTok Shop' : 'Tra TikTok Shop ngay') : 'Thêm vào Danh bạ & tra TikTok Shop'}</button>
-          </form>
+          <span className="text-xs text-ink-3">{whState}</span>
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
           {summary.map((x) => {
@@ -161,9 +149,9 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
       <section className="mb-5">
         <h2 className="mb-1 text-base font-semibold">Creator này có mặt ở đâu</h2>
         <p className="mb-3 text-[13px] text-ink-2">
-          Có số ở {present.length}/{tiles.length} bảng dữ liệu. Mỗi ô là một bảng riêng, tính theo cách riêng, nên <b>không cộng các ô với nhau</b>. Bấm ô để xem chi tiết và dữ liệu gốc.
+          Có số ở {present.length}/{tiles.length} bảng dữ liệu. Mỗi ô là một bảng riêng, tính theo cách riêng, nên <b>không cộng các ô với nhau</b>. Bấm ô để xem chi tiết.
         </p>
-        <div className="grid gap-4 lg:grid-cols-4">
+        <div className="grid gap-4 lg:grid-cols-3">
           {GROUPS.map(([g, label]) => {
             const list = tiles.filter((t) => (t.s.key === 'marketplace' ? 'marketplace' : t.s.group) === g);
             return (
@@ -183,16 +171,16 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
 
       {present.map((t) => (
         <SourceCard
-          key={t.s.key} t={t} handle={handle}
-          coverage={t.s.key === 'lark' ? larkCov : coverage[t.s.key]}
-          updated={t.s.key === 'lark' ? booksSync?.finishedAt ?? null : t.s.key === 'marketplace' ? koc?.statsAt ?? null : updated}
-          raw={rawSource?.key === t.s.key ? rawData : null}
+          key={t.s.key} t={t}
+          coverage={t.s.key === 'lark' ? larkCov : t.s.key === 'marketplace' ? (wAt ? { from: wAt.toISOString(), to: wAt.toISOString() } : undefined) : coverage[t.s.key]}
+          updated={t.s.key === 'lark' ? booksSync?.finishedAt ?? null : t.s.key === 'marketplace' ? w?.syncedAt ?? null : t.from === 'live' ? null : updated}
+          raw={rawSource?.key === t.s.key ? rawData : null} handle={handle} canRaw={whOn}
         >
           {t.s.key === 'lark' && <LarkBookings bookings={bookings.slice(0, 30)} total={bookings.length} />}
-          {t.s.key === 'marketplace' && koc && (
+          {t.s.key === 'marketplace' && w && (
             <p className="mt-3 text-[13px] text-ink-2">
-              GMV 30 ngày: {koc.gmvRange ?? '—'} · GPM: {koc.gpmUsd == null ? '—' : `${fmtVnd(koc.gpmUsd * USD_VND)} (${koc.gpmUsd} USD)`}. Chân dung follower, tỷ trọng GMV theo kênh và ngành xem ở{' '}
-              <Link href={`/contacts/${koc.id}`} className="link">hồ sơ Danh bạ</Link>.
+              GPM {w.gpm == null ? '—' : fmtVnd(w.gpm)} · GMV / khách {w.aov == null ? '—' : fmtVnd(w.aov)} · ER {fmtPct(w.er)} · follower nữ {fmtPct(w.female)} · {w.brandCount ?? '—'} brand đã hợp tác.
+              {koc ? <> Chân dung follower, tỷ trọng GMV theo kênh và ngành xem ở <Link href={`/contacts/${koc.id}`} className="link">hồ sơ Danh bạ</Link>.</> : null}
             </p>
           )}
         </SourceCard>
@@ -201,10 +189,11 @@ export default async function CreatorPage({ params, searchParams }: { params: Pr
       <section className="rounded-lg border border-line bg-sunken px-5 py-4 text-[13px] text-ink-2">
         <h2 className="mb-2 text-sm font-semibold text-ink">Cách đọc số</h2>
         <ul className="list-disc space-y-1 pl-5">
-          <li><b>Đơn affiliate của shop</b> chỉ gồm đơn bán cho 8 shop UpBase quản lý; <b>Đơn MCN</b> gồm đơn của creator thuộc MCN UpBase bán cho mọi shop trên sàn. Cùng một đơn có thể nằm ở cả hai.</li>
-          <li>GMV của TikTok là giá × số lượng lúc đặt đơn, chưa trừ đơn hoàn / huỷ. Hoa hồng "ước tính" có thể đổi khi quyết toán.</li>
-          <li>Số trên Lark Base (view, GMV 30 ngày của booking) do team điền tay; số TikTok do API trả về, không ai sửa được.</li>
-          <li>&quot;Kéo sẵn&quot; = Booking Hub tổng hợp 6 giờ / lần (nút Làm mới ở trang Dữ liệu); &quot;Tra trực tiếp&quot; = vừa hỏi Trạm dữ liệu lúc mở trang.</li>
+          <li><b>Đơn affiliate của shop</b>, <b>Video</b>, <b>Phiên LIVE</b> chỉ gồm sản phẩm của các shop UpBase quản lý. Đơn từ video, LIVE cũng nằm trong Đơn affiliate.</li>
+          <li><b>Hồ sơ creator</b> là số 30 ngày trên toàn sàn TikTok Shop (mọi shop), kho chụp lại mỗi ngày.</li>
+          <li>GMV là giá × số lượng lúc đặt đơn, chưa trừ đơn hoàn / huỷ. Hoa hồng &quot;ước tính&quot; có thể đổi khi quyết toán.</li>
+          <li>Số trên Lark Base (view, GMV 30 ngày của booking) do team điền tay; số TikTok lấy từ kho dữ liệu UpBase, không ai sửa được.</li>
+          <li>Đơn affiliate và LIVE trên trang này hỏi thẳng kho lúc mở trang; Video lấy bản tổng hợp 6 giờ / lần (nút Làm mới số kho ở trang Dữ liệu); hồ sơ creator đồng bộ mỗi sáng 9:30.</li>
         </ul>
       </section>
     </>
@@ -238,14 +227,14 @@ function SourceTile({ t }: { t: Tile }) {
   );
 }
 
-const FROM_LABEL: Record<string, string> = { saved: 'Kéo sẵn', top: 'Kéo sẵn (top 200)', live: 'Tra trực tiếp lúc mở trang', local: 'Lưu trong Booking Hub' };
+const FROM_LABEL: Record<string, string> = { saved: 'Tổng hợp từ kho', live: 'Hỏi thẳng kho lúc mở trang', local: 'Lưu trong Booking Hub' };
 
-function SourceCard({ t, handle, coverage, updated, raw, children }: {
-  t: Tile; handle: string; coverage?: Partial<SourceStats> | { error: string }; updated: Date | null;
-  raw: Awaited<ReturnType<typeof rawRows>> | string | null; children?: React.ReactNode;
+function SourceCard({ t, coverage, updated, raw, handle, canRaw, children }: {
+  t: Tile; coverage?: Partial<SourceStats> | { error: string }; updated: Date | null;
+  raw: Awaited<ReturnType<typeof rawRows>> | string | null; handle: string; canRaw: boolean; children?: React.ReactNode;
 }) {
   const o = originOf(t.s);
-  const station = t.s.group !== 'lark' && t.s.key !== 'marketplace';
+  const station = Boolean(t.s.wh);
   const cov = coverage && !('error' in coverage) ? coverage : undefined;
   return (
     <section id={t.s.key} className="mb-4 scroll-mt-4 rounded-lg border border-line bg-surface px-5 py-4">
@@ -261,7 +250,7 @@ function SourceCard({ t, handle, coverage, updated, raw, children }: {
         <div><dt className="inline text-ink-3">Phủ dữ liệu: </dt><dd className="inline">{cov ? `${day(cov.from)} – ${day(cov.to)}` : '—'}</dd></div>
         <div>
           <dt className="inline text-ink-3">Số trên trang: </dt>
-          <dd className="inline">{FROM_LABEL[t.from ?? 'local']}{updated && t.from !== 'live' ? `, cập nhật ${fmtTime(updated)}` : ''} · {o.schedule}</dd>
+          <dd className="inline">{FROM_LABEL[t.from]}{updated ? `, cập nhật ${fmtTime(updated)}` : ''}{t.from === 'live' ? '' : ` · ${o.schedule}`}</dd>
         </div>
       </dl>
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
@@ -294,48 +283,48 @@ function SourceCard({ t, handle, coverage, updated, raw, children }: {
         </div>
       )}
 
+      {t.note && <p className="mt-3 rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">{t.note}</p>}
+
       {children}
 
-      {station && (
+      {station && canRaw && (
         <div className="mt-4 border-t border-line pt-3">
-          {raw ? (
-            <RawTable raw={raw} />
-          ) : (
-            <Link href={`/creator/${handle}?raw=${t.s.key}#${t.s.key}`} className="btn h-8 px-3 text-xs">Xem dữ liệu gốc (50 dòng mới nhất)</Link>
+          {raw ? <RawTable raw={raw} handle={handle} /> : (
+            <Link href={`/creator/${handle}?raw=${t.s.key}#${t.s.key}`} className="btn h-8 px-3 text-xs">
+              Xem dữ liệu gốc (50 dòng mới nhất{LIVE_SOURCES.includes(t.s.key) ? '' : ', hỏi kho ~15 giây'})
+            </Link>
           )}
         </div>
       )}
+
     </section>
   );
 }
 
-function RawTable({ raw }: { raw: Awaited<ReturnType<typeof rawRows>> | string }) {
-  if (typeof raw === 'string') return <p role="alert" className="rounded-md bg-critical-soft px-3 py-2 text-[13px] text-critical">Không đọc được Trạm dữ liệu: {raw}</p>;
+function RawTable({ raw, handle }: { raw: Awaited<ReturnType<typeof rawRows>> | string; handle: string }) {
+  if (typeof raw === 'string') return <p role="alert" className="rounded-md bg-critical-soft px-3 py-2 text-[13px] text-critical">Không đọc được kho dữ liệu: {raw}</p>;
   const cell = (c: RawColumn, v: unknown) => {
     if (v == null || v === '') return '—';
     const s = String(v);
-    if (c.id === 'target') return raw.labels[s] ?? s;
-    if (/^https?:\/\//.test(s)) return <a href={s} target="_blank" rel="noreferrer" className="link">Mở ↗</a>;
+    if (c.type === 'video') return <a href={`https://www.tiktok.com/@${handle}/video/${s}`} target="_blank" rel="noreferrer" className="link">Mở ↗</a>;
     if (c.type === 'money') return `${fmtNum(Number(s))} ₫`;
-    if (c.type === 'int' || c.type === 'num') return fmtNum(Number(s));
-    if (c.type === 'pct') return `${Number(s).toFixed(2).replace('.', ',')}%`;
-    if (c.type === 'bp') return `${(Number(s) / 100).toFixed(2).replace('.', ',')}%`;
-    if (c.type === 'ts') return new Date(s).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-    if (c.type === 'date') return fmtDate(new Date(`${s}T00:00:00+07:00`));
+    if (c.type === 'int') return fmtNum(Number(s));
+    if (c.type === 'ts') return s.startsWith('1970') ? '—' : new Date(`${s.replace(' ', 'T')}Z`).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    if (c.type === 'date') return fmtDate(new Date(`${s.slice(0, 10)}T00:00:00+07:00`));
     return <span className="line-clamp-2 max-w-64" title={s}>{s}</span>;
   };
   return (
     <>
-      <h3 className="mb-1 text-[13px] font-semibold">Dữ liệu gốc: {fmtNum(raw.rows.length)} / {fmtNum(raw.total)} dòng mới nhất, lấy thẳng từ Trạm dữ liệu</h3>
-      <div className="max-h-[28rem] overflow-auto rounded-md border border-line">
-        <table className="tbl text-xs">
-          <thead className="sticky top-0 bg-surface"><tr>{raw.columns.map((c) => <th key={c.id} className="min-w-20 whitespace-normal">{c.label}</th>)}</tr></thead>
-          <tbody>
-            {raw.rows.map((r, i) => <tr key={String(r.key ?? i)}>{raw.columns.map((c) => <td key={c.id}>{cell(c, r[c.id])}</td>)}</tr>)}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-1 text-xs text-ink-3">Mỗi dòng là một bản ghi TikTok trả về (đơn, video theo ngày, phiên LIVE...). Số tổng ở trên được cộng từ các dòng này.</p>
+      <h3 className="mb-1 text-[13px] font-semibold">Dữ liệu gốc: {fmtNum(raw.rows.length)} dòng mới nhất, hỏi thẳng kho dữ liệu UpBase</h3>
+      {!raw.rows.length ? <p className="text-xs text-ink-3">Không có dòng nào.</p> : (
+        <div className="max-h-[28rem] overflow-auto rounded-md border border-line">
+          <table className="tbl text-xs">
+            <thead className="sticky top-0 bg-surface"><tr>{raw.columns.map((c) => <th key={c.id} className="min-w-20 whitespace-normal">{c.label}</th>)}</tr></thead>
+            <tbody>{raw.rows.map((r, i) => <tr key={i}>{raw.columns.map((c) => <td key={c.id}>{cell(c, r[c.id])}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-1 text-xs text-ink-3">Mỗi dòng là một bản ghi trong kho (đơn, video theo ngày, phiên LIVE theo ngày). Số tổng ở trên được cộng từ các dòng này.</p>
     </>
   );
 }
