@@ -18,6 +18,7 @@ function SourceInfo({ s, st, at, ours }: { s: Source; st: Saved; at: Date | null
       <KindPill k={areaOf(s)} />
       <span>Nguồn <b className="font-medium text-ink-2">{placesOf(s)}</b></span>
       <span>Phủ dữ liệu <b className="font-medium text-ink-2">{st && !('error' in st) ? `${day(st.from)} – ${day(st.to)}` : '—'}</b></span>
+      {st && !('error' in st) && st.lastError && <span className="text-warning" title={st.lastError}>Lượt tổng hợp gần nhất lỗi (kho bận), đang hiện số lần trước</span>}
       <span>Số trên trang <b className="font-medium text-ink-2">{at ? `tổng hợp từ kho lúc ${fmtTime(at)}` : 'lưu trong Booking Hub'}</b> · cập nhật {o.schedule}</span>
     </div>
   );

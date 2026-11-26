@@ -19,7 +19,8 @@ export type Source = {
   shop?: { label: string; field?: string }; wh?: Wh;
 };
 export type ShopRow = { key: string; shop: string; m: number[] };
-export type SourceStats = { rows: number; creators: number; from: string | null; to: string | null; m: number[]; ours: { creators: number; m: number[] } };
+// lastError: lượt tổng hợp gần nhất lỗi, đang giữ số của lượt thành công trước.
+export type SourceStats = { rows: number; creators: number; from: string | null; to: string | null; m: number[]; ours: { creators: number; m: number[] }; lastError?: string };
 export type TopRow = { handle: string; m: number[]; shops?: ShopRow[] };
 
 // Số lấy từ đâu (chỉ ghi tên nơi), ai tạo ra số, bao lâu cập nhật: hiện ở tab Dữ liệu và trang creator để người xem tin số.
@@ -140,7 +141,7 @@ async function refreshSource(s: Source, ours: Set<string>): Promise<SourceStats>
   for (let part = 0; part < (s.wh!.parts ?? 1); part++) {
     const creators = new Map<string, { m: number[]; shops: ShopRow[] }>();
     const fresh: { key: string; handle: string; m: number[] }[] = [];
-    // Proxy trước Metabase trả 504 khi kho bận (> ~60 giây). Chưa nhận dòng nào thì chờ 30 giây chạy lại phần đó một lần.
+    // Proxy trước Metabase trả 504 khi kho bận (> ~60 giây). Chưa nhận dòng nào thì chờ 60 giây chạy lại phần đó, tối đa 3 lần.
     for (let attempt = 1; ; attempt++) {
       try {
         for await (const r of warehouseQuery(pairsSql(s.wh!, n, part))) {
@@ -161,8 +162,8 @@ async function refreshSource(s: Source, ours: Set<string>): Promise<SourceStats>
         }
         break;
       } catch (e) {
-        if (fresh.length || attempt >= 2 || !/504|Gateway|time-?out/i.test(String(e))) throw e;
-        await new Promise((r) => setTimeout(r, 30_000));
+        if (fresh.length || attempt >= 3 || !/504|Gateway|time-?out/i.test(String(e))) throw e;
+        await new Promise((r) => setTimeout(r, 60_000));
       }
     }
     if (fresh.length >= METABASE_MAX) throw new Error(`Bảng ${s.name} vượt ${METABASE_MAX.toLocaleString('vi-VN')} dòng creator × shop một lượt (giới hạn Metabase): tăng parts`);
@@ -198,18 +199,23 @@ async function refreshSource(s: Source, ours: Set<string>): Promise<SourceStats>
 export async function refreshDataSources() {
   if (!(await configured('warehouse'))) return 'Chưa cấu hình kho dữ liệu (Phân quyền → Tích hợp), bỏ qua.';
   const ours = new Set(await ourHandles());
+  const prev = ((await db.syncState.findUnique({ where: { id: 'data-sources' } }))?.data ?? {}) as Record<string, SourceStats | { error: string }>;
   const data: Record<string, SourceStats | { error: string }> = {};
   for (const s of WAREHOUSE) {
     try {
       data[s.key] = await refreshSource(s, ours);
     } catch (e) {
-      data[s.key] = { error: e instanceof Error ? e.message : String(e) };
+      // Lỗi (thường là kho bận, Metabase cắt sau 60 giây): bảng vẫn còn số lượt trước thì giữ, chỉ ghi chú lỗi.
+      const msg = (e instanceof Error ? e.message : String(e)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+      const p = prev[s.key];
+      data[s.key] = p && !('error' in p) ? { ...p, lastError: `${new Date().toISOString()} ${msg}` } : { error: msg };
     }
   }
   await db.syncState.update({ where: { id: 'data-sources' }, data: { data } });
-  const ok = WAREHOUSE.filter((s) => !('error' in data[s.key]));
-  const failed = WAREHOUSE.length - ok.length;
-  return `${ok.map((s) => `${s.name}: ${(data[s.key] as SourceStats).creators.toLocaleString('vi-VN')} creator`).join(' · ')}${failed ? ` · ${failed} bảng lỗi` : ''}`;
+  return WAREHOUSE.map((s) => {
+    const d = data[s.key];
+    return 'error' in d ? `${s.name}: lỗi` : `${s.name}: ${d.creators.toLocaleString('vi-VN')} creator${d.lastError ? ' (lượt này lỗi, giữ số lần trước)' : ''}`;
+  }).join(' · ');
 }
 
 // Số trong Booking.extra là chuỗi; ô gõ tay có thể lẫn chữ nên chỉ ép kiểu khi đúng dạng số.

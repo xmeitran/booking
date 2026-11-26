@@ -271,7 +271,7 @@ async function Sources({ saved }: { saved: Record<string, Saved> }) {
                         <td colSpan={5}><Status tone={st ? 'critical' : 'neutral'}>{st ? `Lỗi: ${st.error}` : 'Chưa tổng hợp, bấm Làm mới số kho'}</Status></td>
                       ) : (
                         <>
-                          <td className="whitespace-nowrap">{day(st.from)} – {day(st.to)}<div className="text-2xs text-ink-3">{fmtNum(st.rows)} dòng</div></td>
+                          <td className="whitespace-nowrap">{day(st.from)} – {day(st.to)}<div className="text-2xs text-ink-3">{fmtNum(st.rows)} dòng</div>{st.lastError && <div className="text-2xs text-warning" title={st.lastError}>Lượt gần nhất lỗi (kho bận), đang giữ số lần trước</div>}</td>
                           <td className="text-right font-medium">{fmtNum(st.creators)}</td>
                           <td className="text-right">{fmtNum(st.ours.creators)}<div className="text-2xs text-ink-3">{fmtPct(kocTotal ? st.ours.creators / kocTotal : null)} Danh bạ</div></td>
                           <td><Metrics s={s} m={st.m} /></td>
