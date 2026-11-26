@@ -133,6 +133,7 @@ export async function mergeKoc(fd: FormData) {
     db.kocNote.updateMany({ where: { kocId: src.id }, data: { kocId: to.id } }),
     db.$executeRaw`update "MatchDecision" set "kocId" = ${to.id} where "kocId" = ${src.id} and "briefId" not in (select "briefId" from "MatchDecision" where "kocId" = ${to.id})`,
     db.matchDecision.deleteMany({ where: { kocId: src.id } }),
+    db.$executeRaw`update "MatchCandidate" set "kocId" = ${to.id} where "kocId" = ${src.id} and "briefId" not in (select "briefId" from "MatchCandidate" where "kocId" = ${to.id})`,
     db.kocAlias.updateMany({ where: { kocId: src.id }, data: { kocId: to.id } }),
     db.kocAlias.upsert({ where: { handle: src.handle }, create: { handle: src.handle, kocId: to.id }, update: { kocId: to.id } }),
     db.booking.updateMany({ where: { channel: { equals: src.handle, mode: 'insensitive' } }, data: { channel: to.handle } }),

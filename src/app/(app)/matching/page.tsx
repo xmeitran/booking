@@ -1,27 +1,28 @@
 import Link from 'next/link';
 import { Dialog } from '@/components/ui';
 import { db } from '@/lib/db';
-import { fmtDate } from '@/lib/format';
-import { describe, TIKTOK_CATEGORIES, type Criteria } from '@/lib/booking/matching';
+import { fmtDate, fmtNum } from '@/lib/format';
 import { requireUser } from '@/lib/auth/session';
+import { warehouseStatus } from '@/lib/warehouse/creatorSync';
+import { STAGES, STAGE_TONE, STEPS, type Stage } from '@/lib/matching/spec';
 import { BriefForm } from './BriefForm';
+import { currentStep } from './parts';
 
-type Search = { new?: string; from?: string };
-
-// Creator matching: B2C soạn best practice theo ngành hàng; brief brand chép tiêu chí từ đó + guideline / content strategy / content plan.
-export default async function MatchingPage({ searchParams }: { searchParams: Promise<Search> }) {
+// Creator matching theo 10 bước của "Tổng hợp tiêu chí chuẩn hóa – AI Creator Matching (v0.1)": mỗi đợt booking một bản ghi.
+export default async function MatchingPage({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
   await requireUser();
   const sp = await searchParams;
-  const creating = sp.new === 'template' || sp.new === 'brief' ? sp.new : null;
-  const [briefs, niches, from, brands] = await Promise.all([
-    db.matchBrief.findMany({ include: { createdBy: { select: { name: true } } }, orderBy: { updatedAt: 'desc' } }),
-    creating ? db.koc.findMany({ where: { niche: { not: null } }, distinct: ['niche'], select: { niche: true }, orderBy: { niche: 'asc' } }) : [],
-    sp.from ? db.matchBrief.findUnique({ where: { id: sp.from } }) : null,
-    creating === 'brief' ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }) : [],
+  const [briefs, counts, brands, wh] = await Promise.all([
+    db.matchBrief.findMany({
+      where: { template: false },
+      include: { createdBy: { select: { name: true } }, product: { select: { name: true } } },
+      orderBy: { updatedAt: 'desc' },
+    }),
+    db.matchCandidate.groupBy({ by: ['briefId', 'stage'], _count: true }),
+    sp.new ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, products: { select: { id: true, name: true, sku: true }, orderBy: { name: 'asc' } } } }) : [],
+    warehouseStatus(),
   ]);
-  const templates = briefs.filter((b) => b.template);
-  const list = briefs.filter((b) => !b.template);
-  const categories = [...new Set([...TIKTOK_CATEGORIES, ...briefs.map((b) => b.category).filter(Boolean)])] as string[];
+  const countOf = (briefId: string) => Object.fromEntries(counts.filter((c) => c.briefId === briefId).map((c) => [c.stage, c._count])) as Partial<Record<Stage, number>>;
 
   return (
     <>
@@ -29,87 +30,52 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
         <div>
           <h1 className="text-xl font-semibold">Creator matching</h1>
           <p className="mt-1 max-w-3xl text-[13px] text-ink-2">
-            B2C soạn best practice và bộ tiêu chí cho từng ngành hàng. Mỗi brief của brand chép tiêu chí từ đó, thêm brand guideline,
-            content strategy, content plan; app lọc KOC trong Danh bạ theo tiêu chí, đưa thẳng vào listing hoặc tải Excel.
+            Mỗi đợt booking đi qua 10 bước: đầu vào brand / SKU / nhu cầu → pool ứng viên (Danh bạ + kho creator) → loại bằng dữ liệu và theo nội dung →
+            chấm 6 nhóm (0, A–E) → shortlist → KOC báo giá → chấm hoàn chỉnh → B2C duyệt → xuất list cho brand → đánh giá sau air.
           </p>
+          {wh && <p className="mt-1 text-xs text-ink-3">Kho dữ liệu: {fmtNum(wh.count)} creator{wh.at && ` · đồng bộ ${fmtDate(wh.at)}`}{wh.message && ` · ${wh.message}`}</p>}
         </div>
-        <div className="flex gap-2">
-          <Link href="?new=template" className="btn">Thêm best practice</Link>
-          <Link href="?new=brief" className="btn btn-primary">Tạo brief</Link>
-        </div>
+        <Link href="?new=1" className="btn btn-primary">Tạo đợt matching</Link>
       </div>
 
-      <h2 className="mb-2 text-base font-semibold">Best practice theo ngành hàng</h2>
-      <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {templates.map((t) => (
-          <Link key={t.id} href={`/matching/${t.id}`} className="block rounded-lg border border-line bg-surface px-4 py-3 hover:border-accent">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="font-medium">{t.name}</span>
-              {t.category && <span className="pill bg-accent-soft text-accent">{t.category}</span>}
-            </div>
-            <Chips c={t.criteria as Criteria} />
-            {t.note && <p className="mt-2 line-clamp-2 text-xs text-ink-3">{t.note}</p>}
-          </Link>
-        ))}
-        {!templates.length && <p className="text-[13px] text-ink-3">Chưa có best practice. Bấm "Thêm best practice" để soạn cho một ngành hàng.</p>}
-      </div>
-
-      <h2 className="mb-2 text-base font-semibold">Brief theo brand</h2>
       <div className="overflow-x-auto rounded-lg border border-line bg-surface">
         <table className="tbl">
-          <thead><tr><th>Brief</th><th>Brand</th><th>Ngành hàng</th><th>Bộ tiêu chí</th><th>Người tạo</th><th>Cập nhật</th></tr></thead>
+          <thead>
+            <tr><th>Đợt</th><th>Brand · SKU</th><th>Kênh · mục tiêu</th><th>Tháng air</th><th>Ứng viên</th><th>Bước</th><th>Người tạo</th><th>Cập nhật</th></tr>
+          </thead>
           <tbody>
-            {list.map((b) => (
-              <tr key={b.id}>
-                <td><Link href={`/matching/${b.id}`} className="font-medium text-accent hover:underline">{b.name}</Link></td>
-                <td>{b.brand ?? '—'}</td>
-                <td>{b.category ?? '—'}</td>
-                <td><Chips c={b.criteria as Criteria} /></td>
-                <td>{b.createdBy.name ?? '—'}</td>
-                <td className="whitespace-nowrap">{fmtDate(b.updatedAt)}</td>
-              </tr>
-            ))}
-            {!list.length && <tr><td colSpan={6} className="py-10 text-center text-ink-3">Chưa có brief nào.</td></tr>}
+            {briefs.map((b) => {
+              const n = countOf(b.id);
+              const step = currentStep(b, n);
+              return (
+                <tr key={b.id}>
+                  <td><Link href={`/matching/${b.id}?step=${step}`} className="font-medium text-accent hover:underline">{b.name}</Link></td>
+                  <td>{b.brand ?? '—'}{b.product && <span className="text-ink-3"> · {b.product.name}</span>}</td>
+                  <td>{b.channel} · {b.objective}{b.gmvMax && ' · GMV Max'}</td>
+                  <td>{b.airMonth ? b.airMonth.split('-').reverse().join('/') : '—'}</td>
+                  <td>
+                    <div className="flex flex-wrap gap-1">
+                      {(Object.keys(STAGES) as Stage[]).filter((s) => n[s]).map((s) => <span key={s} className={`pill ${STAGE_TONE[s]}`}>{STAGES[s]} {fmtNum(n[s])}</span>)}
+                      {!Object.keys(n).length && <span className="text-xs text-ink-3">Chưa chạy</span>}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap text-xs">{step}. {STEPS[step - 1].title}</td>
+                  <td>{b.createdBy.name ?? '—'}</td>
+                  <td className="whitespace-nowrap">{fmtDate(b.updatedAt)}</td>
+                </tr>
+              );
+            })}
+            {!briefs.length && <tr><td colSpan={8} className="py-10 text-center text-ink-3">Chưa có đợt nào. Bấm "Tạo đợt matching", hoặc "Tìm KOC" ở một dòng Plan.</td></tr>}
           </tbody>
         </table>
       </div>
 
-      {creating && (
-        <Dialog title={creating === 'template' ? 'Thêm best practice ngành hàng' : 'Tạo brief brand'} closeHref="/matching">
-          {creating === 'brief' && templates.length > 0 && (
-            <form className="mb-4 flex flex-wrap items-end gap-2 rounded-md bg-sunken p-3">
-              <input type="hidden" name="new" value="brief" />
-              <label className="min-w-0 flex-1">
-                <span className="label">Bắt đầu từ best practice</span>
-                <select name="from" defaultValue={from?.id ?? ''} className="input">
-                  <option value="">— Không dùng —</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.category ? ` · ${t.category}` : ''}</option>)}
-                </select>
-              </label>
-              <button className="btn">Chép tiêu chí</button>
-            </form>
-          )}
-          <BriefForm
-            key={from?.id ?? 'blank'}
-            template={creating === 'template'}
-            brief={{ category: from?.category ?? null, note: creating === 'template' ? null : from?.note ?? null }}
-            criteria={(from?.criteria ?? {}) as Criteria}
-            niches={niches.map((n) => n.niche!)}
-            categories={categories}
-            brands={brands}
-            cancel="/matching"
-          />
+      {sp.new && (
+        <Dialog title="Tạo đợt matching" closeHref="/matching" wide>
+          <p className="mb-3 text-xs text-ink-3">Brand profile (Khối 1), cấu hình SKU (Khối 2) và quy tắc lọc (Khối 3) khai một lần ở Danh mục; ở đây chỉ khai nhu cầu của đợt (Khối 4).</p>
+          <BriefForm brands={brands} cancel="/matching" />
         </Dialog>
       )}
     </>
-  );
-}
-
-function Chips({ c }: { c: Criteria }) {
-  const d = describe(c);
-  return (
-    <div className="mt-1.5 flex flex-wrap gap-1">
-      {d.length ? d.map((x) => <span key={x} className="pill bg-sunken text-ink-2">{x}</span>) : <span className="text-xs text-ink-3">Chưa đặt tiêu chí</span>}
-    </div>
   );
 }

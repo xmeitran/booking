@@ -105,6 +105,7 @@ model Koc {
   legalProfiles KocLegalProfile[]
   ratings       KocRating[]
   reviews       KocReview[]
+  candidates    MatchCandidate[]
 
   @@unique([platform, handle])
   @@index([niche])
@@ -171,6 +172,7 @@ model ListingBatch {
   cr          Float?        // tỷ lệ chuyển đổi SP theo gian hàng, 0.05 = 5%
   aov         Int?          // AOV sản phẩm theo gian hàng, VND
   planLineId  String?       // đợt tạo từ matching của một dòng plan: job tạo từ đợt này gắn về dòng plan đó
+  briefId     String?       // đợt tạo ở bước 9 của Creator matching (MatchBrief.id)
   sheetUrl    String?       // Google Sheet của brand đã đẩy listing (G1); kết quả duyệt đọc lại từ đây (G2)
   sheetAt     DateTime?     // lần đẩy gần nhất
   shareToken  String?       // link Brand duyệt /review/<token>; null = chưa tạo hoặc đã thu hồi. Index thường, không @unique: thêm unique
@@ -269,8 +271,9 @@ model KocNote {
   @@index([followUpAt])
 }
 
-// Creator matching. template = best practice theo ngành hàng (B2C cung cấp); brief = yêu cầu của một brand
-// (guideline, content strategy, content plan) + bộ tiêu chí lọc KOC, thường chép từ best practice của ngành.
+// Creator matching: một đợt booking theo 10 bước của "Tổng hợp tiêu chí chuẩn hóa – AI Creator Matching (v0.1)".
+// Khối 1–3 (brand, SKU, quy tắc lọc) nằm ở Brand / Product; bản ghi này giữ Khối 4 (kế hoạch và brief của đợt).
+// template, criteria: bộ lọc cũ (trước 10 bước), giữ cột để không mất dữ liệu, app không dùng nữa.
 model MatchBrief {
   id          String   @id @default(cuid())
   name        String
@@ -280,12 +283,35 @@ model MatchBrief {
   guideline   String?  // Brand guideline: link tài liệu + ghi chú
   strategy    String?  // Content strategy
   plan        String?  // Content plan
-  note        String?  // best practice (template) / ghi chú (brief)
-  criteria    Json     @default("{}") // src/lib/matching.ts Criteria
+  note        String?  // ghi chú
+  criteria    Json     @default("{}")
   brandId     String?
   brandRef    Brand?    @relation(fields: [brandId], references: [id], onDelete: SetNull)
   planLineId  String?
   planLine    PlanLine? @relation(fields: [planLineId], references: [id], onDelete: SetNull)
+  // Khối 4. Kế hoạch và brief đợt booking (I-28 – I-38)
+  productId      String?   // I-28 SKU cần book
+  product        Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  dealPrice      Int?      // I-29 giá deal, VND
+  aov            Int?      // I-29 AOV gian hàng lúc book, VND
+  objective      String    @default("Convert") // I-30 Convert / Awareness
+  gmvMax         Boolean   @default(false)     // brand chạy GMV Max (K14), tách khỏi mục tiêu theo mục 5.3.3
+  channel        String    @default("TikTok")  // I-31 TikTok / Shopee / FB-IG / Threads
+  slots          Json      @default("[]")      // I-32 [{ kl, role, count }]
+  budget         Int?      // I-33 tổng ngân sách đợt, VND
+  feeCap         Int?      // I-33 trần fee mỗi KOC, VND
+  airMonth       String?   // I-34 "2026-12"
+  airWeek        Int?      // I-34 tuần 1–5
+  format         String?   // I-35 format và thời lượng video
+  includeHandles String[]  @default([]) // I-36 KOC brand chỉ định
+  excludeHandles String[]  @default([]) // I-36 KOC brand cấm
+  gmvTarget      Int?      // I-37
+  crTarget       Float?    // I-37, 0.05 = 5%
+  ctrTarget      Float?    // I-37
+  expertClaim    Boolean   @default(false) // nội dung có claim chuyên môn: bật K12
+  ranAt          DateTime? // lần chạy matching gần nhất (bước 2–3)
+  runNote        String?
+  candidates     MatchCandidate[]
   decisions   MatchDecision[]
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
@@ -293,6 +319,81 @@ model MatchBrief {
   updatedAt   DateTime @updatedAt
 
   @@index([template, updatedAt])
+}
+
+// Một KOC / creator trong một đợt matching, đi qua các bước 2–10. handle + platform thay vì chỉ kocId vì pool gồm cả
+// creator trong kho dữ liệu chưa có ở Danh bạ; khi vào shortlist app tạo KOC ở Danh bạ và gắn kocId.
+model MatchCandidate {
+  id           String    @id @default(cuid())
+  briefId      String
+  brief        MatchBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  platform     String    @default("TikTok")
+  handle       String    // chữ thường, không @
+  kocId        String?
+  koc          Koc?      @relation(fields: [kocId], references: [id], onDelete: SetNull)
+  stage        String    @default("POOL") // src/lib/matching/spec.ts STAGES
+  kl           String?   // cấp KOL dùng khi chấm (Danh bạ, hoặc suy theo follower)
+  data         Json      @default("{}") // số liệu đã dùng để chấm + nguồn
+  knockouts    Json      @default("[]") // bước 3, tự động: [{ code, detail }]
+  flags        Json      @default("[]") // cảnh báo, thiếu số liệu: [{ code, detail }]
+  checks       Json      @default("{}") // bước 4, Booker kiểm tra: { K1: { ok, note, by, at } }
+  declare      Json      @default("{}") // bước 6, KOC khai báo: giá, ads code, cam kết, chứng chỉ...
+  manual       Json      @default("{}") // điểm Booker chấm tay: { critId: { score, note } }
+  score        Json?     // { groups, total, coverage, tier, mustFail }
+  total        Float?
+  tier         String?
+  rejectCode   String?   // mã K (hoặc nhóm điểm thấp) khi loại
+  reason       String?
+  exception    String?   // giữ lại dù bị loại tự động: lý do + người duyệt ngoại lệ (I-26)
+  approvedById String?
+  approvedAt   DateTime?
+  outcome      Json?     // bước 10: kết quả sau air + quyết định
+  updatedById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([briefId, platform, handle])
+  @@index([briefId, stage])
+  @@index([handle])
+  @@index([kocId])
+}
+
+// Số liệu creator lấy từ kho dữ liệu (ClickHouse, bảng kol-connector connector_creator_public_*), đồng bộ bằng job
+// sync-creators (src/lib/warehouse/creatorSync.ts). Là pool "Marketplace" ở bước 2; KOC Danh bạ cùng handle đọc số từ đây.
+model WarehouseCreator {
+  platform    String    // TikTok / Shopee / Facebook / Instagram / Threads / YouTube
+  handle      String    // username chữ thường
+  nickname    String?
+  avatarUrl   String?
+  url         String?
+  followers   Int?
+  medianViews Int?      // avg_video_play_count: trung vị lượt xem mọi video (crawler)
+  ecViews     Int?      // avg_ec_video_play_count: lượt phát TB video gắn sản phẩm
+  er          Float?    // video_engagement_rate, 0.05 = 5%
+  videos30    Int?      // video_count_30d
+  ecVideos    Int?      // ec_video_count
+  unitsSold   Int?
+  gmv         Float?    // GMV affiliate 30 ngày, VND; KOC ẩn GMV thì lấy trung điểm khoảng
+  gmvHidden   Boolean   @default(false)
+  gpm         Float?    // VND / 1.000 lượt xem
+  aov         Float?    // GMV trung bình / người mua, VND
+  female      Float?    // 0..1
+  ages        Json?     // { "18-24": 0.3, "25-34": ..., "35-44", "45-54", "55+" } 0..1
+  locations   Json?     // [{ name, share }] 0..1
+  categories  Json?     // [{ name, share }] tỷ trọng GMV theo ngành, 0..1
+  brandCount  Int?
+  brands      String[]  @default([])
+  products    Int?      // promoted_product_num
+  castFee     Int?      // latest_cast_fee, VND
+  fulfillment Float?    // score: điểm hoàn thành hợp tác 90 ngày
+  mcn         String?
+  topVideos   Json?     // [{ title, url, views, likes, date, products }]
+  sourceAt    DateTime? // last_synced_at bên kho
+  syncedAt    DateTime  @default(now())
+
+  @@id([platform, handle])
+  @@index([followers])
+  @@index([gmv])
 }
 
 // Bảng xếp hạng tính sẵn cho tab Dữ liệu (job data-sources): trang đọc DB, không hỏi Trạm lúc mở trang.
@@ -316,6 +417,16 @@ model Brand {
   checklist String?  // tiêu chí nghiệm thu video, mỗi dòng một tiêu chí; trống = checklist mặc định
   keywords  String?  // từ khoá / hashtag bắt buộc trong caption video, cách nhau dấu phẩy (kiểm tra tự động khi nghiệm thu)
   note      String?
+  // Khối 1. Brand Profile (Creator matching)
+  category     String?  // I-02 ngành hàng, khớp tên ngành trong tỷ trọng GMV của creator
+  subCategory  String?  // I-02 ngành con theo phân loại UpBase (K7)
+  group        String?  // I-03 nhóm brand / tập đoàn (K7)
+  audience     String?  // I-04 TA chính: giới tính, tuổi, khu vực, insight
+  tone         String?  // I-05 mood & tone
+  rtb          String?  // I-07 RTB và claim được phép
+  bannedClaims String[] @default([]) // I-07 claim / từ bị cấm (K4)
+  competitors  String[] @default([]) // I-08 đối thủ cùng công dụng (K8)
+  rules        Json     @default("{}") // Khối 3: I-09, I-19 – I-27, I-56 (src/lib/matching/spec.ts BrandRules)
   stores    Store[]
   products  Product[]
   members   BrandMember[]
@@ -351,8 +462,25 @@ model Product {
   usp       String?
   price     Int?
   link      String?
+  // Khối 2. SKU Config (Creator matching)
+  sku          String?  // I-10 mã SP
+  line         String?  // I-10 dòng SP
+  targetGender String?  // I-12 Nữ / Nam; trống = mọi giới
+  ageMin       Int?     // I-12 độ tuổi mục tiêu
+  ageMax       Int?
+  kocVisual    String?  // I-13 chân dung và visual bắt buộc của KOC
+  problem      String?  // vấn đề sản phẩm giải quyết (nhóm 0 "Trải nghiệm thật", mục 5.3.1 #11)
+  exclusions   String[] @default([]) // I-14 trường hợp loại (K11)
+  channelTypes String[] @default([]) // I-15 tệp kênh ưu tiên
+  bannedWords  String[] @default([]) // I-16 từ cấm riêng của SKU (K4)
+  femaleMin    Float?   // I-17 % follower nữ tối thiểu, 0–100 (K10)
+  age18_34Min  Float?   // I-17 % follower 18–34 tối thiểu, 0–100 (K10)
+  regions      String[] @default([]) // I-17 khu vực mục tiêu
+  regionMin    Float?   // I-17 % follower tại khu vực tối thiểu, 0–100
+  reviewerId   String?  // I-18 PIC duyệt content (User.id)
   planLines PlanLine[]
   jobs      Job[]
+  briefs    MatchBrief[]
 }
 
 model TierPrice { // bảng giá booking theo tier KOC

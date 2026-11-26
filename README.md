@@ -106,8 +106,9 @@ Plan → Creator matching → Listing → Brand duyệt → Job → Nghiệm thu
   bảng giá theo tier. Nút "Lấy brand từ booking Lark" tạo nhanh brand + gian hàng từ cột Brand / Store. User có vai trò nghiệp vụ
   (Trưởng phòng, Booking PIC, Booking Support, Brand Manager) bên cạnh quyền trong app.
 - **Plan** (`/plan`): plan tháng → dòng chi tiết (brand, sản phẩm, tuần, tier, loại content, số KOC, ngân sách, PIC; trống PIC =
-  Booking PIC của brand). "Tìm KOC" tạo brief matching từ dòng; tiến độ = số job, ngân sách đã chốt = tổng giá job.
-- **Matching**: chọn / loại từng KOC, loại bắt buộc lý do. KOC blacklist không bao giờ được gợi ý.
+  Booking PIC của brand). "Tìm KOC" tạo đợt Creator matching từ dòng (brand, SKU, tháng / tuần, tier × số KOC, ngân sách);
+  tiến độ = số job, ngân sách đã chốt = tổng giá job.
+- **Creator matching**: 10 bước, xem mục dưới. KOC blacklist luôn bị loại (mã BL).
 - **Job** (`/jobs`): tạo từ KOC Brand chọn "Yes" ở Listing. Chặng Đã duyệt → Đã chốt → Gửi hàng → Đang quay → Đã nộp → Nghiệm thu →
   Thanh toán. Nhập link video tự chuyển "Đã nộp"; nghiệm thu theo checklist của brand (Đạt / Cần sửa / Không đạt + mốc thời gian),
   chưa đạt thì về "Đang quay" và có sẵn tin nhắn yêu cầu sửa. Brief: mẫu từ dữ liệu, hoặc **AI viết brief** (Claude, cần
@@ -117,11 +118,40 @@ Plan → Creator matching → Listing → Brand duyệt → Job → Nghiệm thu
 
 ## Creator matching
 
-`/matching`: B2C soạn **best practice theo ngành hàng** (ghi chú + bộ tiêu chí). Mỗi **brief brand** chép tiêu chí từ best practice
-của ngành, thêm Brand guideline, Content strategy, Content plan (dán link tài liệu được). Bộ tiêu chí: tệp kênh, cấp KOL, follower,
-view TB, số món bán, GPM, giá booking gần nhất, % follower nữ, % 18–34 tuổi, tỷ trọng GMV ngành hàng TikTok, đã / chưa hợp tác.
-KOC trượt tiêu chí bị loại; thiếu số liệu thì "chưa rõ", xếp sau (`src/lib/booking/matching.ts`). Tick KOC → thêm vào đợt listing có sẵn
-hoặc đợt mới; tải Excel toàn bộ KOC khớp. Danh bạ cũng có nút Tải Excel theo bộ lọc.
+Theo "Tổng hợp tiêu chí chuẩn hóa – AI Creator Matching (v0.1)" (Lark docx `C6NNdKVzdol43txs9Xylw5bKg4d`). Đặc tả (mã K, tiêu chí,
+bậc điểm, trọng số, mức kết luận) ở `src/lib/matching/spec.ts`; cách tính ở `engine.ts` (hàm thuần, có test); nạp dữ liệu `data.ts`;
+chạy / chấm lại `run.ts`. Mỗi đợt (`MatchBrief`) giữ ứng viên ở `MatchCandidate` (handle + nền tảng, có cả creator chưa có ở Danh bạ).
+
+- **Đầu vào**: Khối 1 (hồ sơ brand: ngành, ngành con, tập đoàn, TA, tone, RTB / claim cấm, đối thủ) và Khối 3 (ngưỡng KL1–KL7 Must /
+  Nice, ngưỡng ngành, cửa sổ chống trùng / scandal / đối thủ, ads code, ngoại lệ, nhóm 0) khai ở Danh mục → brand; Khối 2 (mã SP, TA,
+  ngưỡng % nữ / 18–34 / khu vực, tệp kênh ưu tiên, trường hợp loại, từ cấm, PIC duyệt) ở sản phẩm; Khối 4 (SKU, giá deal, mục tiêu,
+  GMV Max, kênh, số KOC theo KL, ngân sách, trần fee, tháng / tuần air, format, KOC chỉ định / cấm, mục tiêu GMV) ở đợt.
+- **Bước 2–3** ("Chạy matching"): pool = Danh bạ trên nền tảng của kênh + creator trong kho (lọc ngành, follower tối thiểu, tối đa
+  3.000 theo GMV). Loại tự động: BL, I-36, đánh giá "Không phù hợp" brand, K6, K7, K9 (Must loại, Nice cảnh báo), K10, K13, K15,
+  nhóm 0 Bắt buộc. Thiếu số liệu không loại. Chạy lại giữ nguyên mọi thao tác của Booker. Ngoại lệ: người có quyền "Duyệt list KOC"
+  hoặc người duyệt ngoại lệ của brand.
+- **Bước 4**: kho chưa có lời thoại / hình video nên K1, K2, K3 (khi brand bật), K4, K5, K8, K11 do Booker đánh dấu; app gợi ý từ cấm /
+  tên đối thủ trong tiêu đề video nổi bật.
+- **Bước 5, 7**: chấm 6 nhóm (0, A–E) 1–5 theo bậc của doc (khoảng giữa 2 mốc = 2 / 4), tổng = Σ điểm/5 × trọng số kênh, **quy về 100
+  trên phần có số liệu**; độ phủ < 50% thì "Chưa đủ dữ liệu". Nhóm D, tone, độ ổn định view, phần lớn nhóm 0 do Booker chấm tay
+  (đè được điểm tự động). Benchmark GMV/video, view, CPV theo KL lấy từ booking Lark đã air 2 tháng (ít mẫu thì 6 tháng).
+- **Bước 6**: giá KOC báo, ads code, cam kết đối thủ, chứng chỉ → K8 / K12 / K14. Creator chỉ có trong kho được tạo hồ sơ Danh bạ khi vào
+  shortlist. **Bước 8**: quyền "Duyệt list KOC"; kiểm tra số KOC theo KL, ngân sách, trần fee, GMV dự báo. **Bước 9**: Excel (không có K15)
+  và đưa sang Listing (giá, đề xuất Must Have / Recommend / Optional theo mức). **Bước 10**: GMV / view 30 ngày từ booking Lark, job; ghi
+  KPI, đúng hạn, lỗi M1–M3, quyết định (Vào core → nhãn "KOC core"; Dừng → đánh giá Không phù hợp brand) và rating sao → nuôi K15, C, E.
+- **Không bước nào bỏ KOC khỏi danh sách**: mỗi bước hiện đủ mọi KOC của đợt, xếp theo trạng thái (B2C đã duyệt → Đã báo giá →
+  Shortlist → Trong pool → Đã loại → Bị loại tự động → Ngoài pool) rồi theo điểm; KOC qua bước đó nằm trên vạch, còn lại mờ đi kèm lý do.
+  KOC không khớp ngành / KL cần book ở trạng thái "Ngoài pool" (không xoá); "Excel tất cả KOC" xuất đủ danh sách.
+- Hồ sơ KOC có mục "Lịch sử Creator matching" (đợt, trạng thái, mã loại).
+
+### Kho dữ liệu (ClickHouse qua Metabase)
+
+`POST /api/cron/sync-creators` (mỗi ngày, sau kol-connector 01:00) đọc `upbase_prod.connector_creator_public_creator_channel`,
+`_performance_latest`, `_categories`, `_top_content`, `connector_creator_public_categories` (FINAL, bỏ dòng xoá) vào `WarehouseCreator`.
+ClickHouse chỉ mở trong VPN nên app chạy SQL qua Metabase của DX (`/api/dataset/json`, đọc theo luồng, ~62 nghìn creator, ~10 giây).
+Cấu hình ở Phân quyền → Tích hợp → Kho dữ liệu (`METABASE_URL`, `METABASE_USER`, `METABASE_PASSWORD`, `METABASE_DATABASE_ID` mặc định 2);
+chưa cấu hình thì job bỏ qua và matching dùng số TikTok Shop đã lưu ở Danh bạ. Lượt nào trả về ít hơn một nửa lần trước thì giữ creator cũ.
+Đơn vị (kiểm tra 2026-11-26): ER là % dạng chuỗi, % nữ và tuổi là %; tuổi toàn 0 nghĩa là chưa có chân dung follower (~80% creator).
 
 ## Kiểm soát nhập liệu
 

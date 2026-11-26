@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { audit, BRAND_ROLES } from '@/lib/booking/catalog';
+import { GROUP0, KL_LEVELS, KL_METRICS, parseRules, type BrandRules, type KlRule } from '@/lib/matching/spec';
 import { db } from '@/lib/db';
 import { isUniqueError, optInt, str } from '@/lib/form';
 import { brandKey } from '@/lib/booking/listing';
@@ -10,6 +11,10 @@ import { requirePerm, requireUser } from '@/lib/auth/session';
 // Danh mục: người có quyền "Sửa danh mục" (Phân quyền) sửa, mọi người xem.
 const editor = () => requirePerm('catalog.edit');
 const opt = (fd: FormData, k: string) => str(fd, k) || null;
+/** Ô nhiều giá trị: mỗi dòng hoặc cách nhau dấu phẩy / chấm phẩy. */
+const list = (fd: FormData, k: string) => [...new Set(str(fd, k).split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean))];
+/** Số thực ≥ 0 (cho phép dấu phẩy thập phân); '' → null; sai → NaN. */
+const optNum = (fd: FormData, k: string) => { const v = str(fd, k).replace(',', '.').replace('%', ''); if (!v) return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : NaN; };
 const url = (fd: FormData, k: string) => {
   const v = str(fd, k);
   return !v ? null : /^https?:\/\//i.test(v) ? v : undefined;
@@ -22,7 +27,12 @@ export async function saveBrand(_: string | null, fd: FormData): Promise<string 
   const logoUrl = url(fd, 'logoUrl');
   if (!name) return 'Nhập tên brand.';
   if (logoUrl === undefined) return 'Link logo phải bắt đầu bằng http(s)://';
-  const data = { name, logoUrl, usp: opt(fd, 'usp'), guideline: opt(fd, 'guideline'), checklist: opt(fd, 'checklist'), keywords: opt(fd, 'keywords'), note: opt(fd, 'note') };
+  const data = {
+    name, logoUrl, usp: opt(fd, 'usp'), guideline: opt(fd, 'guideline'), checklist: opt(fd, 'checklist'), keywords: opt(fd, 'keywords'), note: opt(fd, 'note'),
+    // Khối 1. Brand Profile cho Creator matching
+    category: opt(fd, 'category'), subCategory: opt(fd, 'subCategory'), group: opt(fd, 'group'), audience: opt(fd, 'audience'), tone: opt(fd, 'tone'),
+    rtb: opt(fd, 'rtb'), bannedClaims: list(fd, 'bannedClaims'), competitors: list(fd, 'competitors'),
+  };
   let b;
   try {
     b = id ? await db.brand.update({ where: { id }, data }) : await db.brand.create({ data });
@@ -100,7 +110,18 @@ export async function saveProduct(_: string | null, fd: FormData): Promise<strin
   if (Number.isNaN(price)) return 'Giá là số nguyên ≥ 0.';
   const storeId = str(fd, 'storeId') || null;
   if (storeId && !(await db.store.count({ where: { id: storeId, brandId } }))) return 'Gian hàng không thuộc brand này.';
-  const data = { brandId, name, storeId, imageUrl, link, price, usp: opt(fd, 'usp') };
+  // Khối 2. SKU Config cho Creator matching
+  const ageMin = optInt(fd, 'ageMin'), ageMax = optInt(fd, 'ageMax');
+  const femaleMin = optNum(fd, 'femaleMin'), age18_34Min = optNum(fd, 'age18_34Min'), regionMin = optNum(fd, 'regionMin');
+  if ([ageMin, ageMax].some(Number.isNaN) || (ageMin != null && ageMax != null && ageMin > ageMax)) return 'Độ tuổi mục tiêu: nhập số, "từ" không lớn hơn "đến".';
+  if ([femaleMin, age18_34Min, regionMin].some((x) => Number.isNaN(x) || (x != null && x > 100))) return 'Ngưỡng % follower nhập từ 0 tới 100.';
+  const gender = str(fd, 'targetGender');
+  const data = {
+    brandId, name, storeId, imageUrl, link, price, usp: opt(fd, 'usp'),
+    sku: opt(fd, 'sku'), line: opt(fd, 'line'), targetGender: gender === 'Nữ' || gender === 'Nam' ? gender : null, ageMin, ageMax,
+    kocVisual: opt(fd, 'kocVisual'), problem: opt(fd, 'problem'), exclusions: list(fd, 'exclusions'), channelTypes: fd.getAll('channelTypes').map(String).filter(Boolean),
+    bannedWords: list(fd, 'bannedWords'), femaleMin, age18_34Min, regions: list(fd, 'regions'), regionMin, reviewerId: opt(fd, 'reviewerId'),
+  };
   if (id) await db.product.update({ where: { id }, data });
   else await db.product.create({ data });
   revalidatePath(`/catalog/${brandId}`);
@@ -151,4 +172,39 @@ export async function saveTierPrices(_: string | null, fd: FormData): Promise<st
   await audit(me.id, 'TierPrice', '*', 'Sửa bảng giá');
   revalidatePath('/catalog');
   redirect('/catalog?tab=prices');
+}
+
+/** Khối 3. Ngưỡng và quy tắc lọc KOC của brand (I-09, I-19 – I-27, I-56). */
+export async function saveRules(_: string | null, fd: FormData): Promise<string | null> {
+  const me = await editor();
+  const brandId = str(fd, 'brandId');
+  const kl: BrandRules['kl'] = {};
+  for (const lv of KL_LEVELS) {
+    const row: KlRule = {};
+    for (const [k, label] of KL_METRICS) {
+      const v = optInt(fd, `${k}|${lv}`);
+      if (Number.isNaN(v)) return `${lv} · ${label}: nhập số nguyên ≥ 0.`;
+      if (v != null) row[k] = v;
+    }
+    row.must = fd.getAll(`must|${lv}`).map(String).filter((m) => KL_METRICS.some(([k]) => k === m));
+    if (str(fd, `approver|${lv}`)) row.approver = str(fd, `approver|${lv}`);
+    if (KL_METRICS.some(([k]) => row[k] != null) || row.approver) kl[lv] = row;
+  }
+  const group0 = GROUP0.map((c) => ({ id: c.id, mode: str(fd, `g0|${c.id}`) })).filter((g) => g.mode === 'must' || g.mode === 'score') as BrandRules['group0'];
+  if (group0.length && (group0.length < 3 || group0.length > 5)) return `Nhóm 0: chọn 3–5 tiêu chí (đang chọn ${group0.length}), hoặc không chọn để lấy điểm nhóm A.`;
+  const ints = ['industryGmvMin', 'industryContentMin', 'cooldownDays', 'priceBand', 'adsCodeDays', 'holdDays', 'competitorDays'] as const;
+  const vals: Partial<Record<(typeof ints)[number], number>> = {};
+  for (const k of ints) {
+    const v = optInt(fd, k);
+    if (Number.isNaN(v)) return 'Các ô số ở quy tắc brand phải là số nguyên ≥ 0.';
+    if (v != null) vals[k] = v;
+  }
+  const rules = parseRules({
+    ...vals, kl, group0, scandal: str(fd, 'scandal'), k3: str(fd, 'k3') === '1',
+    reupChannels: fd.getAll('reupChannels').map(String), exceptionApprover: str(fd, 'exceptionApprover') || null,
+  });
+  await db.brand.update({ where: { id: brandId }, data: { rules } });
+  await audit(me.id, 'Brand', brandId, 'Sửa quy tắc matching');
+  revalidatePath(`/catalog/${brandId}`);
+  redirect(`/catalog/${brandId}#rules`);
 }

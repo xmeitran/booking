@@ -86,7 +86,7 @@ export async function removeLine(fd: FormData) {
   redirect(`/plan/${line.planId}`);
 }
 
-/** Tạo yêu cầu matching từ dòng plan: brief theo brand, tiêu chí cấp KOL = tier của dòng. Đã có thì mở brief đó. */
+/** Tạo đợt Creator matching từ dòng plan: brand, SKU, tháng / tuần air, số KOC theo tier, ngân sách, format lấy từ dòng. Đã có thì mở đợt đó. */
 export async function matchFromLine(fd: FormData) {
   const me = await requireUser();
   await guard(me, 'line', str(fd, 'id'));
@@ -95,13 +95,12 @@ export async function matchFromLine(fd: FormData) {
   const name = [line.brand?.name, line.product?.name, line.plan.name, line.week ? `Tuần ${line.week}` : null, line.tier, line.contentType].filter(Boolean).join(' · ');
   const brief = await db.matchBrief.create({
     data: {
-      name, brand: line.brand?.name ?? null, brandId: line.brandId, planLineId: line.id, createdById: me.id,
-      guideline: line.brand?.guideline ?? null,
-      strategy: [line.product?.usp && `USP sản phẩm: ${line.product.usp}`, line.brand?.usp && `USP brand: ${line.brand.usp}`].filter(Boolean).join('\n') || null,
-      plan: `${line.quantity} KOC · ${line.contentType}${line.week ? ` · tuần ${line.week} tháng ${line.plan.month.split('-').reverse().join('/')}` : ''}${line.budget ? ` · ngân sách ${line.budget.toLocaleString('vi-VN')} ₫` : ''}`,
-      criteria: line.tier ? { kl: [line.tier] } : {},
+      name, brand: line.brand?.name ?? null, brandId: line.brandId, category: line.brand?.category ?? null, productId: line.productId, planLineId: line.id, createdById: me.id,
+      airMonth: line.plan.month, airWeek: line.week, budget: line.budget, format: line.contentType,
+      slots: line.tier ? [{ kl: line.tier, role: line.contentType, count: line.quantity }] : [],
+      note: line.note,
     },
   });
   await audit(me.id, 'MatchBrief', brief.id, 'Tạo từ plan', { planLineId: line.id });
-  redirect(`/matching/${brief.id}`);
+  redirect(`/matching/${brief.id}?step=1`);
 }

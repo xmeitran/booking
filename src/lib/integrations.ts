@@ -70,6 +70,19 @@ export const INTEGRATIONS: Integration[] = [
     ],
   },
   {
+    id: 'warehouse', code: 'DWH', name: 'Kho dữ liệu (qua Metabase)',
+    what: 'Số liệu creator cho Creator matching: pool ứng viên ngoài Danh bạ, follower, view trung vị, ER, GMV, chân dung follower, tỷ trọng ngành, video nổi bật (bảng kol-connector trong upbase_prod). Đọc kho ClickHouse qua Metabase của DX bằng SQL chỉ đọc, đồng bộ mỗi ngày bằng job sync-creators.',
+    todo: [
+      'Nên xin team Data một tài khoản Metabase riêng cho Booking Hub (chỉ cần quyền chạy SQL native trên database clickhouse), để việc đổi mật khẩu tài khoản DX không làm dừng job.',
+    ],
+    items: [
+      { key: 'METABASE_URL', label: 'URL Metabase', hint: 'https://metabase.upbase.asia' },
+      { key: 'METABASE_USER', label: 'Email đăng nhập Metabase' },
+      { key: 'METABASE_PASSWORD', label: 'Mật khẩu Metabase', secret: true },
+      { key: 'METABASE_DATABASE_ID', label: 'ID database ClickHouse trong Metabase', hint: 'Trống = 2 (database "clickhouse")', optional: true },
+    ],
+  },
+  {
     id: 'ai', code: 'AI', name: 'API AI (Content Copilot)',
     what: 'AI viết brief cho job (Claude). Tài liệu liệt kê thêm Gemini, OpenAI: chỉ cần khi muốn đổi nhà cung cấp.',
     todo: ['AI đọc transcript / chấm video khi nghiệm thu: cần nguồn transcript.', 'Tìm KOC theo đối thủ / hashtag / xu hướng và tìm kênh khác của KOC bằng AI (Kalodata, TikTok Shop): chưa làm.'],

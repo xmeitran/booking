@@ -12,6 +12,7 @@ import { can, requireUser } from '@/lib/auth/session';
 import { addNote, closeFollowUp, mergeKoc, refreshFromTikTok } from '../actions';
 import { ALL_BRANDS_SCOPE, isCoop, legalProfilesOf, reviewSummary, VERDICTS, type LegalType } from '@/lib/koc/kocDirectory';
 import { LegalDialog, LegalSection } from './legal';
+import { koLabel, STAGES, type Stage } from '@/lib/matching/spec';
 
 const TIKTOK_MSG: Record<string, string> = {
   updated: 'Đã cập nhật số liệu từ TikTok.',
@@ -35,7 +36,7 @@ export default async function KocPage({ params, searchParams }: { params: Promis
     owners.length ? db.koc.count({ where: { id: { not: koc.id }, OR: owners } }) : 0,
     canEdit && canSee && lp ? db.koc.findMany({ where: { bankName: { not: null } }, distinct: ['bankName'], select: { bankName: true }, orderBy: { bankName: 'asc' } }) : [],
   ]);
-  const [byHandle, sources, history, notes, jobs, twins] = await Promise.all([
+  const [byHandle, sources, history, notes, jobs, twins, matches] = await Promise.all([
     bookingsOf([koc.handle]),
     creatorSources(koc.handle),
     db.kocSnapshot.findMany({ where: { kocId: koc.id }, orderBy: { at: 'desc' }, take: 12 }),
@@ -47,6 +48,11 @@ export default async function KocPage({ params, searchParams }: { params: Promis
       where: { id: { not: koc.id }, handle: { startsWith: dupKey(koc.handle).slice(0, 3) } },
       select: { id: true, handle: true, name: true, bookingCount: true, kl: true, klAuto: true },
     }).then((list) => list.filter((k) => dupKey(k.handle) === dupKey(koc.handle))),
+    // Lịch sử Creator matching: đợt nào, đến bước nào, bị loại vì mã nào (doc: "ghi tiêu chí gây loại vào lịch sử KOC").
+    db.matchCandidate.findMany({
+      where: { OR: [{ kocId: koc.id }, { handle: koc.handle, platform: koc.platform }] }, orderBy: { updatedAt: 'desc' }, take: 30,
+      select: { id: true, stage: true, tier: true, total: true, rejectCode: true, reason: true, knockouts: true, updatedAt: true, brief: { select: { id: true, name: true, brand: true } } },
+    }),
   ]);
   // Tỷ lệ nghiệm thu đạt ngay lần đầu: lấy kết quả nghiệm thu đầu tiên của mỗi job trong lịch sử thay đổi.
   const reviews = jobs.length
@@ -314,6 +320,26 @@ export default async function KocPage({ params, searchParams }: { params: Promis
             </tbody>
           </table>
         ) : <Empty text="Chưa có job nào trong app (job tạo từ KOC Brand chọn Yes ở Listing)." />}
+      </Section>
+
+      <Section title="Lịch sử Creator matching" meta={matches.length ? `${matches.length} đợt` : undefined}>
+        {matches.length ? (
+          <table className="tbl">
+            <thead><tr><th>Đợt</th><th>Brand</th><th>Trạng thái</th><th>Điểm · mức</th><th>Mã loại / lý do</th><th>Cập nhật</th></tr></thead>
+            <tbody>
+              {matches.map((m) => (
+                <tr key={m.id}>
+                  <td><Link href={`/matching/${m.brief.id}?c=${m.id}`} className="link">{m.brief.name}</Link></td>
+                  <td>{m.brief.brand ?? '—'}</td>
+                  <td>{STAGES[m.stage as Stage] ?? m.stage}</td>
+                  <td className="text-xs">{m.total != null ? `${m.total.toFixed(1)} · ` : ''}{m.tier ?? '—'}</td>
+                  <td className="text-xs">{m.rejectCode ? `${koLabel(m.rejectCode)}: ${m.reason ?? ''}` : m.stage === 'KO' ? (m.knockouts as { code: string }[]).map((k) => koLabel(k.code)).join(', ') : '—'}</td>
+                  <td>{fmtDate(m.updatedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <Empty text="KOC chưa nằm trong đợt Creator matching nào." />}
       </Section>
 
       <Section title="Nhật ký chăm sóc" meta="Ghi lại trao đổi, báo giá, hẹn liên hệ lại">

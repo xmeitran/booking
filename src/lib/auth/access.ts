@@ -15,7 +15,8 @@ export const PERMS = {
   'koc.bank': { label: 'Xem số tài khoản, CCCD', hint: 'Ở ĐNTT và trong file xuất.' },
   'payment.approve': { label: 'Duyệt ĐNTT, xác nhận đã thanh toán', hint: '' },
   'data.export': { label: 'Tải file Excel', hint: 'Danh bạ KOC, listing, KOC khớp brief, ĐNTT.' },
-  'brief.deleteAny': { label: 'Xoá brief của người khác', hint: 'Người tạo luôn xoá được brief của mình.' },
+  'brief.deleteAny': { label: 'Xoá đợt matching của người khác', hint: 'Người tạo luôn xoá được đợt của mình.' },
+  'match.approve': { label: 'Duyệt list KOC (Creator matching bước 8), duyệt ngoại lệ', hint: 'Duyệt / trả lại KOC đã báo giá; giữ lại KOC bị loại tự động (I-26). Người duyệt ngoại lệ ghi ở quy tắc brand cũng duyệt được ngoại lệ.' },
   'job.delete': { label: 'Xoá job', hint: '' },
 } as const;
 export type Perm = keyof typeof PERMS;
@@ -31,7 +32,7 @@ export interface AccessPolicy {
 // Mặc định giữ đúng quyền trước khi có ma trận; riêng Nhân viên chỉ xem brand được giao.
 export const DEFAULT_POLICY: AccessPolicy = {
   perms: {
-    LEADER: ['data.all', 'plan.edit', 'catalog.edit', 'koc.edit', 'koc.bank', 'payment.approve', 'data.export', 'brief.deleteAny'],
+    LEADER: ['data.all', 'plan.edit', 'catalog.edit', 'koc.edit', 'koc.bank', 'payment.approve', 'data.export', 'brief.deleteAny', 'match.approve'],
     STAFF: ['data.export'],
   },
   loginDepts: [],

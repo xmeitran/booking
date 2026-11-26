@@ -3,6 +3,7 @@
 #   0 * * * *  ~/booking-hub/ops/cron-dx.sh sync-bookings sync-plans sync-listings   # đồng bộ Lark đúng :00 mỗi giờ
 #   20 * * * * ~/booking-hub/ops/cron-dx.sh data-sources               # tổng hợp tab Dữ liệu (app tự giới hạn 6 giờ / lần)
 #   15,45 * * * * ~/booking-hub/ops/cron-dx.sh creator-stats           # chỉ số TikTok của KOL (~24 KOL / lượt, KOL trong listing trước)
+#   30 2 * * *    ~/booking-hub/ops/cron-dx.sh sync-creators           # số liệu creator từ kho (qua Metabase) cho Creator matching (bỏ qua khi chưa cấu hình)
 # Gọi thẳng container (127.0.0.1:3060), các job chạy song song để cùng bắt đầu lúc :00. Kết quả ghi ~/booking-hub/cron.log.
 set -u
 key=$(cat "$HOME/booking-hub/.cron-secret")
