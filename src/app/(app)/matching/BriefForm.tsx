@@ -9,11 +9,16 @@ type Brand = { id: string; name: string; products: { id: string; name: string; s
 /** Ô "AI điền giúp": dán brief của brand, AI điền form (đợt mới thì tạo đợt rồi mở form để xem lại). */
 export function AiBriefBox({ briefId, plan }: { briefId?: string; plan?: string | null }) {
   return (
-    <ActionForm action={aiFillBrief} pendingText="AI đang đọc brief, khoảng 20–40 giây…" className="grid gap-2 rounded-lg border border-accent/30 bg-accent-soft/40 p-3">
+    <ActionForm action={aiFillBrief} pendingText="AI đang đọc brief, khoảng 20–60 giây…" className="grid gap-2 rounded-lg border border-accent/30 bg-accent-soft/40 p-3">
       <input type="hidden" name="id" value={briefId ?? ''} />
       <label className="block">
-        <span className="label">Dán brief / content plan của brand, AI điền giúp các ô bên dưới</span>
-        <textarea name="brief" rows={4} defaultValue={plan ?? ''} placeholder="Dán nội dung brief: sản phẩm, khách hàng mục tiêu, số KOC, ngân sách, thời gian air, điều cấm…" className="input" />
+        <span className="label">Tải file brief / content plan của brand (PDF hoặc ảnh, tối đa 18 MB)</span>
+        <input type="file" name="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="block w-full text-[13px] text-ink-2 file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-line file:bg-surface file:px-3 file:py-1.5 file:text-[13px] file:text-ink" />
+        <span className="mt-0.5 block text-xs text-ink-3">Brief trên Canva: mở link → Chia sẻ → Tải xuống → PDF, rồi chọn file ở đây. AI đọc được cả chữ trong hình.</span>
+      </label>
+      <label className="block">
+        <span className="label">Hoặc dán nội dung brief (có file thì ô này là ghi chú thêm)</span>
+        <textarea name="brief" rows={3} defaultValue={plan ?? ''} placeholder="Dán nội dung brief: sản phẩm, khách hàng mục tiêu, số KOC, ngân sách, thời gian air, điều cấm…" className="input" />
       </label>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-ink-3">AI chỉ điền, bạn xem lại rồi bấm Lưu. AI cũng gợi ý từ khoá để tìm thêm KOC.</span>

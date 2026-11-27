@@ -9,7 +9,7 @@ import { optInt, str } from '@/lib/form';
 import { audit } from '@/lib/booking/catalog';
 import { airDateOf, loadBrief } from '@/lib/matching/data';
 import { contentChecksFor, rescore, rescoreMany, runMatching, stageAfterRun } from '@/lib/matching/run';
-import { aiOn, rankFit, readBrief, type FitInput } from '@/lib/matching/ai';
+import { aiOn, BRIEF_FILE_TYPES, rankFit, readBrief, type FitInput } from '@/lib/matching/ai';
 import {
   ALL_CRITERIA, CHANNELS, CONTENT_CHECKS, CONTENT_ERRORS, DECISIONS, hasRequired, KL_LEVELS, KO, OBJECTIVES, parseNeeds, parseRules,
   type Check, type Needs, type Declare, type Manual, type Outcome, type Slot,
@@ -96,16 +96,26 @@ export async function runNow(fd: FormData) {
 }
 
 // ---------------------------------------------------------------- AI
-/** Dán brief của brand → AI điền yêu cầu đợt. Đợt mới thì tạo luôn rồi mở form để Booker xem lại; đợt có sẵn thì chỉ điền ô trống. */
+const MAX_BRIEF_FILE = 18 * 1024 * 1024; // dưới giới hạn 20 MB của server action và nginx
+
+/**
+ * Dán brief hoặc tải file brief (PDF / ảnh, vd slide Canva xuất PDF) → AI điền yêu cầu đợt. Đợt mới thì tạo luôn rồi mở form
+ * để Booker xem lại; đợt có sẵn thì chỉ điền ô trống. File không lưu lại, chỉ gửi cho AI đọc.
+ */
 export async function aiFillBrief(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
   if (!(await aiOn())) return 'Chưa gắn key Claude (Phân quyền → Tích hợp → API AI).';
   const text = str(fd, 'brief').slice(0, 30000);
-  if (text.length < 30) return 'Dán nội dung brief (ít nhất vài câu).';
+  const f = fd.get('file');
+  const up = f instanceof File && f.size > 0 ? f : null;
+  if (up && !(BRIEF_FILE_TYPES as readonly string[]).includes(up.type)) return 'Chỉ nhận file PDF hoặc ảnh PNG / JPG / WebP. Từ Canva: Chia sẻ → Tải xuống → PDF.';
+  if (up && up.size > MAX_BRIEF_FILE) return `File ${(up.size / 1048576).toFixed(1).replace('.', ',')} MB, quá giới hạn 18 MB. Xuất PDF chất lượng thấp hơn hoặc bớt trang rồi thử lại.`;
+  if (!up && text.length < 30) return 'Dán nội dung brief (ít nhất vài câu) hoặc tải file PDF / ảnh brief.';
+  const file = up ? { name: up.name, mediaType: up.type, data: Buffer.from(await up.arrayBuffer()).toString('base64') } : undefined;
   const brands = await db.brand.findMany({ select: { id: true, name: true, category: true, products: { select: { id: true, name: true } } }, orderBy: { name: 'asc' } });
   let d;
   try {
-    d = await readBrief(text, brands.map((b) => ({ name: b.name, products: b.products.map((p) => p.name) })));
+    d = await readBrief(text, brands.map((b) => ({ name: b.name, products: b.products.map((p) => p.name) })), file);
   } catch (e) {
     return `AI chưa đọc được brief: ${e instanceof Error ? e.message : String(e)}`;
   }
@@ -123,7 +133,7 @@ export async function aiFillBrief(_: string | null, fd: FormData): Promise<strin
     objective: (OBJECTIVES as readonly string[]).includes(d.objective) ? d.objective : 'Convert',
     airMonth: old?.airMonth ?? (/^\d{4}-\d{2}$/.test(d.airMonth) ? d.airMonth : null), airWeek: old?.airWeek ?? (d.airWeek >= 1 && d.airWeek <= 5 ? d.airWeek : null),
     budget: old?.budget ?? pos(d.budget), feeCap: old?.feeCap ?? pos(d.feeCap), gmvTarget: old?.gmvTarget ?? pos(d.gmvTarget), dealPrice: old?.dealPrice ?? pos(d.dealPrice),
-    format: old?.format ?? (d.format || null), plan: text,
+    format: old?.format ?? (d.format || null), plan: text || [`[File brief: ${up!.name}]`, d.summary].filter(Boolean).join('\n'),
     needs: { ...parseNeeds(old?.needs), ...Object.fromEntries(Object.entries(needs).filter(([, v]) => (Array.isArray(v) ? v.length : v))) } as Prisma.InputJsonObject,
     ...(slots.length && !(Array.isArray(old?.slots) && old.slots.length) ? { slots: slots as unknown as Prisma.InputJsonArray } : {}),
   };
@@ -131,7 +141,7 @@ export async function aiFillBrief(_: string | null, fd: FormData): Promise<strin
   const b = old
     ? await db.matchBrief.update({ where: { id: old.id }, data: fill })
     : await db.matchBrief.create({ data: { ...fill, name: d.name || 'Đợt mới', createdById: me.id } });
-  await audit(me.id, 'MatchBrief', b.id, 'AI đọc brief');
+  await audit(me.id, 'MatchBrief', b.id, 'AI đọc brief', up ? { file: up.name, size: up.size } : undefined);
   revalidatePath('/matching');
   const miss = [!b.brandId && 'brand', !b.productId && 'sản phẩm', !b.airMonth && 'tháng air'].filter(Boolean);
   redirect(back(b.id, 1, `&edit=1&msg=${encodeURIComponent(`AI đã điền yêu cầu từ brief. Kiểm tra lại rồi bấm Lưu${miss.length ? `; còn thiếu: ${miss.join(', ')}` : ''}.`)}`));

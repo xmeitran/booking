@@ -3,12 +3,13 @@
 // không gửi SĐT, địa chỉ, tài khoản. Key ở Phân quyền → Tích hợp → API AI (ANTHROPIC_API_KEY).
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
+import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { cfg, configured } from '../integrations';
 import { CHANNELS, KL_LEVELS, OBJECTIVES } from './spec';
 
 export const aiOn = () => configured('ai');
 
-async function askJson<T>(system: string, user: string, schema: Record<string, unknown>, maxTokens = 16000): Promise<T> {
+async function askJson<T>(system: string, user: string | BetaContentBlockParam[], schema: Record<string, unknown>, maxTokens = 16000): Promise<T> {
   const apiKey = await cfg('ANTHROPIC_API_KEY');
   if (!apiKey) throw new Error('Chưa gắn key Claude: Admin nhập ở Phân quyền → Tích hợp → API AI.');
   const client = new Anthropic({ apiKey });
@@ -67,13 +68,25 @@ const BRIEF_SCHEMA = obj({
   keywords: L('6–15 từ khoá ngắn (1–4 chữ, tiếng Việt có dấu) để tìm creator có tiêu đề video hoặc sản phẩm đã bán chứa từ đó: loại sản phẩm, công dụng, vấn đề của khách, tên brand đối thủ. Không dùng từ chung như review, sản phẩm, xu hướng'),
 });
 
-/** Đọc brief / content plan của brand, trả các trường để điền form đợt matching. brands: danh sách brand ở Danh mục (kèm sản phẩm). */
-export function readBrief(text: string, brands: { name: string; products: string[] }[]) {
-  const system = `Bạn là trợ lý booking KOC của agency UpBase. Đọc brief brand gửi (tiếng Việt hoặc Anh) và trích thông tin để điền form tìm KOC.
-Chỉ lấy thông tin có trong brief. Không có thì để trống ("", 0 hoặc []). Không bịa số liệu, tên đối thủ hay từ cấm.
+/** File brief tải lên (PDF hoặc ảnh), base64. */
+export type BriefFile = { name: string; mediaType: string; data: string };
+export const BRIEF_FILE_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'] as const;
+
+/**
+ * Đọc brief / content plan của brand (chữ dán vào, file PDF / ảnh, hoặc cả hai), trả các trường để điền form đợt matching.
+ * brands: danh sách brand ở Danh mục (kèm sản phẩm).
+ */
+export function readBrief(text: string, brands: { name: string; products: string[] }[], file?: BriefFile) {
+  const system = `Bạn là trợ lý booking KOC của agency UpBase. Đọc brief brand gửi (tiếng Việt hoặc Anh; có thể là slide Canva xuất PDF hoặc ảnh chụp) và trích thông tin để điền form tìm KOC.
+Đọc cả chữ trong hình. Chỉ lấy thông tin có trong brief. Không có thì để trống ("", 0 hoặc []). Không bịa số liệu, tên đối thủ hay từ cấm.
 Riêng "keywords" thì tự suy ra từ sản phẩm và brief để tìm creator phù hợp.`;
   const list = brands.map((b) => `- ${b.name}${b.products.length ? `: ${b.products.slice(0, 30).join('; ')}` : ''}`).join('\n');
-  return askJson<BriefDraft>(system, `Danh sách brand (và sản phẩm) trong hệ thống:\n${list || '(trống)'}\n\nBrief:\n"""\n${text}\n"""`, BRIEF_SCHEMA);
+  const ask = `Danh sách brand (và sản phẩm) trong hệ thống:\n${list || '(trống)'}\n\n${file ? `Brief là file đính kèm "${file.name}".${text ? ` Ghi chú dán thêm:\n"""\n${text}\n"""` : ''}` : `Brief:\n"""\n${text}\n"""`}`;
+  if (!file) return askJson<BriefDraft>(system, ask, BRIEF_SCHEMA);
+  const block: BetaContentBlockParam = file.mediaType === 'application/pdf'
+    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: file.data }, title: file.name }
+    : { type: 'image', source: { type: 'base64', media_type: file.mediaType as 'image/png' | 'image/jpeg' | 'image/webp', data: file.data } };
+  return askJson<BriefDraft>(system, [block, { type: 'text', text: ask }], BRIEF_SCHEMA);
 }
 
 export type FitInput = {
