@@ -1,7 +1,17 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { startTransition, useActionState, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { startTransition, useActionState, useEffect, useState } from 'react';
+
+/** Tải lại dữ liệu trang (không tải lại cả trang) mỗi `ms` khi đang chờ việc chạy ngầm; tự dừng khi bị gỡ khỏi trang. */
+export function AutoRefresh({ ms = 5000 }: { ms?: number }) {
+  const router = useRouter();
+  useEffect(() => {
+    const t = setInterval(() => router.refresh(), ms);
+    return () => clearInterval(t);
+  }, [router, ms]);
+  return null;
+}
 
 export function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   const active = usePathname().startsWith(href);

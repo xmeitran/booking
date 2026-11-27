@@ -6,12 +6,19 @@ import { buildContext, loadBrief, loadSubjects, type BriefFull } from './data';
 import { evaluate, type Evaluation, type Finding, type Subject } from './engine';
 import { CONTENT_CHECKS, parseNeeds, type Declare, type Manual, type Stage } from './spec';
 
-/** Số liệu lưu kèm ứng viên để hiện mà không phải nạp lại. KOC bị loại tự động không giữ video nổi bật cho gọn. */
-function snapshot(s: Subject, e: Evaluation, keepVideos: boolean) {
+/**
+ * Lượt tìm KOC chạy ngầm theo đợt: có mục không lỗi = đang chạy; có lỗi = lượt trước hỏng. Để trên globalThis cho action và trang thấy cùng một bản.
+ * ponytail: trạng thái trong bộ nhớ, đủ khi chạy một container; nhiều instance thì chuyển sang cột trên MatchBrief.
+ */
+const g = globalThis as unknown as { matchRuns?: Map<string, { at: Date; error?: string }> };
+export const matchRuns = (g.matchRuns ??= new Map());
+
+/** Số liệu lưu kèm ứng viên để hiện mà không phải nạp lại. Video nổi bật không lưu (nặng, ghi chậm): lấy từ kho khi hiện (topVideosOf). */
+function snapshot(s: Subject, e: Evaluation) {
   const m = s.metrics;
   return {
     name: s.name, avatarUrl: s.avatarUrl, niche: s.niche, kl: e.kl, klSource: e.klSource, price: e.price, priceSource: e.priceSource,
-    metrics: m && { ...m, categories: m.categories?.slice(0, 5) ?? null, locations: m.locations?.slice(0, 5) ?? null, brands: m.brands.slice(0, 10), topVideos: keepVideos ? m.topVideos : [] },
+    metrics: m && { ...m, categories: m.categories?.slice(0, 5) ?? null, locations: m.locations?.slice(0, 5) ?? null, brands: m.brands.slice(0, 10), topVideos: [] },
     bookings: s.history.bookings.length, ratings: s.history.ratings.length, kwHits: s.kwHits?.length ? s.kwHits : undefined,
   };
 }
@@ -22,6 +29,7 @@ const autoKo = (e: Evaluation): Finding[] => [...e.ko, ...(e.score.mustFail.leng
 const rankTotal = (e: Evaluation) => (e.score.mustFail.length ? null : e.score.total);
 
 export async function runMatching(briefId: string): Promise<string> {
+  const t0 = Date.now();
   const brief = await loadBrief(briefId);
   if (!brief) throw new Error('Không có đợt này');
   const ctx = await buildContext(brief);
@@ -29,6 +37,7 @@ export async function runMatching(briefId: string): Promise<string> {
     loadSubjects(ctx),
     db.matchCandidate.findMany({ where: { briefId }, select: { id: true, platform: true, handle: true, stage: true, kocId: true, checks: true, declare: true, manual: true, exception: true } }),
   ]);
+  const t1 = Date.now();
   const ex = new Map(existing.map((c) => [`${c.platform}|${c.handle}`, c]));
   const seen = new Set<string>();
   const create: Prisma.MatchCandidateCreateManyInput[] = [];
@@ -45,7 +54,7 @@ export async function runMatching(briefId: string): Promise<string> {
     const stage = stageAfterRun(c, e, kos.length > 0, ctx.include.has(s.handle));
     if (stage === 'KO') ko++; else if (stage === 'POOL') pool++; else if (stage === 'OUT') out++;
     const row = {
-      stage, kl: e.kl, data: snapshot(s, e, stage !== 'KO' && stage !== 'OUT') as Prisma.InputJsonObject, knockouts: kos as unknown as Prisma.InputJsonArray,
+      stage, kl: e.kl, data: snapshot(s, e) as Prisma.InputJsonObject, knockouts: kos as unknown as Prisma.InputJsonArray,
       flags: flags as unknown as Prisma.InputJsonArray, score: e.score as unknown as Prisma.InputJsonObject, total: rankTotal(e), tier: e.score.tier,
     };
     if (c) update.push({ id: c.id, kocId: s.kocId, ...row });
@@ -53,8 +62,10 @@ export async function runMatching(briefId: string): Promise<string> {
   }
   // Ứng viên cũ không còn trong dữ liệu lần này (creator rời kho / rời top theo GMV): không xoá, chuyển Ngoài pool nếu chưa qua bước 5.
   const stale = existing.filter((c) => !seen.has(`${c.platform}|${c.handle}`) && ['KO', 'POOL', 'OUT'].includes(c.stage)).map((c) => c.id);
+  const t2 = Date.now();
   for (let i = 0; i < create.length; i += 1000) await db.matchCandidate.createMany({ data: create.slice(i, i + 1000), skipDuplicates: true });
-  for (let i = 0; i < update.length; i += 500) await bulkUpdate(update.slice(i, i + 500));
+  // ponytail: 2 lô song song vì server DX có 2 CPU; tăng khi DB có thêm CPU.
+  for (let i = 0; i < update.length; i += 1000) await Promise.all([bulkUpdate(update.slice(i, i + 500)), bulkUpdate(update.slice(i + 500, i + 1000))]);
   if (stale.length) {
     await db.matchCandidate.updateMany({ where: { id: { in: stale } }, data: { stage: 'OUT', flags: [{ code: 'POOL', detail: 'Không còn trong dữ liệu lần chạy này (rời kho hoặc ngoài top GMV của kho)' }] } });
     out += stale.length;
@@ -63,6 +74,7 @@ export async function runMatching(briefId: string): Promise<string> {
   const fmt = (x: number) => x.toLocaleString('vi-VN');
   const note = `Tìm được ${fmt(pool + ko + out)} KOC (${fmt(fromWarehouse)} ngoài Danh bạ): ${fmt(pool)} đang xét, ${fmt(ko)} hệ thống loại, ${fmt(out)} không khớp ngành / cấp KOC`;
   await db.matchBrief.update({ where: { id: briefId }, data: { ranAt: new Date(), runNote: note } });
+  console.log(`[matching] ${briefId}: nạp ${(t1 - t0) / 1000}s, chấm ${(t2 - t1) / 1000}s, ghi ${(Date.now() - t2) / 1000}s (${create.length} mới, ${update.length} cập nhật)`);
   return note;
 }
 
@@ -77,12 +89,15 @@ export function stageAfterRun(c: { stage: string; exception: string | null } | u
   return hasKo ? 'KO' : 'POOL';
 }
 
+/** Cập nhật một lô; dòng không đổi gì thì bỏ qua (đỡ ghi lại cả nghìn dòng khi bấm tìm lại mà yêu cầu không đổi). */
 async function bulkUpdate(rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
   await db.$executeRaw`
     update "MatchCandidate" c set stage = x.stage, kl = x.kl, data = x.data, knockouts = x.knockouts, flags = x.flags, score = x.score,
       total = x.total, tier = x.tier, "kocId" = coalesce(x."kocId", c."kocId"), "updatedAt" = now()
     from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) as x(id text, stage text, kl text, data jsonb, knockouts jsonb, flags jsonb, score jsonb, total float8, tier text, "kocId" text)
-    where c.id = x.id`;
+    where c.id = x.id and (c.stage, c.kl, c.data, c.knockouts, c.flags, c.score, c.total, c.tier, c."kocId")
+      is distinct from (x.stage, x.kl, x.data, x.knockouts, x.flags, x.score, x.total, x.tier, coalesce(x."kocId", c."kocId"))`;
 }
 
 /** Quyết định chọn / loại của bản matching cũ (MatchDecision) chuyển thành Shortlist / Đã loại ở lượt chạy đầu. */
@@ -112,7 +127,7 @@ export async function rescore(candidateId: string, patch: { declare?: Declare; m
     where: { id: c.id },
     data: {
       declare: declare as Prisma.InputJsonObject, manual: manual as Prisma.InputJsonObject, kl: e.kl, kocId: c.kocId ?? s.kocId,
-      data: snapshot(s, e, c.stage !== 'KO' && c.stage !== 'OUT') as Prisma.InputJsonObject, knockouts: autoKo(e) as unknown as Prisma.InputJsonArray,
+      data: snapshot(s, e) as Prisma.InputJsonObject, knockouts: autoKo(e) as unknown as Prisma.InputJsonArray,
       flags: e.flags as unknown as Prisma.InputJsonArray, score: e.score as unknown as Prisma.InputJsonObject, total: rankTotal(e), tier: e.score.tier,
     },
   });
@@ -137,7 +152,7 @@ export async function rescoreMany(briefId: string, patches: Map<string, Manual>)
     await db.matchCandidate.update({
       where: { id: c.id },
       data: {
-        manual: manual as Prisma.InputJsonObject, kl: e.kl, data: snapshot(s, e, c.stage !== 'KO' && c.stage !== 'OUT') as Prisma.InputJsonObject,
+        manual: manual as Prisma.InputJsonObject, kl: e.kl, data: snapshot(s, e) as Prisma.InputJsonObject,
         knockouts: autoKo(e) as unknown as Prisma.InputJsonArray, flags: e.flags as unknown as Prisma.InputJsonArray,
         score: e.score as unknown as Prisma.InputJsonObject, total: rankTotal(e), tier: e.score.tier,
       },

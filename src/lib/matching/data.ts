@@ -91,6 +91,12 @@ export function metricsFromWarehouse(w: WarehouseCreator): Metrics {
   };
 }
 
+/** Video nổi bật lấy thẳng từ kho khi hiện (ứng viên không lưu video). Khoá `platform|handle`. */
+export async function topVideosOf(list: { platform: string; handle: string }[]) {
+  const rows = list.length ? await db.warehouseCreator.findMany({ where: { handle: { in: list.map((x) => x.handle) } }, select: { platform: true, handle: true, topVideos: true } }) : [];
+  return new Map(rows.map((w) => [`${w.platform}|${w.handle}`, (Array.isArray(w.topVideos) ? w.topVideos : []) as Video[]]));
+}
+
 type KocRow = Pick<Koc, 'id' | 'handle' | 'platform' | 'name' | 'nickname' | 'avatarUrl' | 'followers' | 'avgViews' | 'unitsSold' | 'gpmUsd' | 'ttsProfile' | 'statsAt' | 'kl' | 'klAuto' | 'niche' | 'blacklisted' | 'blacklistReason' | 'rateCard'>;
 /** Số đã lưu ở Danh bạ (job kho ghi mỗi sáng; KOL không có trong kho còn số Data-tiktok cũ): view là lượt xem TB video gắn giỏ, tỉnh thành chỉ có top 3. */
 export function metricsFromKoc(k: KocRow): Metrics | null {

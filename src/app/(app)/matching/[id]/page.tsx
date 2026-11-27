@@ -1,27 +1,29 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Prisma, type MatchCandidate } from '@prisma/client';
-import { ActionForm, Dialog } from '@/components/ui';
+import { ActionForm, AutoRefresh, Dialog } from '@/components/ui';
 import { Pager, pageOf } from '@/components/Pager';
 import { db } from '@/lib/db';
 import { fmtDate, fmtNum, fmtShort, fmtVnd, fmtVndShort } from '@/lib/format';
 import { FEE_DIVISOR } from '@/lib/koc/kocInsights';
 import { aiOn } from '@/lib/matching/ai';
 import type { Finding, ScoreResult } from '@/lib/matching/engine';
-import { contentChecksFor } from '@/lib/matching/run';
+import { topVideosOf } from '@/lib/matching/data';
+import { contentChecksFor, matchRuns } from '@/lib/matching/run';
 import {
   criterion, DECISIONS, hasRequired, KL_LEVELS, KO, koLabel, OBJECTIVE_LABEL, parseNeeds, parseRules, parseSlots, STAGE_ORDER, STAGES, STEP_PICKED, STEP_WORKING, STEPS,
   type Declare, type Outcome, type Stage,
 } from '@/lib/matching/spec';
 import { warehouseStatus } from '@/lib/warehouse/creatorSync';
 import { can, requireUser } from '@/lib/auth/session';
-import { aiScoreFit, approve, deleteBrief, pick, restoreCandidate, runNow, toListing, unshortlist } from '../actions';
+import { approve, deleteBrief, pick, restoreCandidate, runNow, toListing, unshortlist } from '../actions';
 import { AiBriefBox, BriefForm } from '../BriefForm';
 import { channelUrl, currentStep, Findings, FitCell, KocCell, StageChip, Stepper, TierChip, Todo, Total, type CandData } from '../parts';
 import { CandidateDialog, type Mode } from './CandidateDialog';
 
 type Search = { step?: string; c?: string; m?: string; page?: string; q?: string; src?: string; code?: string; stage?: string; sort?: string; msg?: string; err?: string; edit?: string };
 const PER = 50;
+const hhmm = (d: Date) => d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
 /** Link cũ theo 10 bước (bookmark, listing) → bước mới. */
 const OLD_STEP: Record<number, number> = { 8: 6, 9: 6, 10: 7 };
 /** Mọi bước dùng chung một thứ tự: KOC đi xa nhất lên đầu (STAGE_ORDER), cùng trạng thái thì điểm cao trước. */
@@ -55,7 +57,9 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
     sp.edit ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, products: { select: { id: true, name: true, sku: true }, orderBy: { name: 'asc' } } } }) : [],
     aiOn(),
   ]);
-  const ctx = { b, me, n, step, page, base, pop, listParams, sp, ai };
+  const run = matchRuns.get(id);
+  const running = !!run && !run.error;
+  const ctx = { b, me, n, step, page, base, pop, listParams, sp, ai, running };
 
   return (
     <>
@@ -70,12 +74,15 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
           </p>
           {b.runNote && <p className="mt-0.5 text-xs text-ink-3">Lần tìm gần nhất {fmtDate(b.ranAt)}: {b.runNote}</p>}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           <Link href={`/matching/${id}?step=${step}&edit=1`} className="btn">Sửa yêu cầu</Link>
-          <form action={runNow}><input type="hidden" name="id" value={id} /><button className="btn btn-primary" title="Tìm và lọc KOC theo yêu cầu. Những gì bạn đã làm (đã chọn, đã nhập giá…) được giữ nguyên.">{b.ranAt ? 'Tìm lại KOC' : 'Tìm KOC'}</button></form>
+          <RunButton b={b} running={running} />
         </div>
       </div>
       <Stepper briefId={id} step={step} counts={stepCounts} />
+      {run && (run.error
+        ? <p role="alert" className="mb-3 rounded-md bg-critical-soft px-3 py-2 text-[13px] text-critical">Lượt tìm KOC lúc {hhmm(run.at)} bị lỗi: {run.error.replace(/^Lỗi: /, '')}</p>
+        : <p role="status" className="mb-3 rounded-md bg-accent-soft px-3 py-2 text-[13px] text-accent"><AutoRefresh />Đang tìm và lọc KOC (bắt đầu {hhmm(run.at)}), thường dưới một phút. Bạn cứ xem các bước khác, trang tự cập nhật khi xong.</p>)}
       {(sp.msg || sp.err) && !sp.c && <p role="status" className={`mb-3 rounded-md px-3 py-2 text-[13px] ${sp.err || sp.msg?.startsWith('Lỗi') ? 'bg-critical-soft text-critical' : 'bg-positive-soft text-positive'}`}>{sp.err ?? sp.msg}</p>}
 
       {step === 1 && <Inputs {...ctx} />}
@@ -104,7 +111,7 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
 }
 
 type Brief = NonNullable<Awaited<ReturnType<typeof db.matchBrief.findUnique<{ where: { id: string }; include: { brandRef: true; product: { include: { store: true } }; createdBy: { select: { name: true } }; planLine: { include: { plan: { select: { id: true; name: true } } } } } }>>>>;
-type Ctx = { b: Brief; me: Awaited<ReturnType<typeof requireUser>>; n: Partial<Record<Stage, number>>; step: number; page: number; base: string; pop: (cid: string, m: Mode) => string; listParams: URLSearchParams; sp: Search; ai: boolean };
+type Ctx = { b: Brief; me: Awaited<ReturnType<typeof requireUser>>; n: Partial<Record<Stage, number>>; step: number; page: number; base: string; pop: (cid: string, m: Mode) => string; listParams: URLSearchParams; sp: Search; ai: boolean; running: boolean };
 
 const Panel = ({ title, action, children }: { title: React.ReactNode; action?: React.ReactNode; children: React.ReactNode }) => (
   <section className="mb-4 rounded-lg border border-line bg-surface px-5 py-4">
@@ -119,13 +126,22 @@ const Row = ({ k, v, miss }: { k: string; v: React.ReactNode; miss?: string }) =
     <dd className="min-w-0 flex-1 whitespace-pre-line">{v || v === 0 ? v : <span className={miss ? 'text-warning' : 'text-ink-3'}>Chưa có{miss ? `: ${miss}` : ''}</span>}</dd>
   </div>
 );
+/** Nút Tìm KOC: chạy ngầm, đang chạy thì khoá. */
+const RunButton = ({ b, running, small }: { b: Brief; running: boolean; small?: boolean }) => (
+  <ActionForm action={runNow} className="flex max-w-72 flex-col items-end gap-1 text-right">
+    <input type="hidden" name="id" value={b.id} />
+    <button disabled={running} className={`btn btn-primary ${small ? 'h-8 px-3 text-xs' : ''}`} title="Tìm và lọc KOC theo yêu cầu. Những gì bạn đã làm (đã chọn, đã nhập giá…) được giữ nguyên.">
+      {running ? 'Đang tìm KOC…' : b.ranAt ? 'Tìm lại KOC' : 'Tìm KOC'}
+    </button>
+  </ActionForm>
+);
 const NotRun = () => <p className="rounded-lg border border-dashed border-line bg-surface px-5 py-10 text-center text-ink-3">Chưa tìm KOC. Kiểm tra yêu cầu ở bước 1 rồi bấm "Tìm KOC" (góc trên bên phải).</p>;
 /** Thanh nút nhỏ trên dòng. */
 const Act = ({ children }: { children: React.ReactNode }) => <div className="flex flex-wrap items-center justify-end gap-1.5 whitespace-nowrap">{children}</div>;
 const sm = 'btn h-7 px-2.5 text-xs';
 
 // ---------------------------------------------------------------- Bước 1. Yêu cầu
-async function Inputs({ b, ai }: Ctx) {
+async function Inputs({ b, ai, running }: Ctx) {
   const brand = b.brandRef;
   const p = b.product;
   const rules = parseRules(brand?.rules);
@@ -142,7 +158,7 @@ async function Inputs({ b, ai }: Ctx) {
     <>
       <Todo briefId={b.id} step={1}>
         <Link href={`/matching/${b.id}?step=1&edit=1`} className="btn h-8 px-3 text-xs">Sửa yêu cầu{ai ? ' / dán brief cho AI' : ''}</Link>
-        <form action={runNow}><input type="hidden" name="id" value={b.id} /><button className="btn btn-primary h-8 px-3 text-xs">{b.ranAt ? 'Tìm lại KOC' : 'Tìm KOC'}</button></form>
+        <RunButton b={b} running={running} small />
       </Todo>
       <div className="grid gap-4 xl:grid-cols-2">
         <Panel title="Yêu cầu của đợt" action={<Link href={`/matching/${b.id}?step=1&edit=1`} className="btn h-8 px-3 text-xs">Sửa</Link>}>
@@ -402,21 +418,19 @@ const SubStep = ({ i, title, tag, children }: { i: number; title: string; tag?: 
     {children}
   </li>
 );
-async function ContentCheck({ b, n, page, pop, listParams, sp, ai }: Ctx) {
+async function ContentCheck({ b, n, page, pop, listParams, sp }: Ctx) {
   if (!b.ranAt) return <><Todo briefId={b.id} step={3} /><NotRun /></>;
   const codes = contentChecksFor(b);
   // KOC đã chọn gom thành khung gọn trên cùng; bảng chính bắt đầu ngay bằng KOC đang xét cần kiểm (không bỏ KOC nào).
   const chosen: Stage[] = ['APPROVED', 'CONFIRMED', 'SHORTLIST'];
-  const [{ rows, total }, fill, aiDone, picked] = await Promise.all([
+  const [{ rows, total }, fill, picked] = await Promise.all([
     listPage(b, sp, page, chosen), slotFill(b, chosen),
-    db.$queryRaw<{ n: number }[]>`select count(*)::int n from "MatchCandidate" where "briefId" = ${b.id} and manual->'A3'->>'by' = 'AI'`,
     sp.stage ? [] : db.matchCandidate.findMany({ where: { briefId: b.id, stage: { in: chosen } }, orderBy: [{ total: { sort: 'desc', nulls: 'last' } }], take: 300 }),
   ]);
   const need = fill.slots.reduce((s, x) => s + x.count, 0);
   const pool = n.POOL ?? 0;
   const done = pickedCount(3, n);
-  const aiN = aiDone[0]?.n ?? 0;
-  const k = ai ? 1 : 0; // không có AI thì ẩn bước AI, đánh số lại
+  const videos = await topVideosOf(rows);
   return (
     <>
       <section className="mb-4 rounded-lg border border-accent/30 bg-accent-soft/40 px-4 py-3">
@@ -431,34 +445,18 @@ async function ContentCheck({ b, n, page, pop, listParams, sp, ai }: Ctx) {
           </div>
           <Link href={`/matching/${b.id}?step=4`} className={`btn h-8 shrink-0 px-3 text-xs ${done ? 'btn-primary' : ''}`}>Sang bước 4: Hỏi giá KOC →</Link>
         </div>
-        <ol className={`mt-3 grid gap-3 ${ai ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
-          {ai && (
-            <SubStep i={1} title="AI gợi ý Tone" tag="Không bắt buộc">
-              <p className="text-ink-2">AI đọc video, sản phẩm của các KOC điểm cao nhất và gợi ý Tone khớp brand 1–5 (cột &quot;Tone&quot;). Xong thì xếp bảng theo Tone để xem KOC hợp brand trước.</p>
-              <ActionForm action={aiScoreFit} pendingText="AI đang xem video và sản phẩm của từng KOC, khoảng 30–60 giây…" className="mt-auto flex flex-wrap items-center gap-2 [&>p]:w-full">
-                <input type="hidden" name="briefId" value={b.id} />
-                <label className="flex items-center gap-1.5 text-xs text-ink-3">Top <input name="top" inputMode="numeric" defaultValue={100} className="input h-8 w-16" /> KOC</label>
-                <button className="btn h-8 px-3 text-xs">Chạy AI</button>
-              </ActionForm>
-              {aiN > 0 && <p className="text-xs text-ink-3">Đã gợi ý {fmtNum(aiN)} KOC · {sp.sort === 'fit' ? 'bảng đang xếp theo Tone' : <Link href={`/matching/${b.id}?step=3&sort=fit`} className="link">Xếp bảng theo Tone</Link>}</p>}
-            </SubStep>
-          )}
-          <SubStep i={1 + k} title="Mở kênh, xem video gần đây">
+        <ol className="mt-3 grid gap-3 lg:grid-cols-2">
+          <SubStep i={1} title="Mở kênh, xem video gần đây">
             <p className="text-ink-2">Bảng dưới xếp KOC điểm cao lên đầu. Bấm <b>Mở kênh ↗</b> ở từng KOC và để ý:</p>
             <ul className="flex flex-wrap gap-1">{codes.map((c) => <li key={c} className="pill bg-warning-soft text-warning" title={KO[c].rule}>{KO[c].label}</li>)}</ul>
             <p className="text-xs text-ink-3">Cột &quot;Hệ thống gợi ý&quot; ghi sẵn dấu hiệu hệ thống thấy được.</p>
           </SubStep>
-          <SubStep i={2 + k} title="Chọn hoặc Loại">
+          <SubStep i={2} title="Chọn hoặc Loại">
             <ul className="space-y-1 text-ink-2">
               <li>Ổn: bấm <b>Chọn</b>, KOC sang bước 4 Hỏi giá.</li>
               <li>Có vấn đề: bấm <b>Loại</b> và ghi lý do.</li>
               <li>Nhiều KOC ổn: tick ô đầu dòng rồi bấm <b>Chọn KOC đã tick</b>.</li>
             </ul>
-            <form action={pick} className="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-2">
-              <ListCtx b={b} step={3} sp={sp} />
-              <label className="flex items-center gap-1.5 text-xs text-ink-3">Xem xong rồi? Chọn luôn top <input name="top" inputMode="numeric" defaultValue={need ? need * 2 : 20} className="input h-8 w-16" /> theo điểm</label>
-              <button className="btn h-8 px-3 text-xs">Chọn top</button>
-            </form>
           </SubStep>
         </ol>
       </section>
@@ -492,8 +490,8 @@ async function ContentCheck({ b, n, page, pop, listParams, sp, ai }: Ctx) {
                       <td>{st === 'POOL' && <input type="checkbox" name="cid" value={c.id} aria-label={`Tick @${c.handle}`} />}</td>
                       <td><KocCell href={pop(c.id, 'detail')} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /><ChannelLink c={c} /></td>
                       <td className="max-w-64 text-xs">
-                        {(d.metrics?.topVideos ?? []).slice(0, 2).map((v, i) => <div key={i} className="truncate">{v.url ? <a href={v.url} target="_blank" rel="noreferrer" className="link">{v.title || 'Video'}</a> : v.title}</div>)}
-                        {!d.metrics?.topVideos?.length && <span className="text-ink-3">—</span>}
+                        {(videos.get(`${c.platform}|${c.handle}`) ?? []).slice(0, 2).map((v, i) => <div key={i} className="truncate">{v.url ? <a href={v.url} target="_blank" rel="noreferrer" className="link">{v.title || 'Video'}</a> : v.title}</div>)}
+                        {!videos.get(`${c.platform}|${c.handle}`)?.length && <span className="text-ink-3">—</span>}
                       </td>
                       <td className="text-center"><Total score={s} /><div className="mt-0.5"><TierChip score={s} /></div></td>
                       <td><FitCell manual={c.manual} /></td>

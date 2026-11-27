@@ -3,12 +3,13 @@
 // rồi chuyển giai đoạn theo quy tắc của doc: trượt mã loại → Đã loại (ghi mã K vào lịch sử KOC).
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { optInt, str } from '@/lib/form';
 import { audit } from '@/lib/booking/catalog';
 import { airDateOf, loadBrief } from '@/lib/matching/data';
-import { contentChecksFor, rescore, rescoreMany, runMatching, stageAfterRun } from '@/lib/matching/run';
+import { contentChecksFor, matchRuns, rescore, rescoreMany, runMatching, stageAfterRun } from '@/lib/matching/run';
 import { aiOn, BRIEF_FILE_TYPES, rankFit, readBrief, type FitInput } from '@/lib/matching/ai';
 import {
   ALL_CRITERIA, CHANNELS, CONTENT_CHECKS, CONTENT_ERRORS, DECISIONS, hasRequired, KL_LEVELS, KO, OBJECTIVES, parseNeeds, parseRules,
@@ -81,18 +82,24 @@ export async function deleteBrief(fd: FormData) {
 }
 
 // ---------------------------------------------------------------- Bước 2–3: chạy matching
-export async function runNow(fd: FormData) {
+/** Tìm KOC chạy ngầm (~30 giây với vài nghìn KOC): trả trang ngay, trang hiện "Đang tìm" và tự cập nhật khi xong. */
+export async function runNow(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
   const id = str(fd, 'id');
-  let msg: string;
-  try {
-    msg = await runMatching(id);
-  } catch (e) {
-    msg = `Lỗi: ${e instanceof Error ? e.message : String(e)}`;
-  }
-  await audit(me.id, 'MatchBrief', id, 'Chạy matching', { msg });
-  revalidatePath(`/matching/${id}`);
-  redirect(back(id, msg.startsWith('Lỗi') ? 1 : 2, `&msg=${encodeURIComponent(msg)}`));
+  if (matchRuns.get(id) && !matchRuns.get(id)!.error) return 'Đợt này đang tìm KOC (bạn hoặc người khác vừa bấm). Chờ xong rồi xem lại.';
+  matchRuns.set(id, { at: new Date() });
+  after(async () => {
+    let msg: string;
+    try {
+      msg = await runMatching(id);
+      matchRuns.delete(id);
+    } catch (e) {
+      msg = `Lỗi: ${e instanceof Error ? e.message : String(e)}`;
+      matchRuns.set(id, { at: new Date(), error: msg });
+    }
+    await audit(me.id, 'MatchBrief', id, 'Chạy matching', { msg });
+  });
+  redirect(back(id, 2));
 }
 
 // ---------------------------------------------------------------- AI

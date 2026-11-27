@@ -6,6 +6,7 @@ import { fmtDate, fmtNum, fmtPct, fmtShort, fmtVnd } from '@/lib/format';
 import { PRICE_TYPES } from '@/lib/booking/listing';
 import { RATING_TAGS } from '@/lib/koc/kocDirectory';
 import type { Finding, Part, ScoreResult } from '@/lib/matching/engine';
+import { topVideosOf } from '@/lib/matching/data';
 import { contentChecksFor } from '@/lib/matching/run';
 import {
   ASSUMED_SCORE, CONTENT_ERRORS, criterion, DECISIONS, GROUP_LABEL, KO, koLabel, parseRules, REQUIRED_MANUAL,
@@ -28,6 +29,7 @@ export async function CandidateDialog({ cid, mode, brief, me, step, page, base, 
   if (!c || c.briefId !== brief.id) return null;
   const m: Mode = mode in TITLE ? mode : 'detail';
   const d = (c.data ?? {}) as CandData;
+  if (d.metrics) d.metrics.topVideos = (await topVideosOf([c])).get(`${c.platform}|${c.handle}`) ?? [];
   const s = (c.score ?? null) as ScoreResult | null;
   const go = (x: Mode) => `${base}&c=${c.id}&m=${x}`;
   const hidden = <><input type="hidden" name="cid" value={c.id} /><input type="hidden" name="step" value={step} /><input type="hidden" name="page" value={page ?? ''} /><input type="hidden" name="m" value={m} /></>;
