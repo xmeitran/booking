@@ -31,7 +31,7 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
         <div>
           <h1 className="text-xl font-semibold">Creator matching</h1>
           <p className="mt-1 max-w-3xl text-[13px] text-ink-2">
-            Tìm KOC cho một đợt booking: nhập yêu cầu → hệ thống tìm và lọc KOC → bạn kiểm tra, chọn, hỏi giá → trưởng nhóm duyệt → gửi brand → ghi kết quả sau air.
+            Tìm KOC cho một đợt booking qua 7 bước: nhập yêu cầu → tìm & lọc KOC → kiểm tra nội dung → hỏi giá → chấm điểm → Lead B2C duyệt, đẩy sang Listing → ghi kết quả sau air.
           </p>
         </div>
         <Link href="?new=1" className="btn btn-primary">+ Tạo đợt mới</Link>

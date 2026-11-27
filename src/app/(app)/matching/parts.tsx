@@ -8,10 +8,10 @@ import { KO, koLabel, STAGES, STAGE_TONE, STEPS, type Manual, type Stage } from 
 /** Bước đang làm của đợt, để mở đúng tab. */
 export function currentStep(b: { ranAt: Date | null }, n: Partial<Record<Stage, number>>) {
   if (!b.ranAt) return 1;
-  if (n.APPROVED) return 9;
-  if (n.CONFIRMED) return 8;
-  if (n.SHORTLIST) return 6;
-  if (n.POOL) return 4;
+  if (n.APPROVED) return 6;
+  if (n.CONFIRMED) return 5;
+  if (n.SHORTLIST) return 4;
+  if (n.POOL) return 3;
   return 2;
 }
 
@@ -53,7 +53,7 @@ export function Todo({ briefId, step, children }: { briefId: string; step: numbe
           <h2 className="text-[13px] font-semibold text-accent">Bước {step}. {s.title}: việc cần làm</h2>
           <p className="mt-0.5 text-[13px] text-ink-2">{s.todo}</p>
         </div>
-        {step < 10 && <Link href={`/matching/${briefId}?step=${step + 1}`} className="btn h-8 shrink-0 px-3 text-xs">Sang bước {step + 1}: {STEPS[step].title} →</Link>}
+        {step < STEPS.length && <Link href={`/matching/${briefId}?step=${step + 1}`} className="btn h-8 shrink-0 px-3 text-xs">Sang bước {step + 1}: {STEPS[step].title} →</Link>}
       </div>
       {children && <div className="mt-3 flex flex-wrap items-end gap-2">{children}</div>}
     </section>
@@ -67,25 +67,25 @@ export function TierChip({ score }: { score: ScoreResult | null }) {
   return <span className={`pill whitespace-nowrap ${score.tone}`} title={score.action}>{score.tier}</span>;
 }
 
-/** Điểm trên 100. Di chuột: điểm tính trên bao nhiêu phần số liệu. */
+/** Điểm trên 100. Nhiều mục tạm tính (thiếu số liệu) thì hiện mờ; di chuột xem tỉ lệ mục có số liệu thật. */
 export function Total({ score }: { score: ScoreResult | null }) {
   if (!score || score.total == null) return <span className="text-ink-3">—</span>;
   const cov = Math.round(score.coverage * 100);
   return (
-    <span className={`font-semibold tabular-nums ${cov < 50 ? 'text-ink-3' : ''}`} title={`Điểm trên 100, tính trên ${cov}% các mục có số liệu`}>
+    <span className={`font-semibold tabular-nums ${cov < 50 ? 'text-ink-3' : ''}`} title={`Điểm trên 100. ${cov}% mục có số liệu thật hoặc đã chấm; còn lại tạm tính 3 điểm.`}>
       {Math.round(score.total)}
     </span>
   );
 }
 
-/** Điểm "Hợp nội dung brand" do AI hoặc Booker chấm. */
+/** Tone khớp brand: điểm B2C chấm, hoặc gợi ý của AI (chưa tính điểm). */
 export function FitCell({ manual }: { manual: unknown }) {
   const a3 = ((manual ?? {}) as Manual).A3;
   if (!a3) return <span className="text-xs text-ink-3">Chưa chấm</span>;
   const tone = a3.score >= 4 ? 'text-positive' : a3.score <= 2 ? 'text-critical' : 'text-ink';
   return (
     <div className="max-w-72 text-xs">
-      <b className={tone}>{a3.score}/5</b>{a3.by === 'AI' && <span className="ml-1 pill bg-accent-soft text-accent">AI</span>}
+      <b className={tone}>{a3.score}/5</b>{a3.by === 'AI' ? <span className="ml-1 pill bg-accent-soft text-accent">AI gợi ý</span> : <span className="ml-1 pill bg-positive-soft text-positive">B2C chấm</span>}
       {a3.note && <div className="text-ink-2">{a3.note}</div>}
     </div>
   );
@@ -116,7 +116,7 @@ export function KocCell({ href, handle, platform, d, kocId }: { href: string; ha
         <Link href={href} scroll={false} className="font-medium hover:text-accent hover:underline">{d.name ?? handle}</Link>
         <div className="text-xs text-ink-3">
           @{handle}{platform !== 'TikTok' && ` · ${platform}`}{d.kl && ` · ${d.kl}`}
-          {!kocId && <span className="ml-1 pill bg-sunken text-ink-2" title="Creator lấy từ kho dữ liệu, chưa có trong Danh bạ KOC">Ngoài Danh bạ</span>}
+          {!kocId && <span className="ml-1 pill bg-sunken text-ink-2" title="KOC ngoài Danh bạ: lấy từ DWH của Tech">Ngoài Danh bạ</span>}
         </div>
         {d.kwHits?.length ? <div className="text-[11px] text-accent" title="Video / sản phẩm của creator có từ khoá của đợt">Khớp: {d.kwHits.slice(0, 3).join(', ')}</div> : null}
       </div>

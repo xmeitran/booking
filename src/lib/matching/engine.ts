@@ -4,7 +4,7 @@
 import { CANCELLED } from '../booking/jobs';
 import { brandKey } from '../booking/listing';
 import {
-  band, BANDS, criteriaFor, GROUP0, GROUPS, KL_LEVELS, MIN_COVERAGE, NO_DATA_TIER, tierOf, WEIGHTS, COMMON_BANNED,
+  ASSUMED_SCORE, band, BANDS, criteriaFor, REQUIRED_MANUAL, GROUP0, GROUPS, KL_LEVELS, tierOf, WEIGHTS, COMMON_BANNED,
   type BrandRules, type Channel, type Criterion, type Declare, type Group, type Manual,
 } from './spec';
 
@@ -236,11 +236,17 @@ export function declareKnockouts(ctx: Context, d: Declare): Finding[] {
 }
 
 // ---------------------------------------------------------------- Chấm điểm
-export type Part = { id: string; label: string; score: number | null; value: string | null; manual?: boolean; must?: boolean };
+/**
+ * auto: tiêu chí công thức; assumed: ô trống (thiếu số liệu / B2C chưa chấm) nên tạm tính ASSUMED_SCORE;
+ * gap: tiêu chí công thức thiếu số liệu (B2C điền bổ sung được); required: mục bắt buộc B2C chấm mà chưa chấm.
+ */
+export type Part = { id: string; label: string; score: number | null; value: string | null; manual?: boolean; must?: boolean; auto?: boolean; assumed?: boolean; gap?: boolean; required?: boolean };
 export type GroupResult = { group: Group; weight: number; score: number | null; parts: Part[]; note?: string };
 export type ScoreResult = {
   groups: GroupResult[]; total: number | null; coverage: number; tier: string; tone: string; recommend: string | null; action: string;
   mustFail: string[]; strengths: string[]; weaknesses: string[];
+  /** Số tiêu chí công thức thiếu số liệu (0 = KOC đủ dữ liệu); số ô B2C còn trống; mục bắt buộc chưa chấm. */
+  dataGaps: number; blanks: number; missingRequired: string[];
 };
 
 /** Điểm tự động một tiêu chí: [điểm | null, giá trị hiển thị]. */
@@ -337,7 +343,13 @@ function autoScore(id: string, s: Subject, ctx: Context, kl: string | null, d: D
 function part(c: Criterion, s: Subject, ctx: Context, kl: string | null, d: Declare, manual: Manual): Part {
   const [auto, value] = c.auto ? autoScore(c.id, s, ctx, kl, d) : [null, null];
   const mm = manual[c.id];
-  return mm ? { id: c.id, label: c.label, score: mm.score, value: mm.note ? `Booker: ${mm.note}` : 'Booker chấm', manual: true } : { id: c.id, label: c.label, score: auto, value };
+  const gap = c.auto && auto == null;
+  // Điểm AI chỉ là gợi ý: không tính như B2C chấm.
+  if (mm && mm.by !== 'AI') return { id: c.id, label: c.label, score: mm.score, value: mm.note ? `B2C: ${mm.note}` : 'B2C chấm', manual: true, auto: c.auto, gap };
+  if (c.auto && !gap) return { id: c.id, label: c.label, score: auto, value, auto: true };
+  const ai = mm ? `AI gợi ý ${mm.score}/5${mm.note ? `: ${mm.note}` : ''}` : null;
+  if (REQUIRED_MANUAL.includes(c.id)) return { id: c.id, label: c.label, score: null, value: ai ?? 'Chưa chấm (bắt buộc)', required: true };
+  return { id: c.id, label: c.label, score: ASSUMED_SCORE, value: `${gap ? value ?? 'Thiếu số liệu' : ai ?? 'Chưa chấm'}: tạm tính ${ASSUMED_SCORE}`, auto: c.auto, assumed: true, gap };
 }
 
 export function scoreSubject(s: Subject, ctx: Context, kl: string | null, d: Declare, manual: Manual): ScoreResult {
@@ -360,20 +372,23 @@ export function scoreSubject(s: Subject, ctx: Context, kl: string | null, d: Dec
     groups.unshift({ group: 'G0', weight: weights.G0, score: scored.length ? mean(scored) : a.score, parts, note: scored.length ? undefined : 'Brand chỉ chọn tiêu chí bắt buộc: điểm nhóm lấy theo "Hợp brand & tệp khách"' });
   } else groups.unshift({ group: 'G0', weight: weights.G0, score: a.score, parts: [], note: 'Brand chưa chọn yêu cầu riêng: lấy điểm theo "Hợp brand & tệp khách"' });
 
+  // Độ phủ: phần trọng số có số liệu thật hoặc đã được chấm (mục tạm tính không tính).
   const filled = (gr: GroupResult) => {
     const ps = gr.parts.length ? gr.parts.filter((p) => !p.must) : a.parts;
-    return ps.length ? ps.filter((p) => p.score != null).length / ps.length : 0;
+    return ps.length ? ps.filter((p) => p.score != null && !p.assumed).length / ps.length : 0;
   };
   const scored = groups.filter((g) => g.score != null);
   const wSum = scored.reduce((x, g) => x + g.weight, 0);
   const total = wSum ? Math.round((scored.reduce((x, g) => x + (g.score! / 5) * g.weight, 0) / wSum) * 1000) / 10 : null;
   const coverage = Math.round(groups.reduce((x, g) => x + g.weight * filled(g), 0)) / 100;
-  const tier = mustFail.length || total == null ? null : coverage < MIN_COVERAGE ? NO_DATA_TIER : tierOf(total);
   const fail = { label: 'Không hợp tác', tone: 'bg-critical-soft text-critical', recommend: null, action: 'Ghi lý do (mã K hoặc nhóm điểm thấp) vào lịch sử KOC' };
-  const t = mustFail.length ? fail : tier ?? NO_DATA_TIER;
-  const all = groups.flatMap((g) => g.parts).filter((p) => p.score != null && !p.must);
+  const t = mustFail.length ? fail : tierOf(total ?? 0);
+  const flat = groups.flatMap((g) => g.parts);
+  const all = flat.filter((p) => p.score != null && !p.must && !p.assumed);
   return {
     groups, total, coverage, tier: t.label, tone: t.tone, recommend: t.recommend, action: t.action, mustFail,
+    dataGaps: flat.filter((p) => p.gap && !p.manual).length, blanks: flat.filter((p) => p.assumed).length,
+    missingRequired: [...new Set(flat.filter((p) => p.required).map((p) => p.label))],
     strengths: all.filter((p) => p.score! >= 4).sort((x, y) => y.score! - x.score!).slice(0, 3).map((p) => `${p.label} ${p.score}/5`),
     weaknesses: all.filter((p) => p.score! <= 2).sort((x, y) => x.score! - y.score!).slice(0, 3).map((p) => `${p.label} ${p.score}/5`),
   };

@@ -77,13 +77,23 @@ test('K13 chỉ khi Convert; K15 trễ 2/3 job gần nhất', () => {
 test('chấm điểm: quy về 100 trên phần có dữ liệu, nhóm 0 lấy TB nhóm A, Bắt buộc dưới 3 thì loại', () => {
   const e = evaluate(subject(), ctx());
   const g = Object.fromEntries(e.score.groups.map((x) => [x.group, x.score]));
-  assert.equal(g.D, null); // nhóm D chỉ có khi Booker chấm
+  assert.equal(g.D, 3); // nhóm D chưa chấm: ô trống tạm tính 3
+  assert.deepEqual(e.score.missingRequired, ['Tone khớp brand']); // Tone bắt buộc B2C chấm
   assert.equal(g.G0, g.A);
   assert.ok(e.score.total! > 0 && e.score.total! <= 100);
   assert.ok(e.score.coverage < 1);
+  // Mục công thức thiếu số liệu: tạm tính 3, không tính vào độ phủ
+  const noAud = evaluate(subject({ metrics: metrics({ female: null, ages: null, locations: null, er: null }) }), ctx());
+  const b2 = noAud.score.groups.find((x) => x.group === 'B')!.parts.find((p) => p.id === 'B2')!;
+  assert.equal(b2.score, 3); assert.equal(b2.assumed, true); assert.equal(b2.gap, true);
+  assert.ok(noAud.score.dataGaps > 0 && e.score.dataGaps < noAud.score.dataGaps);
+  assert.ok(noAud.score.coverage < e.score.coverage);
   // Booker chấm đủ nhóm D → độ phủ tăng
   const full = evaluate(subject(), ctx(), {}, { D1: { score: 5 }, D2: { score: 5 }, D3: { score: 5 }, A3: { score: 5 }, B3: { score: 5 } });
   assert.ok(full.score.coverage > e.score.coverage);
+  assert.deepEqual(full.score.missingRequired, []);
+  // Điểm AI chỉ là gợi ý: Tone vẫn thiếu
+  assert.deepEqual(evaluate(subject(), ctx(), {}, { A3: { score: 5, by: 'AI' } }).score.missingRequired, ['Tone khớp brand']);
   const must = evaluate(subject(), ctx({ rules: { ...DEFAULT_RULES, group0: [{ id: 'G0_PORTRAIT', mode: 'must' }, { id: 'G0_FREQ', mode: 'score' }] } }), {}, { G0_PORTRAIT: { score: 1 } });
   assert.deepEqual(must.score.mustFail, ['Chân dung khớp brand 1/5']);
   assert.equal(must.score.tier, 'Không hợp tác');

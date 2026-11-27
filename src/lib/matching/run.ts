@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '../db';
 import { buildContext, loadBrief, loadSubjects, type BriefFull } from './data';
 import { evaluate, type Evaluation, type Finding, type Subject } from './engine';
-import { CONTENT_CHECKS, MIN_COVERAGE, parseNeeds, type Check, type Declare, type Manual, type Stage } from './spec';
+import { CONTENT_CHECKS, parseNeeds, type Declare, type Manual, type Stage } from './spec';
 
 /** Số liệu lưu kèm ứng viên để hiện mà không phải nạp lại. KOC bị loại tự động không giữ video nổi bật cho gọn. */
 function snapshot(s: Subject, e: Evaluation, keepVideos: boolean) {
@@ -18,8 +18,8 @@ function snapshot(s: Subject, e: Evaluation, keepVideos: boolean) {
 
 /** Mã loại tự động (bước 3) + nhóm 0 Bắt buộc không đạt. */
 const autoKo = (e: Evaluation): Finding[] => [...e.ko, ...(e.score.mustFail.length ? [{ code: 'G0', detail: e.score.mustFail.join('; ') }] : [])];
-/** Cột total dùng để xếp hạng: null khi độ phủ số liệu thấp hoặc trượt tiêu chí bắt buộc (xếp cuối). */
-const rankTotal = (e: Evaluation) => (e.score.mustFail.length || e.score.coverage < MIN_COVERAGE ? null : e.score.total);
+/** Cột total dùng để xếp hạng: null khi trượt tiêu chí bắt buộc (xếp cuối). Mục thiếu số liệu đã tạm tính 3. */
+const rankTotal = (e: Evaluation) => (e.score.mustFail.length ? null : e.score.total);
 
 export async function runMatching(briefId: string): Promise<string> {
   const brief = await loadBrief(briefId);
@@ -151,4 +151,3 @@ export async function rescoreMany(briefId: string, patches: Map<string, Manual>)
 export const contentChecksFor = (b: BriefFull) =>
   CONTENT_CHECKS.filter((k) => (k !== 'K3' || (b.brandRef?.rules as { k3?: boolean } | null)?.k3 === true)
     && (k !== 'K11' || (b.product?.exclusions.length ?? 0) > 0 || (parseNeeds(b.needs).exclusions?.length ?? 0) > 0));
-export const checksDone = (checks: Record<string, Check>, codes: readonly string[]) => codes.filter((k) => checks[k]).length;

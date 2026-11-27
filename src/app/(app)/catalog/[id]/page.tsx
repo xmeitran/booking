@@ -91,7 +91,7 @@ export default async function BrandPage({ params, searchParams }: { params: Prom
           <Info k="Kiểm uy tín brand KOC từng làm" v={rules.k3 ? 'Bật' : 'Tắt'} />
           <Info k="Coi là đối thủ khi giá chênh trong" v={`±${rules.priceBand}%`} />
           <Info k="Ads code, đăng lại mặc định" v={`${rules.adsCodeDays} ngày${rules.reupChannels.length ? ` · đăng lại ${rules.reupChannels.join(', ')}` : ''}`} />
-          <Info k="Người duyệt giữ lại KOC bị loại" v={`${rules.exceptionApprover ? userName.get(rules.exceptionApprover) : 'Trưởng nhóm (quyền duyệt list)'} · giữ chỗ ${rules.holdDays} ngày`} />
+          <Info k="Người duyệt giữ lại KOC bị loại" v={`${rules.exceptionApprover ? userName.get(rules.exceptionApprover) : 'Lead B2C (quyền duyệt list)'} · giữ chỗ ${rules.holdDays} ngày`} />
           <Info k="KOC không đăng đối thủ trong" v={`${rules.competitorDays} ngày trước air`} />
           <Info k="Yêu cầu riêng của brand" v={rules.group0.length ? rules.group0.map((g) => `${GROUP0.find((c) => c.id === g.id)?.label} (${g.mode === 'must' ? 'Bắt buộc' : 'Cộng điểm'})`).join(', ') : `Chưa chọn: dùng điểm nhóm "${GROUP_LABEL.A}"`} />
         </dl>
@@ -362,7 +362,7 @@ function RulesDialog({ brandId, rules, users, close }: { brandId: string; rules:
           <F label="Coi là đối thủ khi giá chênh trong (± %)"><input name="priceBand" inputMode="numeric" defaultValue={rules.priceBand} className="input" /></F>
           <F label="KOC không đăng đối thủ trong (ngày trước air)"><input name="competitorDays" inputMode="numeric" defaultValue={rules.competitorDays} className="input" /></F>
           <F label="Số ngày ads code mặc định"><input name="adsCodeDays" inputMode="numeric" defaultValue={rules.adsCodeDays} className="input" /></F>
-          <F label="Người duyệt giữ lại KOC bị loại">{userSelect('exceptionApprover', rules.exceptionApprover, 'Trưởng nhóm (quyền duyệt list)')}</F>
+          <F label="Người duyệt giữ lại KOC bị loại">{userSelect('exceptionApprover', rules.exceptionApprover, 'Lead B2C (quyền duyệt list)')}</F>
           <F label="Giữ chỗ KOC (ngày)"><input name="holdDays" inputMode="numeric" defaultValue={rules.holdDays} className="input" /></F>
         </div>
         <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" name="k3" value="1" defaultChecked={rules.k3} />Kiểm uy tín brand KOC từng làm: ít nhất một nửa brand 90 ngày gần đây có gian Mall / Official</label>

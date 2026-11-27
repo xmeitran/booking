@@ -8,20 +8,22 @@ import { fmtDate, fmtNum, fmtShort, fmtVnd, fmtVndShort } from '@/lib/format';
 import { FEE_DIVISOR } from '@/lib/koc/kocInsights';
 import { aiOn } from '@/lib/matching/ai';
 import type { Finding, ScoreResult } from '@/lib/matching/engine';
-import { checksDone, contentChecksFor } from '@/lib/matching/run';
+import { contentChecksFor } from '@/lib/matching/run';
 import {
-  DECISIONS, KL_LEVELS, KO, koLabel, OBJECTIVE_LABEL, parseNeeds, parseRules, parseSlots, STAGE_ORDER, STAGES, STEP_PICKED, STEP_WORKING,
-  type Check, type Declare, type Outcome, type Stage,
+  criterion, DECISIONS, hasRequired, KL_LEVELS, KO, koLabel, OBJECTIVE_LABEL, parseNeeds, parseRules, parseSlots, STAGE_ORDER, STAGES, STEP_PICKED, STEP_WORKING, STEPS,
+  type Declare, type Outcome, type Stage,
 } from '@/lib/matching/spec';
 import { warehouseStatus } from '@/lib/warehouse/creatorSync';
 import { can, requireUser } from '@/lib/auth/session';
-import { aiScoreFit, approve, deleteBrief, keepException, restoreCandidate, runNow, saveChecks, shortlist, toListing, unshortlist } from '../actions';
+import { aiScoreFit, approve, deleteBrief, pick, restoreCandidate, runNow, toListing, unshortlist } from '../actions';
 import { AiBriefBox, BriefForm } from '../BriefForm';
 import { channelUrl, currentStep, Findings, FitCell, KocCell, StageChip, Stepper, TierChip, Todo, Total, type CandData } from '../parts';
-import { CandidateDialog } from './CandidateDialog';
+import { CandidateDialog, type Mode } from './CandidateDialog';
 
-type Search = { step?: string; c?: string; page?: string; q?: string; src?: string; code?: string; stage?: string; sort?: string; msg?: string; err?: string; edit?: string };
+type Search = { step?: string; c?: string; m?: string; page?: string; q?: string; src?: string; code?: string; stage?: string; sort?: string; msg?: string; err?: string; edit?: string };
 const PER = 50;
+/** Link cũ theo 10 bước (bookmark, listing) → bước mới. */
+const OLD_STEP: Record<number, number> = { 8: 6, 9: 6, 10: 7 };
 /** Mọi bước dùng chung một thứ tự: KOC đi xa nhất lên đầu (STAGE_ORDER), cùng trạng thái thì điểm cao trước. */
 const RANK = Prisma.raw(`case stage ${STAGE_ORDER.map((st, i) => `when '${st}' then ${i}`).join(' ')} else 99 end`);
 const sd = (c: MatchCandidate) => ({ d: (c.data ?? {}) as CandData, s: (c.score ?? null) as ScoreResult | null, ko: (c.knockouts ?? []) as Finding[], flags: (c.flags ?? []) as Finding[] });
@@ -38,7 +40,8 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
   if (!b || b.template) notFound();
   const grouped = await db.matchCandidate.groupBy({ by: ['stage'], where: { briefId: id }, _count: true });
   const n = Object.fromEntries(grouped.map((g) => [g.stage, g._count])) as Partial<Record<Stage, number>>;
-  const step = Math.min(10, Math.max(1, Number(sp.step) || currentStep(b, n)));
+  const asked = Number(sp.step) || 0;
+  const step = Math.min(STEPS.length, Math.max(1, OLD_STEP[asked] ?? (asked || currentStep(b, n))));
   // Số trên từng bước = số KOC qua bước đó; danh sách của bước vẫn hiện đủ mọi KOC.
   const stepCounts: Record<number, number | undefined> = b.ranAt
     ? Object.fromEntries(Object.entries(STEP_PICKED).map(([k, st]) => [k, st.reduce((x, y) => x + (n[y] ?? 0), 0)]))
@@ -46,13 +49,13 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
   const page = pageOf(sp.page);
   const filters = Object.entries({ q: sp.q, src: sp.src, code: sp.code, stage: sp.stage, sort: sp.sort }).filter(([, v]) => v) as [string, string][];
   const base = `/matching/${id}?${new URLSearchParams([['step', String(step)], ...(sp.page ? [['page', sp.page]] : []), ...filters])}`;
-  const open = (cid: string) => `${base}&c=${cid}`;
+  const pop = (cid: string, m: Mode) => `${base}&c=${cid}&m=${m}`;
   const listParams = new URLSearchParams([['step', String(step)], ...filters]);
   const [brands, ai] = await Promise.all([
     sp.edit ? db.brand.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, products: { select: { id: true, name: true, sku: true }, orderBy: { name: 'asc' } } } }) : [],
     aiOn(),
   ]);
-  const ctx = { b, me, n, step, page, base, open, listParams, sp, ai };
+  const ctx = { b, me, n, step, page, base, pop, listParams, sp, ai };
 
   return (
     <>
@@ -69,24 +72,21 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href={`/matching/${id}?step=${step}&edit=1`} className="btn">Sửa yêu cầu</Link>
-          <form action={runNow}><input type="hidden" name="id" value={id} /><button className="btn btn-primary" title="Tìm và lọc KOC theo yêu cầu. Những gì bạn đã làm (đã chọn, đã báo giá…) được giữ nguyên.">{b.ranAt ? 'Tìm lại KOC' : 'Tìm KOC'}</button></form>
+          <form action={runNow}><input type="hidden" name="id" value={id} /><button className="btn btn-primary" title="Tìm và lọc KOC theo yêu cầu. Những gì bạn đã làm (đã chọn, đã nhập giá…) được giữ nguyên.">{b.ranAt ? 'Tìm lại KOC' : 'Tìm KOC'}</button></form>
         </div>
       </div>
       <Stepper briefId={id} step={step} counts={stepCounts} />
-      {(sp.msg || sp.err) && <p role="status" className={`mb-3 rounded-md px-3 py-2 text-[13px] ${sp.err || sp.msg?.startsWith('Lỗi') ? 'bg-critical-soft text-critical' : 'bg-positive-soft text-positive'}`}>{sp.err ?? sp.msg}</p>}
+      {(sp.msg || sp.err) && !sp.c && <p role="status" className={`mb-3 rounded-md px-3 py-2 text-[13px] ${sp.err || sp.msg?.startsWith('Lỗi') ? 'bg-critical-soft text-critical' : 'bg-positive-soft text-positive'}`}>{sp.err ?? sp.msg}</p>}
 
       {step === 1 && <Inputs {...ctx} />}
-      {step === 2 && <Pool {...ctx} />}
-      {step === 3 && <DataKo {...ctx} />}
-      {step === 4 && <ContentKo {...ctx} />}
-      {step === 5 && <Shortlist {...ctx} />}
-      {step === 6 && <Quotes {...ctx} />}
-      {step === 7 && <FullScore {...ctx} />}
-      {step === 8 && <Approve {...ctx} />}
-      {step === 9 && <Export {...ctx} />}
-      {step === 10 && <AfterAir {...ctx} />}
+      {step === 2 && <FindFilter {...ctx} />}
+      {step === 3 && <ContentCheck {...ctx} />}
+      {step === 4 && <Quote {...ctx} />}
+      {step === 5 && <Scoring {...ctx} />}
+      {step === 6 && <Approve {...ctx} />}
+      {step === 7 && <AfterAir {...ctx} />}
 
-      {sp.c && <CandidateDialog cid={sp.c} brief={b} me={me} step={step} page={sp.page} close={base} err={sp.err} />}
+      {sp.c && <CandidateDialog cid={sp.c} mode={(sp.m as Mode) || 'detail'} brief={b} me={me} step={step} page={sp.page} base={base} err={sp.err} />}
       {sp.edit && (
         <Dialog title="Sửa yêu cầu của đợt" closeHref={`/matching/${id}?step=${step}`} wide>
           {ai && <div className="mb-4"><AiBriefBox briefId={b.id} plan={b.plan} /></div>}
@@ -104,9 +104,9 @@ export default async function BriefPage({ params, searchParams }: { params: Prom
 }
 
 type Brief = NonNullable<Awaited<ReturnType<typeof db.matchBrief.findUnique<{ where: { id: string }; include: { brandRef: true; product: { include: { store: true } }; createdBy: { select: { name: true } }; planLine: { include: { plan: { select: { id: true; name: true } } } } } }>>>>;
-type Ctx = { b: Brief; me: Awaited<ReturnType<typeof requireUser>>; n: Partial<Record<Stage, number>>; step: number; page: number; base: string; open: (cid: string) => string; listParams: URLSearchParams; sp: Search; ai: boolean };
+type Ctx = { b: Brief; me: Awaited<ReturnType<typeof requireUser>>; n: Partial<Record<Stage, number>>; step: number; page: number; base: string; pop: (cid: string, m: Mode) => string; listParams: URLSearchParams; sp: Search; ai: boolean };
 
-const Panel = ({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) => (
+const Panel = ({ title, action, children }: { title: React.ReactNode; action?: React.ReactNode; children: React.ReactNode }) => (
   <section className="mb-4 rounded-lg border border-line bg-surface px-5 py-4">
     <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-semibold">{title}</h2>{action}</div>
     {children}
@@ -120,8 +120,11 @@ const Row = ({ k, v, miss }: { k: string; v: React.ReactNode; miss?: string }) =
   </div>
 );
 const NotRun = () => <p className="rounded-lg border border-dashed border-line bg-surface px-5 py-10 text-center text-ink-3">Chưa tìm KOC. Kiểm tra yêu cầu ở bước 1 rồi bấm "Tìm KOC" (góc trên bên phải).</p>;
+/** Thanh nút nhỏ trên dòng. */
+const Act = ({ children }: { children: React.ReactNode }) => <div className="flex flex-wrap items-center justify-end gap-1.5 whitespace-nowrap">{children}</div>;
+const sm = 'btn h-7 px-2.5 text-xs';
 
-// ---------------------------------------------------------------- Bước 1. Nhập yêu cầu
+// ---------------------------------------------------------------- Bước 1. Yêu cầu
 async function Inputs({ b, ai }: Ctx) {
   const brand = b.brandRef;
   const p = b.product;
@@ -174,7 +177,7 @@ async function Inputs({ b, ai }: Ctx) {
         <Panel title="Số liệu lấy từ đâu">
           <p className="text-[13px] text-ink-2">
             Follower, view, GMV, chân dung follower, video nổi bật: kho dữ liệu UpBase{wh ? ` (${fmtNum(wh.count)} creator, cập nhật ${fmtDate(wh.at)})` : ''}. Lịch sử book, giá đã book: booking trên Lark.
-            Nội dung video (phốt, nói quá, đối thủ) kho chưa có: bạn kiểm ở bước 4. Giá và cam kết của KOC: bạn ghi ở bước 6.
+            Nội dung video (phốt, nói quá, đối thủ) kho chưa có: bạn xem kênh ở bước 3 (Kiểm tra nội dung). Giá và cam kết của KOC: bạn ghi ở bước 4 (Hỏi giá KOC).
           </p>
         </Panel>
       </div>
@@ -182,10 +185,11 @@ async function Inputs({ b, ai }: Ctx) {
   );
 }
 
-// ---------------------------------------------------------------- Danh sách chung của bước 2–10
+// ---------------------------------------------------------------- Danh sách chung của bước 2–5
 /** Một trang danh sách đầy đủ của đợt (không bỏ KOC nào), xếp theo trạng thái rồi điểm; lọc theo ID kênh, nguồn, trạng thái, lý do loại. */
-async function listPage(b: Brief, sp: Search, page: number) {
+async function listPage(b: Brief, sp: Search, page: number, exclude: Stage[] = []) {
   const conds: Prisma.Sql[] = [Prisma.sql`"briefId" = ${b.id}`];
+  if (exclude.length && !sp.stage) conds.push(Prisma.sql`stage <> all(${exclude})`);
   const q = sp.q?.trim().replace(/^@/, '').toLowerCase();
   if (q) conds.push(Prisma.sql`handle like ${`%${q}%`}`);
   if (sp.src === 'kho') conds.push(Prisma.sql`"kocId" is null`);
@@ -222,7 +226,7 @@ function rowsWithDivider(rows: MatchCandidate[], step: number, cols: number, ren
     const on = active(step, c.stage);
     if (!on && !divided) {
       divided = true;
-      out.push(<tr key="divider"><td colSpan={cols} className="bg-sunken py-1.5 text-center text-xs text-ink-3">Các KOC dưới đây đã bị loại hoặc chưa tới bước này (vẫn giữ để xem lại, không bị xoá)</td></tr>);
+      out.push(<tr key="divider"><td colSpan={cols} className="bg-sunken py-1.5 text-center text-xs text-ink-3">KOC dưới đây chưa tới bước này hoặc đã bị loại (vẫn giữ để xem lại, không bị xoá)</td></tr>);
     }
     out.push(render(c, on ? '' : 'opacity-60'));
   }
@@ -248,7 +252,7 @@ function Summary({ step, n, label }: { step: number; n: Partial<Record<Stage, nu
 }
 
 function Filters({ sp, step, codes }: { sp: Search; step: number; codes?: { code: string; n: number }[] }) {
-  const sortable = step >= 5 && step <= 8;
+  const sortable = step === 3 || step === 4 || step === 6;
   return (
     <form className="flex flex-wrap gap-2">
       <input type="hidden" name="step" value={step} />
@@ -257,18 +261,18 @@ function Filters({ sp, step, codes }: { sp: Search; step: number; codes?: { code
         <option value="">Mọi trạng thái</option>
         {STAGE_ORDER.map((st) => <option key={st} value={st}>{STAGES[st]}</option>)}
       </select>
-      <select name="src" defaultValue={sp.src ?? ''} aria-label="Nguồn" className="input h-8 w-36 text-[13px]">
-        <option value="">Mọi KOC</option><option value="danhba">Trong Danh bạ</option><option value="kho">Ngoài Danh bạ</option>
+      <select name="src" defaultValue={sp.src ?? ''} aria-label="Nguồn" className="input h-8 w-52 text-[13px]">
+        <option value="">Mọi nguồn</option><option value="danhba">Trong Danh bạ (Lark Base)</option><option value="kho">Ngoài Danh bạ (DWH Tech)</option>
       </select>
-      {codes && (
+      {codes && codes.length > 0 && (
         <select name="code" defaultValue={sp.code ?? ''} aria-label="Lý do loại" className="input h-8 w-56 text-[13px]">
-          <option value="">Mọi lý do</option>
+          <option value="">Mọi lý do loại</option>
           {codes.map((c) => <option key={c.code} value={c.code}>{koLabel(c.code)} ({c.n})</option>)}
         </select>
       )}
       {sortable && (
         <select name="sort" defaultValue={sp.sort ?? ''} aria-label="Sắp xếp" className="input h-8 w-60 text-[13px]">
-          <option value="">Xếp theo điểm</option><option value="fit">Xếp theo hợp nội dung (AI)</option>
+          <option value="">Xếp theo điểm</option><option value="fit">Xếp theo Tone khớp brand</option>
         </select>
       )}
       <button className="btn h-8 px-3 text-xs">Lọc</button>
@@ -276,166 +280,26 @@ function Filters({ sp, step, codes }: { sp: Search; step: number; codes?: { code
   );
 }
 
-const hiddenCtx = (c: MatchCandidate, step: number, sp: Search) => (
-  <><input type="hidden" name="cid" value={c.id} /><input type="hidden" name="step" value={step} /><input type="hidden" name="page" value={sp.page ?? ''} /></>
-);
 const Empty = ({ cols }: { cols: number }) => <tr><td colSpan={cols} className="py-10 text-center text-ink-3">Không có KOC nào.</td></tr>;
-
-// ---------------------------------------------------------------- Bước 2. Tìm KOC
-async function Pool({ b, n, page, open, listParams, sp }: Ctx) {
-  if (!b.ranAt) return <><Todo briefId={b.id} step={2} /><NotRun /></>;
-  const { rows, total } = await listPage(b, sp, page);
+const ListCtx = ({ b, step, sp }: { b: Brief; step: number; sp: Search }) => (
+  <><input type="hidden" name="briefId" value={b.id} /><input type="hidden" name="step" value={step} /><input type="hidden" name="page" value={sp.page ?? ''} /></>
+);
+/** Ô số liệu gọn: follower · view · GMV 30 ngày. */
+function Nums({ d }: { d: CandData }) {
+  const m = d.metrics;
+  if (!m) return <span className="text-xs text-ink-3">Kho chưa có số liệu</span>;
   return (
-    <>
-      <Todo briefId={b.id} step={2} />
-      <Panel title="KOC hệ thống tìm được" action={<Filters sp={sp} step={2} />}>
-        <Summary step={2} n={n} label="KOC khớp yêu cầu" />
-        <p className="mb-2 text-xs text-ink-3">Gồm KOC trong Danh bạ và creator trong kho dữ liệu bán hàng đúng ngành, cộng creator có video khớp từ khoá của đợt. KOC không khớp ngành / cấp KOC xếp cuối, vẫn xem được.</p>
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead><tr><th>KOC</th><th>Trạng thái</th><th className="text-right">Follower</th><th className="text-right">View trung bình</th><th className="text-right">GMV 30 ngày</th><th className="text-center">Điểm</th><th>Ghi chú</th></tr></thead>
-            <tbody>
-              {rowsWithDivider(rows, 2, 7, (c, dim) => {
-                const { d, s } = sd(c);
-                const m = d.metrics;
-                return (
-                  <tr key={c.id} className={`align-top ${dim}`}>
-                    <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
-                    <td><StageChip stage={c.stage} /></td>
-                    <td className="text-right tabular-nums">{fmtShort(m?.followers)}</td>
-                    <td className="text-right tabular-nums">{fmtShort(m?.medianViews)}</td>
-                    <td className="text-right tabular-nums">{fmtShort(m?.gmv)}</td>
-                    <td className="text-center"><Total score={s} /></td>
-                    <td className="max-w-72">{m ? <Why c={c} /> : <span className="text-xs text-ink-3">Kho chưa có số liệu</span>}</td>
-                  </tr>
-                );
-              })}
-              {!rows.length && <Empty cols={7} />}
-            </tbody>
-          </table>
-        </div>
-        <Pager params={listParams} page={page} perPage={PER} total={total} />
-      </Panel>
-    </>
+    <div className="text-xs tabular-nums">
+      <div>{fmtShort(m.followers)} follower · {fmtShort(m.medianViews)} view</div>
+      <div className="text-ink-3">GMV {fmtShort(m.gmv)}{d.price ? ` · giá ~${fmtShort(d.price)}` : ''}</div>
+    </div>
   );
 }
+const ChannelLink = ({ c }: { c: MatchCandidate }) => {
+  const url = channelUrl(c.platform, c.handle);
+  return url ? <a href={url} target="_blank" rel="noreferrer" className="link text-xs">Mở kênh ↗</a> : null;
+};
 
-// ---------------------------------------------------------------- Bước 3. Lọc tự động
-async function DataKo({ b, me, n, page, open, listParams, sp }: Ctx) {
-  if (!b.ranAt) return <><Todo briefId={b.id} step={3} /><NotRun /></>;
-  const [{ rows, total }, byCode] = await Promise.all([
-    listPage(b, sp, page),
-    db.$queryRaw<{ code: string; n: number }[]>`
-      select code, count(*)::int n from (
-        select k->>'code' code from "MatchCandidate" c, jsonb_array_elements(c.knockouts) k where c."briefId" = ${b.id} and c.stage = 'KO'
-        union all select 'POOL' from "MatchCandidate" where "briefId" = ${b.id} and stage = 'OUT'
-        union all select "rejectCode" from "MatchCandidate" where "briefId" = ${b.id} and stage = 'REJECTED' and "rejectCode" is not null
-      ) x group by 1 order by 2 desc`,
-  ]);
-  const rules = parseRules(b.brandRef?.rules);
-  const canKeep = can(me, 'match.approve') || rules.exceptionApprover === me.id;
-  return (
-    <>
-      <Todo briefId={b.id} step={3} />
-      <Panel title="KOC bị loại và lý do" action={<Filters sp={sp} step={3} codes={byCode} />}>
-        <Summary step={3} n={n} label="KOC còn lại sau khi lọc" />
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          {byCode.map((c) => <Link key={c.code} href={`?step=3&code=${c.code}`} className={`pill ${sp.code === c.code ? 'bg-accent text-surface' : 'bg-critical-soft text-critical'}`} title={KO[c.code as keyof typeof KO]?.rule}>{koLabel(c.code)}: {fmtNum(c.n)}</Link>)}
-          {sp.code && <Link href="?step=3" className="pill bg-sunken text-ink-2">Bỏ lọc</Link>}
-        </div>
-        <p className="mb-2 text-xs text-ink-3">Thiếu số liệu thì hệ thống không loại, chỉ cảnh báo. {canKeep ? 'Bạn có quyền giữ lại KOC bị loại: ghi lý do rồi bấm "Giữ lại".' : 'Muốn giữ lại KOC bị loại thì nhờ trưởng nhóm.'}</p>
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead><tr><th>KOC</th><th>Trạng thái</th><th>Lý do / cảnh báo</th><th className="text-right">Follower</th><th className="text-center">Điểm</th><th /></tr></thead>
-            <tbody>
-              {rowsWithDivider(rows, 3, 6, (c, dim) => {
-                const { d, s, flags } = sd(c);
-                return (
-                  <tr key={c.id} className={`align-top ${dim}`}>
-                    <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
-                    <td><StageChip stage={c.stage} />{c.exception && <div className="mt-0.5 text-xs text-warning">Được giữ lại</div>}</td>
-                    <td className="max-w-xl"><Why c={c} />{picked(3, c.stage) && <Findings list={flags.filter((f) => f.code !== 'POOL')} hideInternal />}</td>
-                    <td className="text-right tabular-nums">{fmtShort(d.metrics?.followers)}</td>
-                    <td className="text-center"><Total score={s} /></td>
-                    <td>
-                      {(c.stage === 'KO' || c.stage === 'OUT') && canKeep && (
-                        <form action={keepException} className="flex gap-1.5">{hiddenCtx(c, 3, sp)}
-                          <input name="reason" required placeholder="Lý do giữ" aria-label={`Lý do giữ @${c.handle}`} className="input h-7 w-32 px-1.5 text-xs" />
-                          <button className="btn h-7 px-2 text-xs">Giữ lại</button>
-                        </form>
-                      )}
-                      {c.stage === 'REJECTED' && <form action={restoreCandidate}>{hiddenCtx(c, 3, sp)}<button className="link text-xs">Khôi phục</button></form>}
-                    </td>
-                  </tr>
-                );
-              })}
-              {!rows.length && <Empty cols={6} />}
-            </tbody>
-          </table>
-        </div>
-        <Pager params={listParams} page={page} perPage={PER} total={total} />
-      </Panel>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------- Bước 4. Kiểm tra nội dung
-async function ContentKo({ b, n, page, open, listParams, sp }: Ctx) {
-  if (!b.ranAt) return <><Todo briefId={b.id} step={4} /><NotRun /></>;
-  const codes = contentChecksFor(b);
-  const { rows, total } = await listPage(b, sp, page);
-  return (
-    <>
-      <Todo briefId={b.id} step={4} />
-      <Panel title="Kiểm tra nội dung kênh" action={<Filters sp={sp} step={4} />}>
-        <Summary step={4} n={n} label="KOC đang được xét" />
-        <div className="mb-3 rounded-md bg-sunken px-3 py-2 text-xs text-ink-2">
-          Mở kênh, xem 20–30 video gần nhất và để ý: {codes.map((k) => KO[k].label.toLowerCase()).join(', ')}. Bắt đầu từ KOC điểm cao.
-          {' '}Có vi phạm thì bấm "Kiểm chi tiết" và chọn "Có vi phạm" ở mục tương ứng: KOC chuyển sang "Đã loại".
-        </div>
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead><tr><th>KOC</th><th>Trạng thái</th><th>Video nổi bật</th><th>Hệ thống gợi ý</th><th className="text-center">Đã kiểm</th><th className="text-center">Điểm</th><th /></tr></thead>
-            <tbody>
-              {rowsWithDivider(rows, 4, 7, (c, dim) => {
-                const { d, s, flags } = sd(c);
-                const checks = (c.checks ?? {}) as Record<string, Check>;
-                const hints = flags.filter((f) => (codes as readonly string[]).includes(f.code));
-                const done = checksDone(checks, codes);
-                const url = channelUrl(c.platform, c.handle);
-                return (
-                  <tr key={c.id} className={`align-top ${dim}`}>
-                    <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} />{url && <a href={url} target="_blank" rel="noreferrer" className="link text-xs">Mở kênh ↗</a>}</td>
-                    <td><StageChip stage={c.stage} /></td>
-                    <td className="max-w-64 text-xs">
-                      {(d.metrics?.topVideos ?? []).slice(0, 2).map((v, i) => <div key={i} className="truncate">{v.url ? <a href={v.url} target="_blank" rel="noreferrer" className="link">{v.title || 'Video'}</a> : v.title}</div>)}
-                      {!d.metrics?.topVideos?.length && <span className="text-ink-3">—</span>}
-                    </td>
-                    <td className="max-w-64">{picked(4, c.stage) ? <Findings list={hints} empty="Không thấy gì bất thường" /> : <Why c={c} />}</td>
-                    <td className={`text-center text-xs ${done === codes.length ? 'text-positive' : 'text-ink-3'}`}>{done === codes.length ? 'Xong' : `${done}/${codes.length}`}</td>
-                    <td className="text-center"><Total score={s} /></td>
-                    <td className="whitespace-nowrap text-right">
-                      {picked(4, c.stage) && done < codes.length && (
-                        <form action={saveChecks} className="inline">{hiddenCtx(c, 4, sp)}<input type="hidden" name="all" value="1" />
-                          <button className="btn h-7 px-2 text-xs" title="Đã xem kênh, không có vấn đề gì">Không vi phạm</button>
-                        </form>
-                      )}
-                      <Link href={open(c.id)} scroll={false} className="btn ml-1 h-7 px-2 text-xs">Kiểm chi tiết</Link>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!rows.length && <Empty cols={7} />}
-            </tbody>
-          </table>
-        </div>
-        <Pager params={listParams} page={page} perPage={PER} total={total} />
-      </Panel>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------- Bước 5. Chọn KOC liên hệ
 async function slotFill(b: Brief, stages: Stage[]) {
   const rows = await db.matchCandidate.groupBy({ by: ['kl'], where: { briefId: b.id, stage: { in: stages } }, _count: true });
   const has = new Map(rows.map((r) => [r.kl ?? '?', r._count]));
@@ -453,61 +317,72 @@ function Slots({ fill, label }: { fill: Awaited<ReturnType<typeof slotFill>>; la
   );
 }
 
-async function Shortlist({ b, n, page, open, listParams, sp, ai }: Ctx) {
-  if (!b.ranAt) return <><Todo briefId={b.id} step={5} /><NotRun /></>;
-  const codes = contentChecksFor(b);
-  const [{ rows, total }, fill, aiDone] = await Promise.all([
-    listPage(b, sp, page), slotFill(b, ['SHORTLIST', 'CONFIRMED', 'APPROVED']),
-    db.$queryRaw<{ n: number }[]>`select count(*)::int n from "MatchCandidate" where "briefId" = ${b.id} and manual->'A3'->>'by' = 'AI'`,
+/** Đếm KOC theo lý do loại (hệ thống loại, không khớp yêu cầu, B2C loại). */
+const reasons = (briefId: string) => db.$queryRaw<{ code: string; n: number }[]>`
+  select code, count(*)::int n from (
+    select k->>'code' code from "MatchCandidate" c, jsonb_array_elements(c.knockouts) k where c."briefId" = ${briefId} and c.stage = 'KO'
+    union all select 'POOL' from "MatchCandidate" where "briefId" = ${briefId} and stage = 'OUT'
+    union all select "rejectCode" from "MatchCandidate" where "briefId" = ${briefId} and stage = 'REJECTED' and "rejectCode" is not null
+  ) x group by 1 order by 2 desc`;
+const canKeepFor = (b: Brief, me: Ctx['me']) => can(me, 'match.approve') || parseRules(b.brandRef?.rules).exceptionApprover === me.id;
+/** Nguồn KOC: Danh bạ (lấy từ Lark Base) hay ngoài Danh bạ (DWH của Tech). */
+const Source = ({ c }: { c: MatchCandidate }) => c.kocId
+  ? <span className="pill bg-accent-soft text-accent" title="KOC trong Danh bạ, lấy từ Lark Base">Danh bạ · Lark Base</span>
+  : <span className="pill bg-sunken text-ink-2" title="KOC ngoài Danh bạ, lấy từ DWH của Tech">Ngoài Danh bạ · DWH Tech</span>;
+
+// ---------------------------------------------------------------- Bước 2. Tìm & Lọc KOC
+async function FindFilter({ b, me, n, page, pop, listParams, sp }: Ctx) {
+  if (!b.ranAt) return <><Todo briefId={b.id} step={2} /><NotRun /></>;
+  const [{ rows, total }, byCode, src] = await Promise.all([
+    listPage(b, sp, page), reasons(b.id),
+    db.$queryRaw<{ ours: number; dwh: number }[]>`select count(*) filter (where "kocId" is not null)::int ours, count(*) filter (where "kocId" is null)::int dwh from "MatchCandidate" where "briefId" = ${b.id}`,
   ]);
-  const need = fill.slots.reduce((s, x) => s + x.count, 0);
+  const canKeep = canKeepFor(b, me);
   return (
     <>
-      <Todo briefId={b.id} step={5}>
-        {ai && (
-          <ActionForm action={aiScoreFit} pendingText="AI đang đọc video và sản phẩm của từng KOC, khoảng 30–60 giây…" className="flex flex-wrap items-end gap-2">
-            <input type="hidden" name="briefId" value={b.id} />
-            <label><span className="label">AI chấm độ hợp nội dung cho top</span><input name="top" inputMode="numeric" defaultValue={100} className="input h-8 w-20" /></label>
-            <button className="btn btn-primary h-8 px-3 text-xs">AI chấm độ hợp nội dung</button>
-            <span className="text-xs text-ink-3">{aiDone[0]?.n ? `Đã chấm ${fmtNum(aiDone[0].n)} KOC. ` : ''}Chỉ chấm KOC chưa được chấm.</span>
-          </ActionForm>
+      <Todo briefId={b.id} step={2} />
+      <Panel title="KOC hệ thống tìm và lọc" action={<Filters sp={sp} step={2} codes={byCode} />}>
+        <Summary step={2} n={n} label="KOC còn lại sau khi lọc" />
+        <p className="mb-2 text-xs text-ink-3">
+          Nguồn KOC: <b>Trong Danh bạ</b> là KOC lấy từ Lark Base ({fmtNum(src[0]?.ours ?? 0)}); <b>Ngoài Danh bạ</b> là KOC lấy từ DWH của Tech ({fmtNum(src[0]?.dwh ?? 0)}).
+          Thiếu số liệu thì hệ thống không loại, chỉ ghi chú. {canKeep ? 'KOC bị loại sai: bấm "Giữ lại".' : 'KOC bị loại sai: nhờ Lead bấm "Giữ lại".'}
+        </p>
+        {byCode.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {byCode.map((c) => <Link key={c.code} href={`?step=2&code=${c.code}`} className={`pill ${sp.code === c.code ? 'bg-accent text-surface' : 'bg-critical-soft text-critical'}`} title={KO[c.code as keyof typeof KO]?.rule}>{koLabel(c.code)}: {fmtNum(c.n)}</Link>)}
+            {sp.code && <Link href="?step=2" className="pill bg-sunken text-ink-2">Bỏ lọc</Link>}
+          </div>
         )}
-        <form action={shortlist} className="flex items-end gap-2">
-          <input type="hidden" name="briefId" value={b.id} />
-          <label><span className="label">Lấy nhanh top theo điểm</span><input name="top" inputMode="numeric" defaultValue={need ? need * 2 : 20} className="input h-8 w-20" /></label>
-          <button className="btn h-8 px-3 text-xs">Chọn top này để liên hệ</button>
-        </form>
-      </Todo>
-      <Panel title="Chọn KOC để liên hệ" action={<Filters sp={sp} step={5} />}>
-        <Summary step={5} n={n} label="KOC đã chọn để liên hệ" />
-        <div className="mb-2"><Slots fill={fill} label="đã chọn" /></div>
-        <form action={shortlist}>
-          <input type="hidden" name="briefId" value={b.id} />
+        <form action={restoreCandidate}>
+          <input type="hidden" name="step" value={2} /><input type="hidden" name="page" value={sp.page ?? ''} />
           <div className="overflow-x-auto">
             <table className="tbl">
-              <thead><tr><th className="w-8" /><th>KOC</th><th>Trạng thái</th><th className="text-center">Điểm</th><th>Đánh giá</th><th>Hợp nội dung</th><th className="text-center">Kiểm nội dung</th><th className="text-right">Giá tham khảo</th></tr></thead>
+              <thead><tr><th>KOC</th><th>Nguồn</th><th>Số liệu 30 ngày</th><th className="text-center">Điểm</th><th>Trạng thái · lý do</th><th /></tr></thead>
               <tbody>
-                {rowsWithDivider(rows, 5, 8, (c, dim) => {
-                  const { d, s } = sd(c);
-                  const done = checksDone((c.checks ?? {}) as Record<string, Check>, codes);
+                {rowsWithDivider(rows, 2, 6, (c, dim) => {
+                  const { d, s, flags } = sd(c);
+                  const st = c.stage as Stage;
                   return (
                     <tr key={c.id} className={`align-top ${dim}`}>
-                      <td>{c.stage === 'POOL' && <input type="checkbox" name="cid" value={c.id} aria-label={`Chọn @${c.handle}`} />}</td>
-                      <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
-                      <td><StageChip stage={c.stage} /></td>
+                      <td><KocCell href={pop(c.id, 'detail')} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
+                      <td><Source c={c} /></td>
+                      <td><Nums d={d} /></td>
                       <td className="text-center"><Total score={s} /></td>
-                      <td><TierChip score={s} /></td>
-                      <td><FitCell manual={c.manual} /></td>
-                      <td className={`text-center text-xs ${done === codes.length ? 'text-positive' : 'text-warning'}`}>{done === codes.length ? 'Xong' : `${done}/${codes.length}`}</td>
-                      <td className="text-right text-xs tabular-nums">{fmtShort(d.price)}{d.priceSource && <div className="text-ink-3">{d.priceSource}</div>}</td>
+                      <td className="max-w-80"><StageChip stage={st} />{c.exception && <div className="text-xs text-warning">Được giữ lại: {c.exception}</div>}<div className="mt-0.5">{['KO', 'OUT', 'REJECTED'].includes(st) ? <Why c={c} /> : <Findings list={flags.filter((f) => f.code !== 'POOL').slice(0, 2)} hideInternal />}</div></td>
+                      <td>
+                        <Act>
+                          {(st === 'KO' || st === 'OUT') && canKeep && <Link href={pop(c.id, 'keep')} scroll={false} className={sm}>Giữ lại</Link>}
+                          {st === 'REJECTED' && <button name="one" value={c.id} className={sm}>Khôi phục</button>}
+                          <Link href={pop(c.id, 'detail')} scroll={false} className="link text-xs">Xem chi tiết</Link>
+                        </Act>
+                      </td>
                     </tr>
                   );
                 })}
-                {!rows.length && <Empty cols={8} />}
+                {!rows.length && <Empty cols={6} />}
               </tbody>
             </table>
           </div>
-          <div className="mt-3 flex justify-end"><button className="btn btn-primary">Chọn KOC đã tick để liên hệ</button></div>
         </form>
         <Pager params={listParams} page={page} perPage={PER} total={total} />
       </Panel>
@@ -515,131 +390,90 @@ async function Shortlist({ b, n, page, open, listParams, sp, ai }: Ctx) {
   );
 }
 
-// ---------------------------------------------------------------- Bước 6. Hỏi giá KOC
-async function Quotes({ b, n, page, open, listParams, sp }: Ctx) {
-  const { rows, total } = await listPage(b, sp, page);
-  const yn = (v: boolean | undefined) => (v === undefined ? '—' : v ? 'Có' : 'Không');
-  return (
-    <>
-      <Todo briefId={b.id} step={6} />
-      <Panel title="Hỏi giá KOC" action={<Filters sp={sp} step={6} />}>
-        <Summary step={6} n={n} label="KOC đã báo giá" />
-        <p className="mb-2 text-xs text-ink-3">KOC không cam kết không đăng đối thủ, không cho chạy ads code khi brand chạy GMV Max, hoặc thiếu chứng chỉ khi nội dung nói chuyên môn sẽ tự chuyển "Đã loại".</p>
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead><tr><th>KOC</th><th>Trạng thái</th><th className="text-right">Giá tham khảo</th><th className="text-right">Giá KOC báo</th><th>Cho chạy ads</th><th>Cam kết không đăng đối thủ</th>{b.expertClaim && <th>Chứng chỉ</th>}<th /></tr></thead>
-            <tbody>
-              {rowsWithDivider(rows, 6, 8, (c, dim) => {
-                const { d } = sd(c);
-                const dc = (c.declare ?? {}) as Declare;
-                const active = c.stage === 'SHORTLIST' || c.stage === 'CONFIRMED';
-                return (
-                  <tr key={c.id} className={`align-top ${dim}`}>
-                    <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
-                    <td><StageChip stage={c.stage} />{c.stage === 'SHORTLIST' && <div className="text-xs text-ink-3">{dc.declared ? 'Đang trao đổi' : 'Chưa liên hệ'}</div>}</td>
-                    <td className="text-right text-xs tabular-nums">{d.priceSource === 'Giá KOC báo' ? '—' : fmtShort(d.price)}</td>
-                    <td className="text-right tabular-nums">{dc.quote ? fmtVnd(dc.quote) : '—'}{b.feeCap && dc.quote && dc.quote > b.feeCap ? <div className="text-xs text-critical">Vượt phí tối đa</div> : null}</td>
-                    <td className="text-xs">{yn(dc.adsCode)}{dc.adsDays ? ` · ${dc.adsDays} ngày` : ''}</td>
-                    <td className="text-xs">{yn(dc.noCompetitor)}</td>
-                    {b.expertClaim && <td className="text-xs">{dc.certificate ?? '—'}</td>}
-                    <td className="whitespace-nowrap text-right">
-                      {active && c.kocId && <Link href={`/contacts/${c.kocId}`} className="btn h-7 px-2 text-xs">Liên hệ</Link>}
-                      <Link href={open(c.id)} scroll={false} className={`btn ml-1 h-7 px-2 text-xs ${active ? 'btn-primary' : ''}`}>{active ? 'Ghi giá' : 'Xem'}</Link>
-                      {c.stage === 'SHORTLIST' && <form action={unshortlist} className="inline">{hiddenCtx(c, 6, sp)}<button className="link ml-2 text-xs">Bỏ chọn</button></form>}
-                    </td>
-                  </tr>
-                );
-              })}
-              {!rows.length && <Empty cols={8} />}
-            </tbody>
-          </table>
-        </div>
-        <Pager params={listParams} page={page} perPage={PER} total={total} />
-      </Panel>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------- Bước 7. Chấm điểm
-async function FullScore({ b, n, page, open, listParams, sp }: Ctx) {
-  const { rows, total } = await listPage(b, sp, page);
-  return (
-    <>
-      <Todo briefId={b.id} step={7} />
-      <Panel title="Chấm điểm" action={<Filters sp={sp} step={7} />}>
-        <Summary step={7} n={n} label="KOC cần chấm (đang liên hệ trở đi)" />
-        <p className="mb-2 text-xs text-ink-3">Hệ thống tự chấm phần có số liệu (follower, view, bán hàng, giá). Phần kho không có (chất lượng video, tone…) bạn chấm 1–5 trong "Chấm điểm". Điểm trên 100.</p>
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead><tr><th>KOC</th><th>Trạng thái</th><th className="text-center">Điểm</th><th>Đánh giá</th><th>Hợp nội dung</th><th>Còn thiếu</th><th /></tr></thead>
-            <tbody>
-              {rowsWithDivider(rows, 7, 7, (c, dim) => {
-                const { d, s } = sd(c);
-                const missing = (s?.groups ?? []).flatMap((g) => g.parts).filter((p) => p.score == null).length;
-                return (
-                  <tr key={c.id} className={`align-top ${dim}`}>
-                    <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
-                    <td><StageChip stage={c.stage} /></td>
-                    <td className="text-center"><Total score={s} /></td>
-                    <td><TierChip score={s} /></td>
-                    <td><FitCell manual={c.manual} /></td>
-                    <td className="text-xs">{missing ? `${missing} mục` : <span className="text-positive">Đủ</span>}</td>
-                    <td className="text-right"><Link href={`${open(c.id)}#manual`} scroll={false} className="btn h-7 px-2 text-xs">Chấm điểm</Link></td>
-                  </tr>
-                );
-              })}
-              {!rows.length && <Empty cols={7} />}
-            </tbody>
-          </table>
-        </div>
-        <Pager params={listParams} page={page} perPage={PER} total={total} />
-      </Panel>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------- Bước 8. Trưởng nhóm duyệt
-async function Approve({ b, me, n, page, open, listParams, sp }: Ctx) {
-  const [{ rows, total }, fill, quoted] = await Promise.all([
-    listPage(b, sp, page), slotFill(b, ['APPROVED']),
-    db.matchCandidate.findMany({ where: { briefId: b.id, stage: { in: ['CONFIRMED', 'APPROVED'] } }, select: { stage: true, declare: true, data: true } }),
+// ---------------------------------------------------------------- Bước 3. Kiểm tra nội dung: Chọn / Loại / Xem chi tiết
+async function ContentCheck({ b, n, page, pop, listParams, sp, ai }: Ctx) {
+  if (!b.ranAt) return <><Todo briefId={b.id} step={3} /><NotRun /></>;
+  const codes = contentChecksFor(b);
+  // KOC đã chọn gom thành khung gọn trên cùng; bảng chính bắt đầu ngay bằng KOC đang xét cần kiểm (không bỏ KOC nào).
+  const chosen: Stage[] = ['APPROVED', 'CONFIRMED', 'SHORTLIST'];
+  const [{ rows, total }, fill, aiDone, picked] = await Promise.all([
+    listPage(b, sp, page, chosen), slotFill(b, chosen),
+    db.$queryRaw<{ n: number }[]>`select count(*)::int n from "MatchCandidate" where "briefId" = ${b.id} and manual->'A3'->>'by' = 'AI'`,
+    sp.stage ? [] : db.matchCandidate.findMany({ where: { briefId: b.id, stage: { in: chosen } }, orderBy: [{ total: { sort: 'desc', nulls: 'last' } }], take: 300 }),
   ]);
-  const approved = quoted.filter((c) => c.stage === 'APPROVED');
-  const sum = (list: typeof quoted) => list.reduce((s, c) => s + (((c.declare ?? {}) as Declare).quote ?? 0), 0);
-  const gmv = (list: typeof quoted) => list.reduce((s, c) => { const m = ((c.data ?? {}) as CandData).metrics; return s + (m?.medianViews && m.gpm ? (m.medianViews * m.gpm) / 1000 : 0); }, 0);
-  const allowed = can(me, 'match.approve');
-  const over = b.feeCap ? quoted.filter((c) => (((c.declare ?? {}) as Declare).quote ?? 0) > b.feeCap!).length : 0;
+  const need = fill.slots.reduce((s, x) => s + x.count, 0);
+  const pool = n.POOL ?? 0;
   return (
     <>
-      <Todo briefId={b.id} step={8} />
-      <Panel title="Tổng quan trước khi duyệt">
-        <dl className="grid gap-x-6 gap-y-3 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
-          <div><dt className="text-xs text-ink-3">Số KOC đã duyệt theo cấp</dt><dd className="mt-1"><Slots fill={fill} label="đã duyệt" /></dd></div>
-          <div><dt className="text-xs text-ink-3">Chi phí đã duyệt / ngân sách</dt><dd className="font-semibold">{fmtVndShort(sum(approved))} / {b.budget ? fmtVndShort(b.budget) : '—'}</dd><dd className="text-xs text-ink-3">Kèm thuế TNCN ~{fmtVndShort(sum(approved) / FEE_DIVISOR)} · đang chờ duyệt {fmtVndShort(sum(quoted) - sum(approved))}</dd></div>
-          <div><dt className="text-xs text-ink-3">GMV dự kiến / mục tiêu</dt><dd className="font-semibold">{fmtVndShort(gmv(approved))} / {b.gmvTarget ? fmtVndShort(b.gmvTarget) : '—'}</dd><dd className="text-xs text-ink-3">Ước tính từ view và GMV / 1.000 view của từng KOC</dd></div>
-          <div><dt className="text-xs text-ink-3">KOC báo giá vượt phí tối đa</dt><dd className={`font-semibold ${over ? 'text-critical' : ''}`}>{b.feeCap ? over : '—'}</dd></div>
-        </dl>
-      </Panel>
-      <Panel title="Duyệt KOC" action={<Filters sp={sp} step={8} />}>
-        <Summary step={8} n={n} label="KOC đã duyệt" />
-        {!allowed && <p className="mb-2 text-xs text-warning">Bạn chỉ xem được: duyệt cần quyền "Duyệt list KOC" (trưởng nhóm).</p>}
-        <form action={approve}>
-          <input type="hidden" name="briefId" value={b.id} />
+      <Todo briefId={b.id} step={3}>
+        {ai && (
+          <ActionForm action={aiScoreFit} pendingText="AI đang xem video và sản phẩm của từng KOC, khoảng 30–60 giây…" className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="briefId" value={b.id} />
+            <label><span className="label">AI gợi ý Tone khớp brand cho top</span><input name="top" inputMode="numeric" defaultValue={100} className="input h-8 w-20" /></label>
+            <button className="btn h-8 px-3 text-xs">AI gợi ý Tone</button>
+            <span className="text-xs text-ink-3">{aiDone[0]?.n ? `Đã gợi ý ${fmtNum(aiDone[0].n)} KOC.` : ''}</span>
+          </ActionForm>
+        )}
+        <form action={pick} className="flex items-end gap-2">
+          <ListCtx b={b} step={3} sp={sp} />
+          <label><span className="label">Chọn nhanh top theo điểm</span><input name="top" inputMode="numeric" defaultValue={need ? need * 2 : 20} className="input h-8 w-20" /></label>
+          <button className="btn h-8 px-3 text-xs">Chọn top này</button>
+        </form>
+      </Todo>
+      <Panel title="Kiểm tra nội dung kênh" action={<Filters sp={sp} step={3} />}>
+        <Summary step={3} n={n} label="KOC đã chọn" />
+        <div className="mb-2"><Slots fill={fill} label="đã chọn" /></div>
+        <p className="mb-3 text-xs text-ink-3">
+          {fmtNum(pool)} KOC đang xét, xếp theo điểm. Mở kênh, xem video gần đây và để ý: {codes.map((k) => KO[k].label.toLowerCase()).join(', ')}.
+          {' '}Không có vấn đề: <b>Chọn</b>. Có vấn đề: <b>Loại</b> (bắt buộc nhập lý do).
+        </p>
+        <form action={pick}>
+          <ListCtx b={b} step={3} sp={sp} />
+          {picked.length > 0 && (
+            <details open={picked.length <= 8} className="mb-3 rounded-md border border-positive/40 bg-positive-soft/30 px-3 py-2">
+              <summary className="cursor-pointer text-[13px] font-medium">Đã chọn {picked.length} KOC (sang bước Hỏi giá) · bấm để {picked.length <= 8 ? 'thu gọn' : 'xem'}</summary>
+              <ul className="mt-2 divide-y divide-line text-[13px]">
+                {picked.map((c) => (
+                  <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+                    <span className="flex items-center gap-2"><Link href={pop(c.id, 'detail')} scroll={false} className="font-medium hover:underline">{(c.data as CandData | null)?.name ?? c.handle}</Link><span className="text-xs text-ink-3">@{c.handle}</span><StageChip stage={c.stage} /></span>
+                    <span className="flex items-center gap-3"><Total score={sd(c).s} />{c.stage === 'SHORTLIST' && <button formAction={unshortlist} name="one" value={c.id} className="link text-xs">Bỏ chọn</button>}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {pool > 0 && <div className="mb-2 flex flex-wrap items-center justify-end gap-2"><span className="text-xs text-ink-3">Tick nhiều KOC rồi chọn một lần:</span><button className="btn btn-primary h-8 px-3 text-xs">Chọn KOC đã tick</button></div>}
           <div className="overflow-x-auto">
             <table className="tbl">
-              <thead><tr><th className="w-8" /><th>KOC</th><th>Trạng thái</th><th className="text-center">Điểm</th><th>Đánh giá</th><th>Hợp nội dung</th><th className="text-right">Giá báo</th></tr></thead>
+              <thead><tr><th className="w-8" /><th>KOC</th><th>Video nổi bật</th><th className="text-center">Điểm</th><th>Tone (AI gợi ý)</th><th>Hệ thống gợi ý</th><th /></tr></thead>
               <tbody>
-                {rowsWithDivider(rows, 8, 7, (c, dim) => {
-                  const { d, s } = sd(c);
+                {rowsWithDivider(rows, 3, 7, (c, dim) => {
+                  const { d, s, flags } = sd(c);
+                  const st = c.stage as Stage;
+                  const hints = flags.filter((f) => (codes as readonly string[]).includes(f.code));
                   return (
                     <tr key={c.id} className={`align-top ${dim}`}>
-                      <td>{allowed && (c.stage === 'CONFIRMED' || c.stage === 'APPROVED') && <input type="checkbox" name="cid" value={c.id} aria-label={`Chọn @${c.handle}`} />}</td>
-                      <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
-                      <td><StageChip stage={c.stage} /></td>
-                      <td className="text-center"><Total score={s} /></td>
-                      <td><TierChip score={s} /><div className="mt-0.5 max-w-60 text-xs text-ink-3">{s?.action}</div></td>
+                      <td>{st === 'POOL' && <input type="checkbox" name="cid" value={c.id} aria-label={`Tick @${c.handle}`} />}</td>
+                      <td><KocCell href={pop(c.id, 'detail')} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /><ChannelLink c={c} /></td>
+                      <td className="max-w-64 text-xs">
+                        {(d.metrics?.topVideos ?? []).slice(0, 2).map((v, i) => <div key={i} className="truncate">{v.url ? <a href={v.url} target="_blank" rel="noreferrer" className="link">{v.title || 'Video'}</a> : v.title}</div>)}
+                        {!d.metrics?.topVideos?.length && <span className="text-ink-3">—</span>}
+                      </td>
+                      <td className="text-center"><Total score={s} /><div className="mt-0.5"><TierChip score={s} /></div></td>
                       <td><FitCell manual={c.manual} /></td>
-                      <td className="text-right tabular-nums">{fmtVnd(((c.declare ?? {}) as Declare).quote)}</td>
+                      <td className="max-w-64">{['KO', 'OUT', 'REJECTED'].includes(st) ? <Why c={c} /> : <Findings list={hints} empty="Không thấy gì bất thường" />}</td>
+                      <td>
+                        <Act>
+                          {st === 'POOL' && <>
+                            <button name="one" value={c.id} className={`${sm} btn-primary`}>Chọn</button>
+                            <Link href={pop(c.id, 'reject')} scroll={false} className={sm}>Loại</Link>
+                          </>}
+                          {st === 'SHORTLIST' && <><StageChip stage={st} /><button formAction={unshortlist} name="one" value={c.id} className="link text-xs">Bỏ chọn</button></>}
+                          {(st === 'CONFIRMED' || st === 'APPROVED') && <StageChip stage={st} />}
+                          {st === 'REJECTED' && <button formAction={restoreCandidate} name="one" value={c.id} className={sm}>Khôi phục</button>}
+                          <Link href={pop(c.id, 'detail')} scroll={false} className="link text-xs">Xem chi tiết</Link>
+                        </Act>
+                      </td>
                     </tr>
                   );
                 })}
@@ -647,17 +481,6 @@ async function Approve({ b, me, n, page, open, listParams, sp }: Ctx) {
               </tbody>
             </table>
           </div>
-          {allowed && (
-            <div className="mt-3 flex flex-wrap items-end justify-end gap-2">
-              <label><span className="label">Lý do (khi trả về / loại)</span><input name="reason" className="input h-8 w-64" /></label>
-              <select name="code" defaultValue="SCORE" aria-label="Lý do loại" className="input h-8 w-52 text-[13px]">
-                {Object.entries(KO).filter(([k]) => k !== 'POOL').map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-              <button name="action" value="reject" className="btn h-8 px-3 text-xs">Loại</button>
-              <button name="action" value="return" className="btn h-8 px-3 text-xs">Trả về hỏi lại giá</button>
-              <button name="action" value="approve" className="btn btn-primary h-8 px-3 text-xs">Duyệt KOC đã tick</button>
-            </div>
-          )}
         </form>
         <Pager params={listParams} page={page} perPage={PER} total={total} />
       </Panel>
@@ -665,71 +488,208 @@ async function Approve({ b, me, n, page, open, listParams, sp }: Ctx) {
   );
 }
 
-// ---------------------------------------------------------------- Bước 9. Gửi brand
-async function Export({ b, me, n, page, open, listParams, sp }: Ctx) {
-  const [{ rows, total }, batches] = await Promise.all([
-    listPage(b, sp, page),
-    db.listingBatch.findMany({ where: { OR: [{ briefId: b.id }, ...(b.brand ? [{ brand: b.brand, briefId: null, NOT: { id: { startsWith: 'lark-' } } }] : [])] }, orderBy: { updatedAt: 'desc' }, take: 20, select: { id: true, name: true, month: true, briefId: true, _count: { select: { items: true } } } }),
-  ]);
-  const linked = batches.filter((x) => x.briefId === b.id);
-  const approvedN = n.APPROVED ?? 0;
+// ---------------------------------------------------------------- Bước 4. Hỏi giá KOC
+async function Quote({ b, n, page, pop, listParams, sp }: Ctx) {
+  if (!b.ranAt) return <><Todo briefId={b.id} step={4} /><NotRun /></>;
+  const { rows, total } = await listPage(b, sp, page);
+  const yn = (v: boolean | undefined) => (v === undefined ? <span className="text-ink-3">chưa hỏi</span> : v ? 'Có' : <span className="text-critical">Không</span>);
   return (
     <>
-      <Todo briefId={b.id} step={9}>
-        {can(me, 'data.export') && <>
-          <a href={`/matching/${b.id}/export`} className="btn btn-primary h-8 px-3 text-xs">Tải Excel gửi brand</a>
-          <a href={`/matching/${b.id}/export?all=1`} className="btn h-8 px-3 text-xs">Tải Excel tất cả KOC (nội bộ)</a>
-        </>}
-      </Todo>
-      <Panel title="Chuyển sang Listing để brand duyệt online">
-        {linked.length > 0 && <p className="mb-2 text-[13px]">Đã chuyển sang: {linked.map((x, i) => <span key={x.id}>{i > 0 && ', '}<Link href={`/listing/${x.id}`} className="link">{x.name}</Link> ({x._count.items} KOC)</span>)}</p>}
-        {approvedN > 0 ? (
-          <form action={toListing} className="flex flex-wrap items-end gap-2">
-            <input type="hidden" name="briefId" value={b.id} />
-            <label className="min-w-56 flex-1">
-              <span className="label">Đợt listing</span>
-              <select name="batchId" defaultValue={linked[0]?.id ?? 'new'} className="input">
-                <option value="new">+ Tạo đợt listing mới</option>
-                {batches.map((x) => <option key={x.id} value={x.id}>{x.name} · {x.month}</option>)}
-              </select>
-            </label>
-            <label className="min-w-56 flex-1"><span className="label">Tên đợt listing mới</span><input name="name" defaultValue={b.name} className="input" /></label>
-            <button className="btn btn-primary">Chuyển {approvedN} KOC đã duyệt sang Listing</button>
-          </form>
-        ) : <p className="text-xs text-ink-3">Chưa có KOC nào được duyệt: duyệt ở bước 8 trước.</p>}
-      </Panel>
-      <Panel title="List KOC gửi brand" action={<Filters sp={sp} step={9} />}>
-        <Summary step={9} n={n} label="KOC trong list gửi brand" />
-        <p className="mb-2 text-xs text-ink-3">List gửi brand chỉ gồm KOC đã duyệt, kèm điểm, đánh giá và lý do chọn. Thông tin nội bộ (tác phong, liên hệ, thanh toán) không xuất ra.</p>
-        <div className="overflow-x-auto">
-          <table className="tbl">
-            <thead><tr><th>KOC</th><th>Trạng thái</th><th className="text-center">Điểm</th><th>Đánh giá</th><th>Vì sao chọn</th><th className="text-right">Giá báo</th></tr></thead>
-            <tbody>
-              {rowsWithDivider(rows, 9, 6, (c, dim) => {
-                const { d, s } = sd(c);
-                return (
-                  <tr key={c.id} className={`align-top ${dim}`}>
-                    <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
-                    <td><StageChip stage={c.stage} /></td>
-                    <td className="text-center"><Total score={s} /></td>
-                    <td><TierChip score={s} /></td>
-                    <td className="max-w-80 text-xs">{picked(9, c.stage) ? <>{s?.strengths.length ? `Mạnh: ${s.strengths.join(', ')}` : ''}{s?.weaknesses.length ? <div className="text-ink-3">Yếu: {s.weaknesses.join(', ')}</div> : null}</> : <Why c={c} />}</td>
-                    <td className="text-right tabular-nums">{fmtVnd(((c.declare ?? {}) as Declare).quote)}</td>
-                  </tr>
-                );
-              })}
-              {!rows.length && <Empty cols={6} />}
-            </tbody>
-          </table>
-        </div>
+      <Todo briefId={b.id} step={4} />
+      <Panel title="Hỏi giá KOC" action={<Filters sp={sp} step={4} />}>
+        <Summary step={4} n={n} label="KOC đã báo giá" />
+        <p className="mb-3 text-xs text-ink-3">Bấm <b>Nhập giá</b> để ghi giá KOC báo và cam kết. Có giá và cam kết không đăng đối thủ{b.gmvMax ? ', cho chạy ads' : ''} thì KOC tự chuyển "Đã báo giá".</p>
+        <form action={unshortlist}>
+          <input type="hidden" name="step" value={4} /><input type="hidden" name="page" value={sp.page ?? ''} />
+          <div className="overflow-x-auto">
+            <table className="tbl">
+              <thead><tr><th>KOC</th><th className="text-right">Giá tham khảo</th><th className="text-right">Giá KOC báo</th><th>Cam kết</th><th className="text-center">Điểm</th><th /></tr></thead>
+              <tbody>
+                {rowsWithDivider(rows, 4, 6, (c, dim) => {
+                  const { d, s } = sd(c);
+                  const dc = (c.declare ?? {}) as Declare;
+                  const st = c.stage as Stage;
+                  const on = st === 'SHORTLIST' || st === 'CONFIRMED';
+                  return (
+                    <tr key={c.id} className={`align-top ${dim}`}>
+                      <td><KocCell href={pop(c.id, 'detail')} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /><div className="mt-0.5"><StageChip stage={st} /></div></td>
+                      <td className="text-right text-xs tabular-nums">{d.priceSource === 'Giá KOC báo' ? '—' : fmtShort(d.price)}{d.priceSource && d.priceSource !== 'Giá KOC báo' && <div className="text-ink-3">{d.priceSource}</div>}</td>
+                      <td className="text-right tabular-nums">{dc.quote ? fmtVnd(dc.quote) : <span className="text-ink-3">—</span>}{b.feeCap && dc.quote && dc.quote > b.feeCap ? <div className="text-xs text-critical">Vượt phí tối đa</div> : null}</td>
+                      <td className="text-xs">{on || st === 'APPROVED' ? <><div>Không đăng đối thủ: {yn(dc.noCompetitor)}</div><div>Cho chạy ads: {yn(dc.adsCode)}</div></> : null}</td>
+                      <td className="text-center"><Total score={s} /></td>
+                      <td>
+                        <Act>
+                          {on && c.kocId && <Link href={`/contacts/${c.kocId}`} target="_blank" className="link text-xs">Liên hệ ↗</Link>}
+                          {on && <Link href={pop(c.id, 'price')} scroll={false} className={`${sm} ${dc.quote ? '' : 'btn-primary'}`}>{dc.quote ? 'Sửa giá' : 'Nhập giá'}</Link>}
+                          {st === 'SHORTLIST' && <button name="one" value={c.id} className="link text-xs">Bỏ chọn</button>}
+                          {!on && <Link href={pop(c.id, 'detail')} scroll={false} className="link text-xs">Xem chi tiết</Link>}
+                        </Act>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!rows.length && <Empty cols={6} />}
+              </tbody>
+            </table>
+          </div>
+        </form>
         <Pager params={listParams} page={page} perPage={PER} total={total} />
       </Panel>
     </>
   );
 }
 
-// ---------------------------------------------------------------- Bước 10. Sau khi air
-async function AfterAir({ b, n, page, open, listParams, sp }: Ctx) {
+// ---------------------------------------------------------------- Bước 5. Chấm điểm: KOC đủ dữ liệu / chưa đủ dữ liệu
+/** Tiêu chí công thức thiếu số liệu (điểm lưu trước khi có cờ gap thì suy từ tiêu chí auto chưa có điểm). */
+const gapsOf = (s: ScoreResult | null) => (s?.groups ?? []).flatMap((g) => g.parts).filter((p) => (p.gap ?? (criterion(p.id)?.auto && p.score == null)) && !p.manual);
+function ToneCell({ manual }: { manual: unknown }) {
+  const a3 = ((manual ?? {}) as Record<string, { score: number; by?: string }>).A3;
+  if (hasRequired(manual)) return <b className="tabular-nums">{a3!.score}/5</b>;
+  return <span className="text-xs font-medium text-critical">Chưa chấm{a3?.by === 'AI' ? ` · AI gợi ý ${a3.score}/5` : ''}</span>;
+}
+async function Scoring({ b, pop }: Ctx) {
+  if (!b.ranAt) return <><Todo briefId={b.id} step={5} /><NotRun /></>;
+  const rows = await db.matchCandidate.findMany({ where: { briefId: b.id, stage: { in: ['SHORTLIST', 'CONFIRMED', 'APPROVED'] } }, orderBy: [{ total: { sort: 'desc', nulls: 'last' } }], take: 500 });
+  const full = rows.filter((c) => !gapsOf(sd(c).s).length);
+  const partial = rows.filter((c) => gapsOf(sd(c).s).length);
+  const head = <tr><th>KOC</th><th className="text-center">Điểm</th><th>Đánh giá</th><th>Tone khớp brand</th><th>{'Ô cần điền'}</th><th /></tr>;
+  const row = (c: MatchCandidate, gaps: boolean) => {
+    const { d, s } = sd(c);
+    const miss = gapsOf(s);
+    const tone = hasRequired(c.manual);
+    return (
+      <tr key={c.id} className="align-top">
+        <td><KocCell href={pop(c.id, 'detail')} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /><div className="mt-0.5"><StageChip stage={c.stage} /></div></td>
+        <td className="text-center"><Total score={s} /></td>
+        <td><TierChip score={s} /></td>
+        <td><ToneCell manual={c.manual} /></td>
+        <td className="max-w-72 text-xs">{gaps ? <span className="text-critical">{miss.map((p) => p.label).join(', ')}</span> : <span className="text-ink-3">Hệ thống tự tính đủ</span>}</td>
+        <td><Act><Link href={pop(c.id, 'score')} scroll={false} className={`${sm} ${gaps || !tone ? 'btn-primary' : ''}`}>{gaps ? 'Điền bổ sung' : tone ? 'Xem điểm' : 'Chấm Tone'}</Link></Act></td>
+      </tr>
+    );
+  };
+  return (
+    <>
+      <Todo briefId={b.id} step={5} />
+      {!rows.length && <p className="rounded-lg border border-dashed border-line bg-surface px-5 py-10 text-center text-ink-3">Chưa có KOC nào được chọn. Chọn KOC ở bước 3 trước.</p>}
+      {rows.length > 0 && <>
+        <Panel title={<>KOC đủ dữ liệu <span className="text-[13px] font-normal text-ink-3">· hệ thống tự tính điểm · {full.length} KOC</span></>}>
+          <p className="mb-2 text-xs text-ink-3">B2C chỉ cần chấm <b className="text-critical">Tone khớp brand</b> (bắt buộc). Các mục cảm nhận khác bỏ trống thì tính 3 điểm.</p>
+          <div className="overflow-x-auto"><table className="tbl"><thead>{head}</thead><tbody>{full.map((c) => row(c, false))}{!full.length && <Empty cols={6} />}</tbody></table></div>
+        </Panel>
+        <Panel title={<>KOC chưa đủ dữ liệu <span className="text-[13px] font-normal text-ink-3">· B2C điền bổ sung theo cảm nhận · {partial.length} KOC</span></>}>
+          <p className="mb-2 text-xs text-ink-3">Ô màu đỏ là mục kho chưa có số liệu: bấm <b>Điền bổ sung</b> và chấm 1–5 theo cảm nhận. Điền đủ thì hệ thống tính điểm theo điểm B2C; ô bỏ trống tính 3 điểm, riêng Tone khớp brand bắt buộc.</p>
+          <div className="overflow-x-auto"><table className="tbl"><thead>{head}</thead><tbody>{partial.map((c) => row(c, true))}{!partial.length && <Empty cols={6} />}</tbody></table></div>
+        </Panel>
+      </>}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- Bước 6. Lead B2C duyệt + đẩy sang Listing
+async function Approve({ b, me, n, page, pop, listParams, sp }: Ctx) {
+  const [{ rows, total }, fill, quoted, batches] = await Promise.all([
+    listPage(b, sp, page), slotFill(b, ['APPROVED']),
+    db.matchCandidate.findMany({ where: { briefId: b.id, stage: { in: ['CONFIRMED', 'APPROVED'] } }, select: { stage: true, declare: true, data: true, manual: true } }),
+    db.listingBatch.findMany({ where: { OR: [{ briefId: b.id }, ...(b.brand ? [{ brand: b.brand, briefId: null, NOT: { id: { startsWith: 'lark-' } } }] : [])] }, orderBy: { updatedAt: 'desc' }, take: 20, select: { id: true, name: true, month: true, briefId: true, _count: { select: { items: true } } } }),
+  ]);
+  const approved = quoted.filter((c) => c.stage === 'APPROVED');
+  const sum = (list: typeof quoted) => list.reduce((s, c) => s + (((c.declare ?? {}) as Declare).quote ?? 0), 0);
+  const gmv = (list: typeof quoted) => list.reduce((s, c) => { const m = ((c.data ?? {}) as CandData).metrics; return s + (m?.medianViews && m.gpm ? (m.medianViews * m.gpm) / 1000 : 0); }, 0);
+  const allowed = can(me, 'match.approve');
+  const over = b.feeCap ? quoted.filter((c) => (((c.declare ?? {}) as Declare).quote ?? 0) > b.feeCap!).length : 0;
+  const waiting = n.CONFIRMED ?? 0, approvedN = n.APPROVED ?? 0;
+  const ready = quoted.filter((c) => c.stage === 'CONFIRMED' && hasRequired(c.manual)).length;
+  const linked = batches.filter((x) => x.briefId === b.id);
+  return (
+    <>
+      <Todo briefId={b.id} step={6} />
+      <section className={`mb-4 rounded-lg border px-5 py-4 ${approvedN ? 'border-positive/40 bg-positive-soft/40' : 'border-line bg-surface'}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Đẩy KOC đã duyệt sang Listing</h2>
+            <p className="text-[13px] text-ink-2">{approvedN ? `${approvedN} KOC đã duyệt, sẵn sàng đẩy sang Listing để gửi brand chọn.` : 'Chưa có KOC nào được duyệt. Lead duyệt ở bảng bên dưới trước.'}</p>
+            {linked.length > 0 && <p className="mt-1 text-[13px]">Đã đẩy sang: {linked.map((x, i) => <span key={x.id}>{i > 0 && ', '}<Link href={`/listing/${x.id}`} className="link">{x.name}</Link> ({x._count.items} KOC)</span>)}</p>}
+          </div>
+          {can(me, 'data.export') && approvedN > 0 && <div className="flex flex-wrap gap-2"><a href={`/matching/${b.id}/export`} className="btn h-8 px-3 text-xs">Tải Excel gửi brand</a><a href={`/matching/${b.id}/export?all=1`} className="btn h-8 px-3 text-xs">Tải Excel nội bộ</a></div>}
+        </div>
+        {approvedN > 0 && (
+          <form action={toListing} className="mt-3 flex flex-wrap items-end gap-2">
+            <input type="hidden" name="briefId" value={b.id} />
+            <label className="min-w-56 flex-1">
+              <span className="label">Đưa vào đợt listing</span>
+              <select name="batchId" defaultValue={linked[0]?.id ?? 'new'} className="input">
+                <option value="new">+ Tạo đợt listing mới</option>
+                {batches.map((x) => <option key={x.id} value={x.id}>{x.name} · {x.month}</option>)}
+              </select>
+            </label>
+            <label className="min-w-56 flex-1"><span className="label">Tên đợt mới (khi tạo mới)</span><input name="name" defaultValue={b.name} className="input" /></label>
+            <button className="btn btn-primary">Đẩy {approvedN} KOC sang Listing</button>
+          </form>
+        )}
+      </section>
+      <Panel title="Tổng quan trước khi duyệt">
+        <dl className="grid gap-x-6 gap-y-3 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
+          <div><dt className="text-xs text-ink-3">Số KOC đã duyệt theo cấp</dt><dd className="mt-1"><Slots fill={fill} label="đã duyệt" /></dd></div>
+          <div><dt className="text-xs text-ink-3">Chi phí đã duyệt / ngân sách</dt><dd className="font-semibold">{fmtVndShort(sum(approved))} / {b.budget ? fmtVndShort(b.budget) : '—'}</dd><dd className="text-xs text-ink-3">Gồm thuế TNCN ~{fmtVndShort(sum(approved) / FEE_DIVISOR)} · chờ duyệt {fmtVndShort(sum(quoted) - sum(approved))}</dd></div>
+          <div><dt className="text-xs text-ink-3">GMV dự kiến / mục tiêu</dt><dd className="font-semibold">{fmtVndShort(gmv(approved))} / {b.gmvTarget ? fmtVndShort(b.gmvTarget) : '—'}</dd><dd className="text-xs text-ink-3">Ước tính từ view và GMV / 1.000 view của từng KOC</dd></div>
+          <div><dt className="text-xs text-ink-3">KOC báo giá vượt phí tối đa</dt><dd className={`font-semibold ${over ? 'text-critical' : ''}`}>{b.feeCap ? over : '—'}</dd></div>
+        </dl>
+      </Panel>
+      <Panel title={<>Lead B2C duyệt KOC <span className="text-[13px] font-normal text-ink-3">· {waiting} chờ duyệt · {approvedN} đã duyệt</span></>} action={<Filters sp={sp} step={6} />}>
+        {!allowed && <p className="mb-2 rounded-md bg-warning-soft px-3 py-2 text-[13px] text-warning">Bạn chỉ xem được. Duyệt cần quyền "Duyệt list KOC" (Lead B2C).</p>}
+        {!waiting && !approvedN && <p className="mb-2 rounded-md bg-sunken px-3 py-2 text-[13px] text-ink-2">Chưa có KOC nào chờ duyệt. KOC có giá (bước 4) sẽ hiện ở đây.</p>}
+        <form action={approve}>
+          <input type="hidden" name="briefId" value={b.id} />
+          {allowed && waiting > 0 && (
+            <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+              {ready < waiting && <span className="text-xs text-critical">{waiting - ready} KOC chưa chấm Tone khớp brand: chưa duyệt được.</span>}
+              <button name="action" value="all" disabled={!ready} className="btn btn-primary h-8 px-3 text-xs">Duyệt toàn bộ ({ready} KOC)</button>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="tbl">
+              <thead><tr><th>KOC</th><th className="text-right">Giá KOC báo</th><th className="text-center">Điểm</th><th>Tone khớp brand</th><th>Đánh giá</th><th /></tr></thead>
+              <tbody>
+                {rowsWithDivider(rows, 6, 6, (c, dim) => {
+                  const { d, s } = sd(c);
+                  const st = c.stage as Stage;
+                  const tone = hasRequired(c.manual);
+                  return (
+                    <tr key={c.id} className={`align-top ${dim}`}>
+                      <td><KocCell href={pop(c.id, 'detail')} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /><div className="mt-0.5"><StageChip stage={st} /></div></td>
+                      <td className="text-right tabular-nums">{fmtVnd(((c.declare ?? {}) as Declare).quote)}</td>
+                      <td className="text-center"><Total score={s} /></td>
+                      <td>{st === 'CONFIRMED' || st === 'APPROVED' ? <ToneCell manual={c.manual} /> : null}</td>
+                      <td className="max-w-60 text-xs">{st === 'CONFIRMED' || st === 'APPROVED' ? <><TierChip score={s} /><div className="mt-0.5 text-ink-3">{s?.action}</div></> : <Why c={c} />}</td>
+                      <td>
+                        <Act>
+                          {allowed && st === 'CONFIRMED' && <>
+                            {tone
+                              ? <button name="row" value={`approve|${c.id}`} className={`${sm} btn-primary`}>Duyệt</button>
+                              : <Link href={pop(c.id, 'score')} scroll={false} className={sm} title="Cần chấm Tone khớp brand trước khi duyệt">Chấm Tone</Link>}
+                            <Link href={pop(c.id, 'reject')} scroll={false} className={sm}>Loại</Link>
+                          </>}
+                          {allowed && st === 'APPROVED' && <button name="row" value={`return|${c.id}`} className="link text-xs">Bỏ duyệt</button>}
+                          <Link href={pop(c.id, 'detail')} scroll={false} className="link text-xs">Xem chi tiết</Link>
+                        </Act>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!rows.length && <Empty cols={6} />}
+              </tbody>
+            </table>
+          </div>
+        </form>
+        <Pager params={listParams} page={page} perPage={PER} total={total} />
+      </Panel>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- Bước 7. Sau khi air
+async function AfterAir({ b, n, page, pop, listParams, sp }: Ctx) {
   const { rows, total } = await listPage(b, sp, page);
   const live = rows.filter((c) => c.stage === 'APPROVED');
   const kocIds = live.map((c) => c.kocId).filter((x): x is string => !!x);
@@ -745,15 +705,15 @@ async function AfterAir({ b, n, page, open, listParams, sp }: Ctx) {
   const num = (v: unknown) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
   return (
     <>
-      <Todo briefId={b.id} step={10} />
-      <Panel title="Kết quả sau khi air" action={<Filters sp={sp} step={10} />}>
-        <Summary step={10} n={n} label="KOC đã book" />
+      <Todo briefId={b.id} step={7} />
+      <Panel title="Kết quả sau khi air" action={<Filters sp={sp} step={7} />}>
+        <Summary step={7} n={n} label="KOC đã book" />
         <p className="mb-2 text-xs text-ink-3">View, GMV lấy từ booking trên Lark cùng brand (từ tháng air). Kết quả bạn ghi giúp lần tìm KOC sau chấm chính xác hơn: "Vào KOC core" gắn nhãn ở Danh bạ, "Dừng hợp tác" ghi KOC không hợp brand này.</p>
         <div className="overflow-x-auto">
           <table className="tbl">
             <thead><tr><th>KOC</th><th>Job / booking</th><th className="text-right">View 30 ngày</th><th className="text-right">GMV mỗi video</th><th className="text-right">Chi phí / view</th><th className="text-right">GMV / chi phí</th><th>Kết quả</th><th /></tr></thead>
             <tbody>
-              {rowsWithDivider(rows, 10, 8, (c, dim) => {
+              {rowsWithDivider(rows, 7, 8, (c, dim) => {
                 const { d } = sd(c);
                 const on = c.stage === 'APPROVED';
                 const js = jobs.filter((j) => j.kocId === c.kocId);
@@ -764,7 +724,7 @@ async function AfterAir({ b, n, page, open, listParams, sp }: Ctx) {
                 const o = c.outcome as Outcome | null;
                 return (
                   <tr key={c.id} className={`align-top ${dim}`}>
-                    <td><KocCell href={open(c.id)} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
+                    <td><KocCell href={pop(c.id, 'detail')} handle={c.handle} platform={c.platform} d={d} kocId={c.kocId} /></td>
                     <td className="text-xs">
                       {js.map((j) => <div key={j.number}><Link href={`/jobs?q=${j.number}`} className="link">Job #{j.number}</Link> · {j.stage}{j.reviewResult ? ` · ${j.reviewResult}` : ''}</div>)}
                       {bs.map((x) => <div key={x.code}>{x.code} · air {fmtDate(x.airDate)}</div>)}
@@ -776,7 +736,7 @@ async function AfterAir({ b, n, page, open, listParams, sp }: Ctx) {
                     <td className="text-right tabular-nums">{views && cost ? fmtVnd(cost / views) : '—'}</td>
                     <td className="text-right tabular-nums">{cost && gmv ? `${(gmv / cost).toFixed(2).replace('.', ',')} lần` : '—'}</td>
                     <td className="text-xs">{o ? <>{o.decision ? <b>{DECISIONS[o.decision]}</b> : 'Đã ghi'}{o.kpiMet != null && ` · KPI ${o.kpiMet ? 'đạt' : 'không đạt'}`}</> : on ? <span className="text-ink-3">Chưa ghi</span> : null}</td>
-                    <td className="text-right">{on && <Link href={`${open(c.id)}#outcome`} scroll={false} className="btn btn-primary h-7 px-2 text-xs">Ghi kết quả</Link>}</td>
+                    <td className="text-right">{on && <Link href={pop(c.id, 'outcome')} scroll={false} className="btn btn-primary h-7 px-2 text-xs">Ghi kết quả</Link>}</td>
                   </tr>
                 );
               })}

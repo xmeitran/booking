@@ -22,7 +22,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const header = [
     'KOC', 'ID kênh', 'Nền tảng', 'Link kênh', 'Cấp KOC', 'Nguồn số liệu', 'Follower', 'View trung bình / video', 'Tỷ lệ tương tác (%)', 'GMV 30 ngày', 'Giá báo / tham khảo', 'Chi phí / view',
     ...['G0', 'A', 'B', 'C', 'D', 'E'].map((g) => GROUP_LABEL[g as Group]),
-    'Điểm (trên 100)', 'Phần có số liệu (%)', 'Đánh giá', 'Đề xuất', 'Điểm mạnh', 'Điểm yếu', 'Hợp nội dung (1–5)', 'Trạng thái', 'Lý do không qua', 'Cảnh báo',
+    'Điểm (trên 100)', 'Phần có số liệu (%)', 'Đánh giá', 'Đề xuất', 'Điểm mạnh', 'Điểm yếu', 'Tone khớp brand (1–5)', 'Trạng thái', 'Lý do không qua', 'Cảnh báo',
   ];
   const out = rows.map((c) => {
     const d = (c.data ?? {}) as CandData;

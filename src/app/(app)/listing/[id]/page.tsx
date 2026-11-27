@@ -110,7 +110,7 @@ export default async function ListingBatchPage({ params, searchParams }: { param
           <p className="mt-0.5 text-xs text-ink-3">
             {[batch.brand, batch.store, batch.product, `Tháng ${batch.month.split('-').reverse().join('/')}`].filter(Boolean).join(' · ')}
             {' · '}tỉ lệ chuyển đổi {batch.cr == null ? '—' : fmtPct(batch.cr)} · giá trị 1 đơn {fmtVnd(batch.aov)} · tạo bởi {batch.createdBy.name ?? '—'}
-            {batch.briefId && <> · từ <Link href={`/matching/${batch.briefId}?step=9`} className="link">Creator matching</Link></>}
+            {batch.briefId && <> · từ <Link href={`/matching/${batch.briefId}?step=6`} className="link">Creator matching</Link></>}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

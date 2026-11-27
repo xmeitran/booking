@@ -1,5 +1,5 @@
 'use server';
-// Thao tác của Creator matching theo 10 bước. Mỗi thao tác trên một ứng viên chấm lại ứng viên đó (run.ts rescore)
+// Thao tác của Creator matching theo 7 bước. Mỗi thao tác trên một ứng viên chấm lại ứng viên đó (run.ts rescore)
 // rồi chuyển giai đoạn theo quy tắc của doc: trượt mã loại → Đã loại (ghi mã K vào lịch sử KOC).
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -11,7 +11,7 @@ import { airDateOf, loadBrief } from '@/lib/matching/data';
 import { contentChecksFor, rescore, rescoreMany, runMatching, stageAfterRun } from '@/lib/matching/run';
 import { aiOn, rankFit, readBrief, type FitInput } from '@/lib/matching/ai';
 import {
-  ALL_CRITERIA, CHANNELS, CONTENT_ERRORS, DECISIONS, KL_LEVELS, KO, OBJECTIVES, parseNeeds, parseRules,
+  ALL_CRITERIA, CHANNELS, CONTENT_CHECKS, CONTENT_ERRORS, DECISIONS, hasRequired, KL_LEVELS, KO, OBJECTIVES, parseNeeds, parseRules,
   type Check, type Needs, type Declare, type Manual, type Outcome, type Slot,
 } from '@/lib/matching/spec';
 import { RATING_TAGS } from '@/lib/koc/kocDirectory';
@@ -137,7 +137,7 @@ export async function aiFillBrief(_: string | null, fd: FormData): Promise<strin
   redirect(back(b.id, 1, `&edit=1&msg=${encodeURIComponent(`AI đã điền yêu cầu từ brief. Kiểm tra lại rồi bấm Lưu${miss.length ? `; còn thiếu: ${miss.join(', ')}` : ''}.`)}`));
 }
 
-/** AI chấm "Hợp nội dung brand" (1–5, kèm lý do) cho top N KOC đang xét / đang liên hệ chưa được AI chấm. */
+/** AI gợi ý "Tone khớp brand" (1–5, kèm lý do) cho top N KOC chưa được AI chấm. Chỉ là gợi ý: B2C vẫn phải tự chấm ở bước 5. */
 export async function aiScoreFit(_: string | null, fd: FormData): Promise<string | null> {
   const me = await requireUser();
   if (!(await aiOn())) return 'Chưa gắn key Claude (Phân quyền → Tích hợp → API AI).';
@@ -182,16 +182,26 @@ export async function aiScoreFit(_: string | null, fd: FormData): Promise<string
     if (id) patches.set(id, { A3: { score: f.score, note: f.reason.slice(0, 300), by: 'AI' } });
   }
   const n = await rescoreMany(briefId, patches);
-  await audit(me.id, 'MatchBrief', briefId, 'AI chấm độ hợp nội dung', { n });
+  await audit(me.id, 'MatchBrief', briefId, 'AI gợi ý Tone khớp brand', { n });
   revalidatePath(`/matching/${briefId}`);
-  redirect(back(briefId, 5, `&msg=${encodeURIComponent(`AI đã chấm độ hợp nội dung ${n} KOC. Điểm tổng đã tính lại.`)}`));
+  redirect(back(briefId, 3, `&msg=${encodeURIComponent(`AI đã gợi ý Tone khớp brand cho ${n} KOC. Xếp theo gợi ý này ở ô sắp xếp; B2C chấm chính thức ở bước 5.`)}`));
 }
 
 // ---------------------------------------------------------------- Thao tác trên ứng viên
+/**
+ * Ứng viên của thao tác: nút trên dòng gửi "one", popup gửi "cid". done(): đóng popup, về danh sách kèm thông báo;
+ * fail(): mở lại đúng popup (m) kèm lỗi.
+ */
 async function candidate(fd: FormData) {
   const me = await requireUser();
-  const c = await db.matchCandidate.findUniqueOrThrow({ where: { id: str(fd, 'cid') } });
-  return { me, c, ret: back(c.briefId, str(fd, 'step') || 4, `&c=${c.id}${str(fd, 'page') ? `&page=${str(fd, 'page')}` : ''}`) };
+  const c = await db.matchCandidate.findUniqueOrThrow({ where: { id: str(fd, 'one') || str(fd, 'cid') } });
+  const step = str(fd, 'step') || 2;
+  const page = str(fd, 'page') ? `&page=${str(fd, 'page')}` : '';
+  return {
+    me, c,
+    done: (msg: string) => back(c.briefId, step, `${page}&msg=${encodeURIComponent(msg)}`),
+    fail: (err: string) => back(c.briefId, step, `${page}&c=${c.id}&m=${str(fd, 'm') || 'detail'}&err=${encodeURIComponent(err)}`),
+  };
 }
 const reject = (id: string, me: Me, code: string, reason: string) =>
   db.matchCandidate.update({ where: { id }, data: { stage: 'REJECTED', rejectCode: code, reason: reason.slice(0, 500), updatedById: me.id } });
@@ -202,27 +212,7 @@ async function canException(me: Me, briefId: string) {
   return parseRules(b?.brandRef?.rules).exceptionApprover === me.id;
 }
 
-/** Bước 4: Booker kiểm tra nội dung kênh theo K1, K2, K3, K4, K5, K8, K11. Một mã "Không đạt" là loại. */
-export async function saveChecks(fd: FormData) {
-  const { me, c, ret } = await candidate(fd);
-  const b = (await loadBrief(c.briefId))!;
-  const codes = contentChecksFor(b);
-  const checks = { ...((c.checks ?? {}) as Record<string, Check>) };
-  const all = str(fd, 'all') === '1';
-  for (const k of codes) {
-    const v = all ? 'ok' : str(fd, `check|${k}`);
-    const note = str(fd, `note|${k}`).slice(0, 500);
-    if (v === 'ok' || v === 'fail') checks[k] = { ok: v === 'ok', note: note || (all ? 'Xem kênh, không thấy vi phạm' : undefined), by: me.name ?? me.id, at: new Date().toISOString() };
-    else if (v === 'clear') delete checks[k];
-  }
-  await db.matchCandidate.update({ where: { id: c.id }, data: { checks: checks as Prisma.InputJsonObject, updatedById: me.id } });
-  const fail = codes.find((k) => checks[k]?.ok === false);
-  if (fail && c.stage !== 'REJECTED') await reject(c.id, me, fail, checks[fail].note ?? KO[fail].label);
-  revalidatePath(`/matching/${c.briefId}`);
-  redirect(all ? back(c.briefId, str(fd, 'step') || 4, str(fd, 'page') ? `&page=${str(fd, 'page')}` : '') : ret);
-}
-
-/** KOC trong kho chưa có ở Danh bạ: tạo hồ sơ khi vào shortlist để liên hệ, listing, job dùng được. */
+/** KOC trong kho chưa có ở Danh bạ: tạo hồ sơ khi được chọn để liên hệ, listing, job dùng được. */
 async function ensureKoc(c: { id: string; platform: string; handle: string; kocId: string | null; data: Prisma.JsonValue }) {
   if (c.kocId) return c.kocId;
   const w = await db.warehouseCreator.findUnique({ where: { platform_handle: { platform: c.platform, handle: c.handle } } });
@@ -231,7 +221,7 @@ async function ensureKoc(c: { id: string; platform: string; handle: string; kocI
     where: { platform_handle: { platform: c.platform, handle: c.handle } },
     create: {
       platform: c.platform, handle: c.handle, name: w?.nickname ?? d.name ?? c.handle, nickname: w?.nickname, avatarUrl: w?.avatarUrl, followers: w?.followers,
-      channelUrl: w?.url, rateCard: w?.castFee, note: 'Thêm từ kho dữ liệu khi vào shortlist Creator matching',
+      channelUrl: w?.url, rateCard: w?.castFee, note: 'Thêm từ kho dữ liệu khi được chọn ở Creator matching',
     },
     update: {},
   });
@@ -239,136 +229,178 @@ async function ensureKoc(c: { id: string; platform: string; handle: string; kocI
   return k.id;
 }
 
-/** Bước 5: đưa ứng viên đã tick (hoặc top N theo điểm) vào shortlist để liên hệ. */
-export async function shortlist(fd: FormData) {
+/**
+ * Bước 2: chọn KOC để hỏi giá (một KOC qua nút "Chọn", các KOC đã tick, hoặc top N theo điểm). Chọn nghĩa là Booker đã xem kênh,
+ * không thấy vi phạm nội dung: ghi các mục kiểm tra nội dung là "Không vi phạm".
+ */
+export async function pick(fd: FormData) {
   const me = await requireUser();
   const briefId = str(fd, 'briefId');
   const top = optInt(fd, 'top');
-  const ids = fd.getAll('cid').map(String);
+  const ids = str(fd, 'one') ? [str(fd, 'one')] : fd.getAll('cid').map(String);
   const list = top
     ? await db.matchCandidate.findMany({ where: { briefId, stage: 'POOL' }, orderBy: [{ total: { sort: 'desc', nulls: 'last' } }], take: top })
     : await db.matchCandidate.findMany({ where: { briefId, stage: 'POOL', id: { in: ids } } });
-  if (!list.length) redirect(back(briefId, 5, `&msg=${encodeURIComponent('Chưa tick KOC nào (chỉ chọn được KOC đang xét).')}`));
+  if (!list.length) redirect(back(briefId, 3, `&msg=${encodeURIComponent('Chưa tick KOC nào (chỉ chọn được KOC đang xét).')}`));
+  const b = (await loadBrief(briefId))!;
+  const codes = contentChecksFor(b);
+  const at = new Date().toISOString();
   for (const c of list) {
     await ensureKoc(c);
-    await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'SHORTLIST', updatedById: me.id } });
+    const checks = { ...((c.checks ?? {}) as Record<string, Check>) };
+    for (const k of codes) checks[k] ??= { ok: true, note: 'Đã xem kênh khi chọn', by: me.name ?? me.id, at };
+    await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'SHORTLIST', checks: checks as Prisma.InputJsonObject, updatedById: me.id } });
   }
-  await audit(me.id, 'MatchBrief', briefId, 'Shortlist', { n: list.length });
+  await audit(me.id, 'MatchBrief', briefId, 'Chọn KOC', { n: list.length });
   revalidatePath(`/matching/${briefId}`);
-  redirect(back(briefId, 6, `&msg=${encodeURIComponent(`Đã chọn ${list.length} KOC để liên hệ. Giờ hỏi giá từng KOC.`)}`));
+  redirect(back(briefId, 3, `${str(fd, 'page') ? `&page=${str(fd, 'page')}` : ''}&msg=${encodeURIComponent(`Đã chọn ${list.length === 1 ? `@${list[0].handle}` : `${list.length} KOC`}. Hỏi giá ở bước 4.`)}`));
 }
 
 export async function unshortlist(fd: FormData) {
-  const { me, c, ret } = await candidate(fd);
+  const { me, c, done } = await candidate(fd);
   if (c.stage === 'SHORTLIST') await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'POOL', updatedById: me.id } });
   revalidatePath(`/matching/${c.briefId}`);
-  redirect(ret);
+  redirect(done(`Đã bỏ chọn @${c.handle}.`));
 }
 
-/** Bước 6: KOC báo giá và xác nhận (rate card, ads code, cam kết không đăng đối thủ, chứng chỉ). confirm = chuyển Đã báo giá. */
+/**
+ * Bước 4: giá và cam kết KOC báo. Có giá + cam kết không đăng đối thủ (+ ads code khi brand chạy GMV Max) thì KOC tự sang
+ * "Đã báo giá"; khai báo trượt mã loại (K8, K12, K14) thì loại luôn.
+ */
 export async function saveDeclare(fd: FormData) {
-  const { me, c, ret } = await candidate(fd);
+  const { me, c, done, fail } = await candidate(fd);
   const yesNo = (k: string) => (str(fd, k) === 'yes' ? true : str(fd, k) === 'no' ? false : undefined);
   const quote = optInt(fd, 'quote'), adsDays = optInt(fd, 'adsDays'), revisions = optInt(fd, 'revisions');
-  if ([quote, adsDays, revisions].some(Number.isNaN)) redirect(`${ret}&err=${encodeURIComponent('Giá, số ngày ads code, số vòng sửa là số nguyên ≥ 0.')}`);
+  if ([quote, adsDays, revisions].some(Number.isNaN)) redirect(fail('Giá, số ngày chạy ads, số lần sửa phải là số nguyên.'));
+  const old = (c.declare ?? {}) as Declare;
   const declare: Declare = {
-    declared: true, quote: quote ?? undefined, priceType: str(fd, 'priceType') || 'Video', adsCode: yesNo('adsCode'), adsDays: adsDays ?? undefined,
-    reup: fd.getAll('reup').map(String), noCompetitor: yesNo('noCompetitor'), certificate: str(fd, 'certificate') || undefined,
-    revisions: revisions ?? undefined, sample: yesNo('sample'), note: str(fd, 'note') || undefined,
+    ...old, declared: true, quote: quote ?? undefined, priceType: str(fd, 'priceType') || old.priceType || 'Video', adsCode: yesNo('adsCode'), noCompetitor: yesNo('noCompetitor'),
+    ...(fd.has('adsDays') ? { adsDays: adsDays ?? undefined } : {}), ...(fd.has('certificate') ? { certificate: str(fd, 'certificate') || undefined } : {}),
+    ...(fd.has('more') ? { revisions: revisions ?? undefined, sample: yesNo('sample'), reup: fd.getAll('reup').map(String), note: str(fd, 'note') || undefined } : {}),
   };
   const { e } = await rescore(c.id, { declare });
   const ko = e?.declKo[0];
-  if (ko) await reject(c.id, me, ko.code, ko.detail);
-  else if (str(fd, 'confirm') === '1') {
-    if (!declare.quote) redirect(`${ret}&err=${encodeURIComponent('Nhập giá KOC báo trước khi xác nhận.')}`);
-    if (declare.noCompetitor === undefined) redirect(`${ret}&err=${encodeURIComponent('Ghi rõ KOC có cam kết không đăng sản phẩm đối thủ sau air không.')}`);
-    await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'CONFIRMED', updatedById: me.id } });
+  if (ko) {
+    await reject(c.id, me, ko.code, ko.detail);
+    revalidatePath(`/matching/${c.briefId}`);
+    redirect(done(`@${c.handle} bị loại: ${ko.detail}.`));
   }
+  const b = (await loadBrief(c.briefId))!;
+  const missing = [!declare.quote && 'giá', declare.noCompetitor === undefined && 'cam kết không đăng đối thủ', b.gmvMax && declare.adsCode === undefined && 'cho chạy ads'].filter(Boolean);
+  let msg = `Đã lưu giá @${c.handle}.`;
+  if (c.stage === 'SHORTLIST' && !missing.length) {
+    await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'CONFIRMED', updatedById: me.id } });
+    msg += ' KOC chuyển sang "Đã báo giá", chấm điểm ở bước 5.';
+  } else if (missing.length) msg += ` Còn thiếu ${missing.join(', ')} để chuyển "Đã báo giá".`;
   await db.matchCandidate.update({ where: { id: c.id }, data: { updatedById: me.id } });
   revalidatePath(`/matching/${c.briefId}`);
-  redirect(ret);
+  redirect(done(msg));
 }
 
-/** Bước 7: Booker chấm tay các tiêu chí kho chưa có số (nhóm D, phần lớn nhóm 0, tone...) hoặc đè điểm tự động. */
+/** Bước 5: B2C chấm các ô màu đỏ (mục cảm nhận, mục công thức thiếu số liệu, Tone khớp brand). Ô bỏ trống tính 3, trừ Tone. */
 export async function saveManual(fd: FormData) {
-  const { me, c, ret } = await candidate(fd);
-  const manual: Manual = {};
+  const { me, c, done } = await candidate(fd);
+  const old = (c.manual ?? {}) as Manual;
+  const manual: Manual = { ...old };
   for (const cr of ALL_CRITERIA) {
+    if (!fd.has(`score|${cr.id}`)) continue;
     const v = Number(str(fd, `score|${cr.id}`));
-    if (Number.isInteger(v) && v >= 1 && v <= 5) manual[cr.id] = { score: v, note: str(fd, `snote|${cr.id}`).slice(0, 300) || undefined, by: me.name ?? me.id };
+    const note = str(fd, `snote|${cr.id}`).slice(0, 300) || undefined;
+    // Để trống: bỏ điểm B2C (gợi ý của AI giữ lại). Điểm giống lần trước của B2C thì giữ nguyên người chấm.
+    if (!(Number.isInteger(v) && v >= 1 && v <= 5)) { if (old[cr.id]?.by !== 'AI') delete manual[cr.id]; continue; }
+    const prev = old[cr.id];
+    manual[cr.id] = prev && prev.by !== 'AI' && prev.score === v && (prev.note ?? undefined) === note ? prev : { score: v, note, by: me.name ?? me.id };
   }
   const { e } = await rescore(c.id, { manual });
-  if (e?.score.mustFail.length && ['POOL', 'SHORTLIST', 'CONFIRMED'].includes(c.stage)) await reject(c.id, me, 'G0', e.score.mustFail.join('; '));
+  let msg = `Đã lưu điểm @${c.handle}${e?.score.total != null ? `: ${Math.round(e.score.total)}/100` : ''}.${e?.score.missingRequired.length ? ` Còn thiếu ${e.score.missingRequired.join(', ')} (bắt buộc) nên chưa duyệt được.` : ''}`;
+  if (e?.score.mustFail.length && ['POOL', 'SHORTLIST', 'CONFIRMED'].includes(c.stage)) {
+    await reject(c.id, me, 'G0', e.score.mustFail.join('; '));
+    msg = `@${c.handle} bị loại: trượt yêu cầu bắt buộc của brand (${e.score.mustFail.join('; ')}).`;
+  }
   await db.matchCandidate.update({ where: { id: c.id }, data: { updatedById: me.id } });
   revalidatePath(`/matching/${c.briefId}`);
-  redirect(ret);
+  redirect(done(msg));
 }
 
-/** Loại tay ở bất kỳ bước nào: bắt buộc mã (K hoặc nhóm điểm thấp) và lý do. */
+/** Loại tay ở bất kỳ bước nào: chọn nhóm lý do và B2C bắt buộc nhập lý do. Lý do về nội dung kênh ghi luôn vào mục kiểm tra nội dung. */
 export async function rejectCandidate(fd: FormData) {
-  const { me, c, ret } = await candidate(fd);
-  const code = str(fd, 'code') in KO ? str(fd, 'code') : 'OTHER';
+  const { me, c, done, fail } = await candidate(fd);
+  const code = str(fd, 'code');
+  if (!(code in KO)) redirect(fail('Chọn nhóm lý do loại.'));
   const reason = str(fd, 'reason');
-  if (!reason) redirect(`${ret}&err=${encodeURIComponent('Ghi lý do loại.')}`);
+  if (!reason) redirect(fail('Nhập lý do loại (bắt buộc).'));
+  if ((CONTENT_CHECKS as readonly string[]).includes(code)) {
+    const checks = { ...((c.checks ?? {}) as Record<string, Check>), [code]: { ok: false, note: reason, by: me.name ?? me.id, at: new Date().toISOString() } };
+    await db.matchCandidate.update({ where: { id: c.id }, data: { checks: checks as Prisma.InputJsonObject } });
+  }
   await reject(c.id, me, code, reason);
   await audit(me.id, 'MatchBrief', c.briefId, 'Loại KOC', { handle: c.handle, code, reason });
   revalidatePath(`/matching/${c.briefId}`);
-  redirect(ret);
+  redirect(done(`Đã loại @${c.handle}: ${reason}.`));
 }
 
-/** Khôi phục KOC đã loại về pool (lượt chấm lại quyết định Trong pool hay Bị loại tự động). */
+/** Khôi phục KOC đã loại về "Đang xét" (lượt chấm lại quyết định Đang xét hay Hệ thống loại). */
 export async function restoreCandidate(fd: FormData) {
-  const { me, c, ret } = await candidate(fd);
+  const { me, c, done } = await candidate(fd);
   const checks = Object.fromEntries(Object.entries((c.checks ?? {}) as Record<string, Check>).filter(([, v]) => v.ok));
   const { e, ctx } = await rescore(c.id);
   const stage = e ? stageAfterRun({ stage: 'POOL', exception: c.exception }, e, e.ko.length > 0 || e.score.mustFail.length > 0, ctx.include.has(c.handle)) : 'POOL';
   await db.matchCandidate.update({ where: { id: c.id }, data: { stage, rejectCode: null, reason: null, checks, updatedById: me.id } });
   await audit(me.id, 'MatchBrief', c.briefId, 'Khôi phục KOC', { handle: c.handle });
   revalidatePath(`/matching/${c.briefId}`);
-  redirect(ret);
+  redirect(done(`Đã khôi phục @${c.handle}.`));
 }
 
-/** Giữ lại KOC bị loại tự động (ngoại lệ, I-26). */
+/** Giữ lại KOC bị hệ thống loại (ngoại lệ, I-26). */
 export async function keepException(fd: FormData) {
-  const { me, c, ret } = await candidate(fd);
-  if (!(await canException(me, c.briefId))) redirect(`${ret}&err=${encodeURIComponent('Chỉ trưởng nhóm hoặc người duyệt của brand được giữ lại KOC bị loại.')}`);
+  const { me, c, done, fail } = await candidate(fd);
+  if (!(await canException(me, c.briefId))) redirect(fail('Chỉ Lead B2C hoặc người duyệt của brand được giữ lại KOC bị loại.'));
   const reason = str(fd, 'reason');
-  if (!reason) redirect(`${ret}&err=${encodeURIComponent('Ghi lý do giữ ngoại lệ.')}`);
+  if (!reason) redirect(fail('Ghi lý do giữ lại.'));
   await db.matchCandidate.update({ where: { id: c.id }, data: { stage: 'POOL', exception: `${reason} · ${me.name ?? me.id} ${new Date().toLocaleDateString('vi-VN')}`, updatedById: me.id } });
   await audit(me.id, 'MatchBrief', c.briefId, 'Giữ ngoại lệ', { handle: c.handle, reason });
   revalidatePath(`/matching/${c.briefId}`);
-  redirect(ret);
+  redirect(done(`Đã giữ lại @${c.handle}: KOC về "Đang xét".`));
 }
 
-// ---------------------------------------------------------------- Bước 8: B2C duyệt
+// ---------------------------------------------------------------- Bước 6: Lead B2C duyệt
+/** Nút trên dòng gửi row = "approve|id" hoặc "return|id"; action = "all" duyệt toàn bộ KOC đã báo giá. KOC chưa chấm Tone khớp brand không duyệt được. */
 export async function approve(fd: FormData) {
   const me = await requireUser();
   const briefId = str(fd, 'briefId');
-  if (!can(me, 'match.approve')) redirect(back(briefId, 8, `&msg=${encodeURIComponent('Cần quyền "Duyệt list KOC" (Phân quyền).')}`));
-  const ids = fd.getAll('cid').map(String);
-  const action = str(fd, 'action');
-  const reason = str(fd, 'reason');
-  if (!ids.length) redirect(back(briefId, 8, `&msg=${encodeURIComponent('Tick chọn KOC trước.')}`));
-  if (action === 'approve') {
-    await db.matchCandidate.updateMany({ where: { briefId, id: { in: ids }, stage: 'CONFIRMED' }, data: { stage: 'APPROVED', approvedById: me.id, approvedAt: new Date(), updatedById: me.id } });
+  const to = (msg: string) => back(briefId, 6, `&msg=${encodeURIComponent(msg)}`);
+  if (!can(me, 'match.approve')) redirect(to('Cần quyền "Duyệt list KOC" (Lead B2C).'));
+  const [rowAction, rowId] = str(fd, 'row').split('|');
+  const action = rowAction || str(fd, 'action') || 'approve';
+  const ids = action === 'all'
+    ? (await db.matchCandidate.findMany({ where: { briefId, stage: 'CONFIRMED' }, select: { id: true } })).map((x) => x.id)
+    : rowId ? [rowId] : fd.getAll('cid').map(String);
+  if (!ids.length) redirect(to(action === 'all' ? 'Không có KOC nào chờ duyệt.' : 'Tick chọn KOC trước.'));
+  let n = 0;
+  let skipped = 0;
+  if (action === 'approve' || action === 'all') {
+    const cands = await db.matchCandidate.findMany({ where: { briefId, id: { in: ids }, stage: 'CONFIRMED' }, select: { id: true, manual: true } });
+    const ok = cands.filter((c) => hasRequired(c.manual)).map((c) => c.id);
+    skipped = cands.length - ok.length;
+    n = (await db.matchCandidate.updateMany({ where: { briefId, id: { in: ok } }, data: { stage: 'APPROVED', approvedById: me.id, approvedAt: new Date(), updatedById: me.id } })).count;
   } else if (action === 'return') {
-    await db.matchCandidate.updateMany({ where: { briefId, id: { in: ids }, stage: { in: ['CONFIRMED', 'APPROVED'] } }, data: { stage: 'SHORTLIST', approvedById: null, approvedAt: null, reason: reason || null, updatedById: me.id } });
-  } else if (action === 'reject') {
-    if (!reason) redirect(back(briefId, 8, `&msg=${encodeURIComponent('Ghi lý do loại.')}`));
-    await db.matchCandidate.updateMany({ where: { briefId, id: { in: ids } }, data: { stage: 'REJECTED', rejectCode: str(fd, 'code') in KO ? str(fd, 'code') : 'SCORE', reason, updatedById: me.id } });
+    n = (await db.matchCandidate.updateMany({ where: { briefId, id: { in: ids }, stage: { in: ['CONFIRMED', 'APPROVED'] } }, data: { stage: 'SHORTLIST', approvedById: null, approvedAt: null, updatedById: me.id } })).count;
   }
-  await audit(me.id, 'MatchBrief', briefId, `B2C ${action}`, { n: ids.length, reason });
+  await audit(me.id, 'MatchBrief', briefId, `Duyệt list: ${action}`, { n });
   revalidatePath(`/matching/${briefId}`);
-  redirect(back(briefId, action === 'approve' ? 9 : 8));
+  const skip = skipped ? ` ${skipped} KOC chưa chấm "Tone khớp brand" nên chưa duyệt (chấm ở bước 5).` : '';
+  redirect(to(action === 'return'
+    ? `Đã bỏ duyệt ${n} KOC, KOC về "Đang hỏi giá".`
+    : `Đã duyệt ${n} KOC.${skip}${n ? ' Bấm "Đẩy sang Listing" ở khung trên cùng.' : ''}`));
 }
 
-// ---------------------------------------------------------------- Bước 9: xuất list → đợt listing để brand duyệt
+// ---------------------------------------------------------------- Bước 6: đẩy list KOC đã duyệt → đợt listing để brand chọn
 export async function toListing(fd: FormData) {
   const me = await requireUser();
   const briefId = str(fd, 'briefId');
   const b = await db.matchBrief.findUniqueOrThrow({ where: { id: briefId }, include: { product: { include: { store: true } } } });
   const approved = await db.matchCandidate.findMany({ where: { briefId, stage: 'APPROVED' } });
-  if (!approved.length) redirect(back(briefId, 9, `&msg=${encodeURIComponent('Chưa có KOC nào được B2C duyệt.')}`));
+  if (!approved.length) redirect(back(briefId, 6, `&msg=${encodeURIComponent('Chưa có KOC nào được duyệt.')}`));
   let batchId = str(fd, 'batchId');
   if (!batchId || batchId === 'new') {
     const month = b.airMonth ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).slice(0, 7);
@@ -398,9 +430,9 @@ export async function toListing(fd: FormData) {
   redirect(`/listing/${batchId}`);
 }
 
-// ---------------------------------------------------------------- Bước 10: đánh giá sau air
+// ---------------------------------------------------------------- Bước 7: đánh giá sau air
 export async function saveOutcome(fd: FormData) {
-  const { me, c, ret } = await candidate(fd);
+  const { me, c, done } = await candidate(fd);
   const yn = (k: string) => (str(fd, k) === 'yes' ? true : str(fd, k) === 'no' ? false : null);
   const err = str(fd, 'contentError');
   const decision = str(fd, 'decision');
@@ -430,5 +462,5 @@ export async function saveOutcome(fd: FormData) {
   }
   await audit(me.id, 'MatchBrief', c.briefId, 'Đánh giá sau air', { handle: c.handle, decision: outcome.decision });
   revalidatePath(`/matching/${c.briefId}`);
-  redirect(ret);
+  redirect(done(`Đã ghi kết quả @${c.handle}.`));
 }

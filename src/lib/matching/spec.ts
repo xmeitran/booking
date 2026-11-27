@@ -3,18 +3,16 @@
 // trọng số theo kênh, thang kết luận, tiêu chí riêng Threads. Chỉ là dữ liệu; cách tính ở engine.ts.
 // Doc chỉ cho mốc 1 / 3 / 5 điểm; khoảng giữa hai mốc (vd view rate 5–10%) được 2 hoặc 4 điểm.
 
-// title: tên bước; todo: việc người dùng cần làm ở bước đó (hiện trong ô "Việc cần làm").
+// Luồng 7 bước (feedback B2C 27/11/2026): gộp tìm + lọc tự động; gộp chọn liên hệ + hỏi giá; duyệt + đẩy sang Listing cùng một bước.
+// title: tên bước; todo: việc cần làm (ô "Việc cần làm" đầu bước).
 export const STEPS = [
-  { n: 1, title: 'Nhập yêu cầu', hint: 'Brand, sản phẩm, cần bao nhiêu KOC, air khi nào, yêu cầu nội dung', todo: 'Kiểm tra yêu cầu của đợt. Thiếu gì thì bấm "Sửa yêu cầu" (hoặc dán brief để AI điền giúp), xong bấm "Tìm KOC".' },
-  { n: 2, title: 'Tìm KOC', hint: 'Lấy KOC từ Danh bạ và kho dữ liệu, đúng ngành và cấp KOC', todo: 'Xem danh sách KOC hệ thống tìm được. Không cần làm gì thêm, sang bước 3.' },
-  { n: 3, title: 'Lọc tự động', hint: 'Hệ thống loại KOC vừa book, trùng brand cùng tập đoàn, dưới ngưỡng follower…', todo: 'Xem KOC bị loại và lý do. KOC nào vẫn muốn dùng thì bấm "Giữ lại" (cần người có quyền duyệt).' },
-  { n: 4, title: 'Kiểm tra nội dung', hint: 'Xem video gần đây: phốt, nói quá, đăng sản phẩm đối thủ', todo: 'Mở kênh từng KOC điểm cao, xem video gần đây. Không có vấn đề thì bấm "Không vi phạm"; có thì mở "Kiểm chi tiết" để loại.' },
-  { n: 5, title: 'Chọn KOC liên hệ', hint: 'Chọn KOC điểm cao, hợp nội dung để hỏi giá', todo: 'Bấm "AI chấm độ hợp nội dung" (nếu có), rồi tick KOC muốn liên hệ hoặc lấy nhanh top theo điểm.' },
-  { n: 6, title: 'Hỏi giá KOC', hint: 'Ghi giá, ads code, cam kết không đăng đối thủ', todo: 'Liên hệ từng KOC đã chọn, bấm "Ghi giá" để nhập giá báo và cam kết. Đủ thông tin thì bấm "Xác nhận đã báo giá".' },
-  { n: 7, title: 'Chấm điểm', hint: 'Chấm thêm phần hệ thống chưa tự chấm được', todo: 'Mở "Chấm điểm" ở KOC còn thiếu mục, chấm 1–5 các mục hệ thống không có số liệu (chất lượng video, tone…).' },
-  { n: 8, title: 'Trưởng nhóm duyệt', hint: 'Duyệt list trong ngân sách và đủ số KOC', todo: 'Xem tổng chi phí so ngân sách, tick KOC rồi bấm "Duyệt". KOC chưa ổn thì "Trả về hỏi lại giá" hoặc "Loại".' },
-  { n: 9, title: 'Gửi brand', hint: 'Tải Excel hoặc chuyển sang Listing cho brand duyệt', todo: 'Tải Excel gửi brand, hoặc bấm "Chuyển sang Listing" để brand duyệt online.' },
-  { n: 10, title: 'Sau khi air', hint: 'Ghi kết quả: book lại, vào KOC core hay dừng', todo: 'Khi video đã air, bấm "Ghi kết quả" ở từng KOC: đạt KPI không, đúng hạn không, và quyết định lần sau.' },
+  { n: 1, title: 'Nhập yêu cầu', hint: 'Brand, sản phẩm, cần bao nhiêu KOC, air khi nào, yêu cầu nội dung', todo: 'Kiểm tra yêu cầu của đợt (thiếu thì bấm "Sửa yêu cầu" hoặc dán brief cho AI điền), rồi bấm "Tìm KOC".' },
+  { n: 2, title: 'Tìm & Lọc KOC', hint: 'Hệ thống tìm KOC và tự loại KOC không hợp', todo: 'Hệ thống tìm KOC trong Danh bạ (lấy từ Lark Base) và ngoài Danh bạ (DWH của Tech), rồi tự loại KOC không hợp. Xem lý do loại; KOC bị loại sai thì Lead bấm "Giữ lại".' },
+  { n: 3, title: 'Kiểm tra nội dung', hint: 'Xem kênh: Chọn, Loại hoặc Xem chi tiết', todo: 'Mở kênh các KOC điểm cao, xem video gần đây. Không có vấn đề thì bấm "Chọn" (KOC sang bước Hỏi giá); có vấn đề thì bấm "Loại" và nhập lý do.' },
+  { n: 4, title: 'Hỏi giá KOC', hint: 'Liên hệ, ghi giá và cam kết của KOC', todo: 'Liên hệ từng KOC đã chọn, bấm "Nhập giá" để ghi giá và cam kết. Có giá và cam kết thì KOC chuyển "Đã báo giá".' },
+  { n: 5, title: 'Chấm điểm', hint: 'Hệ thống tự tính; KOC thiếu số liệu thì B2C điền bổ sung', todo: 'KOC đủ dữ liệu: hệ thống tự tính điểm, B2C chỉ chấm "Tone khớp brand". KOC chưa đủ dữ liệu: bấm "Điền bổ sung" và chấm các ô màu đỏ theo cảm nhận; ô bỏ trống tính 3 điểm, riêng Tone khớp brand bắt buộc.' },
+  { n: 6, title: 'Lead B2C duyệt', hint: 'Lead duyệt hoặc loại, rồi đẩy list sang Listing', todo: 'Lead bấm "Duyệt" hoặc "Loại" ở từng KOC, hoặc "Duyệt toàn bộ". Duyệt xong bấm "Đẩy sang Listing" ở khung trên cùng (hoặc tải Excel gửi brand).' },
+  { n: 7, title: 'Sau khi air', hint: 'Ghi kết quả: book lại, vào KOC core hay dừng', todo: 'Khi video đã air, bấm "Ghi kết quả" ở từng KOC: đạt KPI không, đúng hạn không, và quyết định lần sau.' },
 ] as const;
 
 /**
@@ -24,7 +22,7 @@ export const STEPS = [
 export const STAGES = {
   APPROVED: 'Đã duyệt',
   CONFIRMED: 'Đã báo giá',
-  SHORTLIST: 'Đang liên hệ',
+  SHORTLIST: 'Đang hỏi giá',
   POOL: 'Đang xét',
   REJECTED: 'Đã loại',
   KO: 'Hệ thống loại',
@@ -35,11 +33,11 @@ export type Stage = keyof typeof STAGES;
 export const STAGE_ORDER = Object.keys(STAGES) as Stage[];
 /** KOC "được chọn" ở từng bước (lên đầu, không mờ); còn lại xếp dưới. */
 export const STEP_PICKED: Record<number, Stage[]> = {
-  2: ['APPROVED', 'CONFIRMED', 'SHORTLIST', 'POOL', 'REJECTED', 'KO'], 3: ['APPROVED', 'CONFIRMED', 'SHORTLIST', 'POOL'], 4: ['APPROVED', 'CONFIRMED', 'SHORTLIST', 'POOL'],
-  5: ['APPROVED', 'CONFIRMED', 'SHORTLIST'], 6: ['APPROVED', 'CONFIRMED'], 7: ['APPROVED', 'CONFIRMED', 'SHORTLIST'], 8: ['APPROVED'], 9: ['APPROVED'], 10: ['APPROVED'],
+  2: ['APPROVED', 'CONFIRMED', 'SHORTLIST', 'POOL'], 3: ['APPROVED', 'CONFIRMED', 'SHORTLIST'], 4: ['APPROVED', 'CONFIRMED'], 5: ['APPROVED', 'CONFIRMED'],
+  6: ['APPROVED'], 7: ['APPROVED'],
 };
-/** KOC đang chờ thao tác ở bước (chưa qua nhưng không làm mờ): bước 5 chọn từ KOC đang xét, bước 6 hỏi giá KOC đang liên hệ, bước 8 duyệt KOC đã báo giá. */
-export const STEP_WORKING: Record<number, Stage[]> = { 5: ['POOL'], 6: ['SHORTLIST'], 8: ['CONFIRMED'] };
+/** KOC đang chờ thao tác ở bước (chưa qua nhưng không làm mờ). */
+export const STEP_WORKING: Record<number, Stage[]> = { 3: ['POOL'], 4: ['SHORTLIST'], 5: ['SHORTLIST'], 6: ['CONFIRMED'] };
 export const STAGE_TONE: Record<Stage, string> = {
   KO: 'bg-critical-soft text-critical', POOL: 'bg-sunken text-ink-2', SHORTLIST: 'bg-accent-soft text-accent', OUT: 'bg-sunken text-ink-3',
   CONFIRMED: 'bg-warning-soft text-warning', APPROVED: 'bg-positive-soft text-positive', REJECTED: 'bg-critical-soft text-critical',
@@ -71,6 +69,7 @@ export const KO = {
   I36: { label: 'Brand không muốn dùng', step: 0, rule: 'Nằm trong danh sách KOC brand cấm' },
   G0: { label: 'Trượt yêu cầu bắt buộc của brand', step: 5, rule: 'Một tiêu chí brand đánh dấu "Bắt buộc" dưới 3 điểm' },
   SCORE: { label: 'Điểm thấp', step: 5, rule: 'Loại vì điểm thấp' },
+  PRICE: { label: 'Giá cao / vượt ngân sách', step: 6, rule: 'Giá KOC báo cao so với ngân sách hoặc hiệu quả dự kiến' },
   OTHER: { label: 'Lý do khác', step: 0, rule: '' },
 } as const satisfies Record<string, { label: string; step: number; rule: string; internal?: boolean }>;
 export type KoCode = keyof typeof KO;
@@ -112,7 +111,7 @@ export type Criterion = { id: string; group: Group; label: string; measure: stri
 export const CRITERIA: Criterion[] = [
   { id: 'A1', group: 'A', label: 'Tệp follower khớp TA', measure: '% follower khớp giới tính, tuổi, vùng của SKU', scale: ['< 40%', '50–70%', '> 70%'], auto: true },
   { id: 'A2', group: 'A', label: 'Niche & ngành', measure: 'Tỷ trọng GMV ngành của brand (thay % video cùng ngành); khớp tệp kênh ưu tiên của SKU', scale: ['< 20%', '30–60%', '> 60%'], auto: true },
-  { id: 'A3', group: 'A', label: 'Hợp nội dung brand', measure: 'Nội dung kênh hợp yêu cầu của đợt (AI chấm từ video nổi bật, sản phẩm đã bán; Booker sửa được)', scale: ['Lệch', 'Liên quan một phần', 'Rất hợp, có thể làm gương mặt brand'] },
+  { id: 'A3', group: 'A', label: 'Tone khớp brand', measure: 'So tone kênh với brand và đối thủ (AI gợi ý từ video nổi bật; B2C quyết định)', scale: ['Lệch tone', 'Trung tính', 'Có thể là gương mặt brand'] },
   { id: 'B1', group: 'B', label: 'View rate', measure: 'View trung vị ÷ follower', scale: ['< 5%', '10–20%', '> 30%'], auto: true, notChannels: ['Threads'] },
   { id: 'B2', group: 'B', label: 'Engagement rate', measure: '(like + comment + share) ÷ view', scale: ['< 2%', '4–6%', '> 8%'], auto: true, notChannels: ['Threads'] },
   { id: 'B3', group: 'B', label: 'Độ ổn định view', measure: 'Số video trong 10 video gần nhất đạt ≥ 50% view trung vị', scale: ['≤ 4/10', '6–7/10', '≥ 8/10'], notChannels: ['Threads'] },
@@ -146,8 +145,8 @@ export const GROUP0: Criterion[] = [
   { id: 'G0_FEWBOOK', group: 'G0', label: 'Ít booking', measure: '% video tài trợ 30 ngày; số brand cùng ngành đã review', scale: ['> 70% hoặc ≥ 3 brand', '40–60%', '< 30% và ≤ 1 brand'] },
   { id: 'G0_FREQ', group: 'G0', label: 'Tần suất đăng', measure: 'Video / tuần trong 30 ngày', scale: ['< 1', '2–3', '≥ 4'], auto: true },
   { id: 'G0_FORMAT', group: 'G0', label: 'Đúng format', measure: '% trong 10 video đúng format brief', scale: ['< 50%', '50–80%', '> 80%'] },
-  { id: 'G0_ADS', group: 'G0', label: 'Ads code / reup', measure: 'Số ngày ads code KOC đồng ý so yêu cầu; reup đa kênh (bước 6)', scale: ['Không đồng ý', 'Thiếu ngày', 'Đủ ngày + reup đa kênh'], auto: true },
-  { id: 'G0_SCRIPT', group: 'G0', label: 'Nhận duyệt kịch bản, lịch air', measure: 'Số vòng sửa KOC nhận, air đúng khung giờ (bước 6)', scale: ['Không sửa, air tuỳ ý', '1 vòng', '2 vòng, đúng giờ'], auto: true },
+  { id: 'G0_ADS', group: 'G0', label: 'Ads code / reup', measure: 'Số ngày ads code KOC đồng ý so yêu cầu; reup đa kênh (khi nhập giá)', scale: ['Không đồng ý', 'Thiếu ngày', 'Đủ ngày + reup đa kênh'], auto: true },
+  { id: 'G0_SCRIPT', group: 'G0', label: 'Nhận duyệt kịch bản, lịch air', measure: 'Số vòng sửa KOC nhận, air đúng khung giờ (khi nhập giá)', scale: ['Không sửa, air tuỳ ý', '1 vòng', '2 vòng, đúng giờ'], auto: true },
 ];
 export const ALL_CRITERIA = [...GROUP0, ...CRITERIA];
 export const criterion = (id: string) => ALL_CRITERIA.find((c) => c.id === id);
@@ -176,11 +175,16 @@ export const TIERS = [
   { min: 50, label: 'Chỉ gửi mẫu + hoa hồng', action: 'Không trả phí; gửi mẫu và hoa hồng, theo dõi đơn', recommend: 'Optional', tone: 'bg-warning-soft text-warning' },
   { min: 0, label: 'Không hợp tác', action: 'Không book lần này', recommend: null, tone: 'bg-critical-soft text-critical' },
 ] as const;
-export const NO_DATA_TIER = { label: 'Chưa đủ số liệu', action: 'Kho thiếu số liệu kênh này: chấm thêm ở bước 7 hoặc xem kênh trực tiếp', recommend: null, tone: 'bg-sunken text-ink-3' };
 /**
- * Kho chưa có nội dung video nên nhóm D và nhiều tiêu chí nhóm 0 chỉ có khi Booker chấm tay. Tổng điểm quy về 100 trên
- * phần trọng số có số liệu; độ phủ dưới mức này thì không xếp mức kết luận (tránh điểm cao nhờ có ít số liệu).
+ * Ô bỏ trống tính mức giữa để mọi KOC so được với nhau: tiêu chí công thức (auto) thiếu số liệu, tiêu chí cảm nhận B2C chưa chấm.
+ * Trừ REQUIRED_MANUAL: chưa chấm thì không tính và KOC chưa duyệt được.
  */
+export const ASSUMED_SCORE = 3;
+/** Mục B2C bắt buộc tự chấm (không lấy mặc định, điểm AI chỉ là gợi ý): Tone khớp brand. */
+export const REQUIRED_MANUAL = ['A3'];
+/** KOC đã được B2C chấm đủ mục bắt buộc chưa (điểm AI không tính). */
+export const hasRequired = (manual: unknown) => REQUIRED_MANUAL.every((id) => { const m = (manual as Record<string, { by?: string }> | null)?.[id]; return !!m && m.by !== 'AI'; });
+/** Dưới mức này (phần trọng số có số liệu thật) thì điểm hiện mờ, kèm ghi chú "nhiều mục tạm tính". */
 export const MIN_COVERAGE = 0.5;
 export const tierOf = (total: number) => TIERS.find((t) => total >= t.min)!;
 

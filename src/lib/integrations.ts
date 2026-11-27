@@ -84,7 +84,7 @@ export const INTEGRATIONS: Integration[] = [
   },
   {
     id: 'ai', code: 'AI', name: 'API AI (Claude)',
-    what: 'Claude đọc brief để điền yêu cầu đợt matching, chấm độ hợp nội dung của KOC và viết brief nháp cho job. Đặt hạn mức chi tiêu ở Anthropic Console.',
+    what: 'Claude đọc brief để điền yêu cầu đợt matching, gợi ý Tone khớp brand của KOC và viết brief nháp cho job. Đặt hạn mức chi tiêu ở Anthropic Console.',
     todo: ['AI chấm video khi nghiệm thu: cần nguồn lời thoại (transcript) của video.', 'Tìm KOC theo đối thủ / hashtag / xu hướng và tìm kênh khác của KOC bằng AI (Kalodata, TikTok Shop): chưa làm.'],
     items: [{ key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key', secret: true }],
   },

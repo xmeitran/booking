@@ -75,7 +75,7 @@ export function BriefForm({ brief, brands, cancel }: { brief?: Partial<MatchBrie
         <F label="Mục tiêu GMV (₫)"><input name="gmvTarget" inputMode="numeric" defaultValue={brief?.gmvTarget ?? ''} className="input" /></F>
       </Part>
 
-      <Part title="4. Yêu cầu nội dung" note="Dùng để tìm thêm KOC theo từ khoá, loại KOC nhắc đối thủ / dùng từ cấm, và để AI chấm độ hợp nội dung.">
+      <Part title="4. Yêu cầu nội dung" note="Dùng để tìm thêm KOC theo từ khoá, loại KOC nhắc đối thủ / dùng từ cấm, và để AI gợi ý Tone khớp brand.">
         <F label="Tóm tắt yêu cầu" wide><textarea name="needs_summary" rows={2} defaultValue={nd.summary ?? ''} placeholder="Sản phẩm gì, thông điệp chính, kiểu KOC cần" className="input" /></F>
         <F label="Từ khoá tìm KOC (cách nhau dấu phẩy)" wide><input name="needs_keywords" defaultValue={(nd.keywords ?? []).join(', ')} placeholder="kem chống nắng, da dầu mụn, nâng tông" className="input" /></F>
         <F label="Khách hàng là">
