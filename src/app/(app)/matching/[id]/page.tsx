@@ -391,6 +391,17 @@ async function FindFilter({ b, me, n, page, pop, listParams, sp }: Ctx) {
 }
 
 // ---------------------------------------------------------------- Bước 3. Kiểm tra nội dung: Chọn / Loại / Xem chi tiết
+/** Một ô việc đánh số trong khung hướng dẫn của bước. */
+const SubStep = ({ i, title, tag, children }: { i: number; title: string; tag?: string; children: React.ReactNode }) => (
+  <li className="flex flex-col gap-2 rounded-md border border-line bg-surface p-3 text-[13px]">
+    <div className="flex items-center gap-2">
+      <span className="grid size-5 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-semibold text-surface">{i}</span>
+      <h3 className="font-semibold">{title}</h3>
+      {tag && <span className="pill bg-sunken text-ink-3">{tag}</span>}
+    </div>
+    {children}
+  </li>
+);
 async function ContentCheck({ b, n, page, pop, listParams, sp, ai }: Ctx) {
   if (!b.ranAt) return <><Todo briefId={b.id} step={3} /><NotRun /></>;
   const codes = contentChecksFor(b);
@@ -403,30 +414,55 @@ async function ContentCheck({ b, n, page, pop, listParams, sp, ai }: Ctx) {
   ]);
   const need = fill.slots.reduce((s, x) => s + x.count, 0);
   const pool = n.POOL ?? 0;
+  const done = pickedCount(3, n);
+  const aiN = aiDone[0]?.n ?? 0;
+  const k = ai ? 1 : 0; // không có AI thì ẩn bước AI, đánh số lại
   return (
     <>
-      <Todo briefId={b.id} step={3}>
-        {ai && (
-          <ActionForm action={aiScoreFit} pendingText="AI đang xem video và sản phẩm của từng KOC, khoảng 30–60 giây…" className="flex flex-wrap items-end gap-2">
-            <input type="hidden" name="briefId" value={b.id} />
-            <label><span className="label">AI gợi ý Tone khớp brand cho top</span><input name="top" inputMode="numeric" defaultValue={100} className="input h-8 w-20" /></label>
-            <button className="btn h-8 px-3 text-xs">AI gợi ý Tone</button>
-            <span className="text-xs text-ink-3">{aiDone[0]?.n ? `Đã gợi ý ${fmtNum(aiDone[0].n)} KOC.` : ''}</span>
-          </ActionForm>
-        )}
-        <form action={pick} className="flex items-end gap-2">
-          <ListCtx b={b} step={3} sp={sp} />
-          <label><span className="label">Chọn nhanh top theo điểm</span><input name="top" inputMode="numeric" defaultValue={need ? need * 2 : 20} className="input h-8 w-20" /></label>
-          <button className="btn h-8 px-3 text-xs">Chọn top này</button>
-        </form>
-      </Todo>
-      <Panel title="Kiểm tra nội dung kênh" action={<Filters sp={sp} step={3} />}>
-        <Summary step={3} n={n} label="KOC đã chọn" />
-        <div className="mb-2"><Slots fill={fill} label="đã chọn" /></div>
-        <p className="mb-3 text-xs text-ink-3">
-          {fmtNum(pool)} KOC đang xét, xếp theo điểm. Mở kênh, xem video gần đây và để ý: {codes.map((k) => KO[k].label.toLowerCase()).join(', ')}.
-          {' '}Không có vấn đề: <b>Chọn</b>. Có vấn đề: <b>Loại</b> (bắt buộc nhập lý do).
-        </p>
+      <section className="mb-4 rounded-lg border border-accent/30 bg-accent-soft/40 px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[13px] font-semibold text-accent">Bước 3. Kiểm tra nội dung: loại KOC có vấn đề trước khi hỏi giá</h2>
+            <p className="mt-1 text-[13px]">
+              Đã chọn <b>{fmtNum(done)}</b>{need ? <> / cần <b>{need}</b></> : null} KOC
+              {!need && <span className="text-ink-3"> · đợt chưa ghi cần bao nhiêu KOC (<Link href={`/matching/${b.id}?step=3&edit=1`} className="link">Sửa yêu cầu</Link>)</span>}
+            </p>
+            {need > 0 && <div className="mt-1"><Slots fill={fill} label="đã chọn" /></div>}
+          </div>
+          <Link href={`/matching/${b.id}?step=4`} className={`btn h-8 shrink-0 px-3 text-xs ${done ? 'btn-primary' : ''}`}>Sang bước 4: Hỏi giá KOC →</Link>
+        </div>
+        <ol className={`mt-3 grid gap-3 ${ai ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
+          {ai && (
+            <SubStep i={1} title="AI gợi ý Tone" tag="Không bắt buộc">
+              <p className="text-ink-2">AI đọc video, sản phẩm của các KOC điểm cao nhất và gợi ý Tone khớp brand 1–5 (cột &quot;Tone&quot;). Xong thì xếp bảng theo Tone để xem KOC hợp brand trước.</p>
+              <ActionForm action={aiScoreFit} pendingText="AI đang xem video và sản phẩm của từng KOC, khoảng 30–60 giây…" className="mt-auto flex flex-wrap items-center gap-2 [&>p]:w-full">
+                <input type="hidden" name="briefId" value={b.id} />
+                <label className="flex items-center gap-1.5 text-xs text-ink-3">Top <input name="top" inputMode="numeric" defaultValue={100} className="input h-8 w-16" /> KOC</label>
+                <button className="btn h-8 px-3 text-xs">Chạy AI</button>
+              </ActionForm>
+              {aiN > 0 && <p className="text-xs text-ink-3">Đã gợi ý {fmtNum(aiN)} KOC · {sp.sort === 'fit' ? 'bảng đang xếp theo Tone' : <Link href={`/matching/${b.id}?step=3&sort=fit`} className="link">Xếp bảng theo Tone</Link>}</p>}
+            </SubStep>
+          )}
+          <SubStep i={1 + k} title="Mở kênh, xem video gần đây">
+            <p className="text-ink-2">Bảng dưới xếp KOC điểm cao lên đầu. Bấm <b>Mở kênh ↗</b> ở từng KOC và để ý:</p>
+            <ul className="flex flex-wrap gap-1">{codes.map((c) => <li key={c} className="pill bg-warning-soft text-warning" title={KO[c].rule}>{KO[c].label}</li>)}</ul>
+            <p className="text-xs text-ink-3">Cột &quot;Hệ thống gợi ý&quot; ghi sẵn dấu hiệu hệ thống thấy được.</p>
+          </SubStep>
+          <SubStep i={2 + k} title="Chọn hoặc Loại">
+            <ul className="space-y-1 text-ink-2">
+              <li>Ổn: bấm <b>Chọn</b>, KOC sang bước 4 Hỏi giá.</li>
+              <li>Có vấn đề: bấm <b>Loại</b> và ghi lý do.</li>
+              <li>Nhiều KOC ổn: tick ô đầu dòng rồi bấm <b>Chọn KOC đã tick</b>.</li>
+            </ul>
+            <form action={pick} className="mt-auto flex flex-wrap items-center gap-2 border-t border-line pt-2">
+              <ListCtx b={b} step={3} sp={sp} />
+              <label className="flex items-center gap-1.5 text-xs text-ink-3">Xem xong rồi? Chọn luôn top <input name="top" inputMode="numeric" defaultValue={need ? need * 2 : 20} className="input h-8 w-16" /> theo điểm</label>
+              <button className="btn h-8 px-3 text-xs">Chọn top</button>
+            </form>
+          </SubStep>
+        </ol>
+      </section>
+      <Panel title={<>Danh sách KOC <span className="text-[13px] font-normal text-ink-3">· {fmtNum(pool)} đang xét, xếp theo {sp.sort === 'fit' ? 'Tone' : 'điểm'}</span></>} action={<Filters sp={sp} step={3} />}>
         <form action={pick}>
           <ListCtx b={b} step={3} sp={sp} />
           {picked.length > 0 && (
